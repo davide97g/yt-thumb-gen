@@ -110,7 +110,11 @@ function ImageProps({ layer, set, onError }: { layer: ImageLayer; set: Setter; o
       const cutout = await removeBackground(layer.src);
       set({ origSrc: layer.origSrc ?? layer.src, src: cutout, glow: true });
     } catch {
-      onError("Servizio rimozione sfondo non raggiungibile — avvia ./bgremove (porta 8000).");
+      onError(
+        import.meta.env.DEV
+          ? "Servizio rimozione sfondo non raggiungibile — avvia ./bgremove (porta 8000)."
+          : "Rimozione sfondo non riuscita — riprova.",
+      );
     } finally {
       setBusy(false);
     }

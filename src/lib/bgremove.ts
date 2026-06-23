@@ -1,18 +1,25 @@
 const BGREMOVE_URL = import.meta.env.VITE_BGREMOVE_URL ?? "http://localhost:8000";
 
 /**
- * Sends a dataURL to the local bgremove service (./bgremove) and returns a
- * transparent-background cut-out as a PNG dataURL. Throws if the service is unreachable.
+ * Removes the background, returning a transparent-background cut-out as a PNG dataURL.
+ * Local dev (`vite dev`) → the local rembg service (./bgremove).
+ * Production build → in-browser model (@imgly/background-removal), no backend.
  */
 export async function removeBackground(dataUrl: string): Promise<string> {
+  if (import.meta.env.DEV) return removeViaService(dataUrl);
+  // ponytail: AGPL lib, model served from IMG.LY's CDN; self-host via `publicPath` config if the CDN ever matters
+  const { removeBackground: imglyRemoveBackground } = await import("@imgly/background-removal");
+  return blobToDataUrl(await imglyRemoveBackground(dataUrl));
+}
+
+async function removeViaService(dataUrl: string): Promise<string> {
   const res = await fetch(`${BGREMOVE_URL}/cutout`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ dataUrl }),
   });
   if (!res.ok) throw new Error(`bgremove ${res.status}`);
-  const blob = await res.blob();
-  return await blobToDataUrl(blob);
+  return blobToDataUrl(await res.blob());
 }
 
 function blobToDataUrl(blob: Blob): Promise<string> {
