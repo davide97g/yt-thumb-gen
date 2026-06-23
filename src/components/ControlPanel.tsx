@@ -12,12 +12,13 @@ import {
 } from "../state";
 import { TEMPLATE_LABELS, TEMPLATES, type TemplateKey } from "../presets";
 import { loadImageFile } from "../lib/loadImageFile";
-import { Hint, Section, UploadButton } from "./controls";
+import { Field, Hint, Section, UploadButton } from "./controls";
 import { LayerList } from "./LayerList";
 import { Inspector, BackgroundInspector } from "./Inspector";
 import { SavesPanel } from "./SavesPanel";
 import { WebcamCapture } from "./WebcamCapture";
 import { Button } from "./ui/button";
+import { Input } from "./ui/input";
 import { Separator } from "./ui/separator";
 
 const MAX_UPLOAD = 8 * 1024 * 1024;
@@ -28,10 +29,12 @@ type Props = {
   onExport: () => void;
   exporting: boolean;
   exportError: string | null;
+  fileName: string;
+  onFileNameChange: (name: string) => void;
   onUploadError: (msg: string) => void;
 };
 
-export function ControlPanel({ state, dispatch, onExport, exporting, exportError, onUploadError }: Props) {
+export function ControlPanel({ state, dispatch, onExport, exporting, exportError, fileName, onFileNameChange, onUploadError }: Props) {
   const { doc, selectedId } = state;
   const selected = doc.layers.find((l) => l.id === selectedId) ?? null;
   const [showCam, setShowCam] = useState(false);
@@ -92,6 +95,9 @@ export function ControlPanel({ state, dispatch, onExport, exporting, exportError
       <BackgroundInspector background={doc.background} dispatch={dispatch} onError={onUploadError} />
 
       <div className="mt-auto space-y-2 border-t border-border pt-4">
+        <Field label="Nome file">
+          <Input value={fileName} onChange={(e) => onFileNameChange(e.target.value)} placeholder="thumb.png" />
+        </Field>
         <Button className="w-full" onClick={onExport} disabled={exporting}>
           <Download /> {exporting ? "Esporto…" : "Esporta PNG 1280×720"}
         </Button>

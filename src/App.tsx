@@ -16,6 +16,7 @@ export default function App() {
   const [scale, setScale] = useState(0.4);
   const [exporting, setExporting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [fileName, setFileName] = useState("thumb.png");
 
   // Latest selection, read by the global key handler without rebinding it each render.
   const selRef = useRef(state.selectedId);
@@ -67,7 +68,7 @@ export default function App() {
     // Let the `exporting` render commit first so the selection outline is hidden in the capture.
     await new Promise<void>((r) => requestAnimationFrame(() => r()));
     try {
-      const { warning } = await exportThumb(canvasRef.current);
+      const { warning } = await exportThumb(canvasRef.current, fileName);
       if (warning) setMessage(warning);
     } catch (err) {
       setMessage(`Export fallito: ${err instanceof Error ? err.message : String(err)}`);
@@ -84,6 +85,8 @@ export default function App() {
         onExport={onExport}
         exporting={exporting}
         exportError={message}
+        fileName={fileName}
+        onFileNameChange={setFileName}
         onUploadError={setMessage}
       />
       <main ref={previewRef} className="flex flex-1 items-center justify-center overflow-hidden p-6">
