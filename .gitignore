@@ -11,3 +11,4 @@ bgremove/.venv/
 *.pyc
 
 .DS_Store
+.vercel
