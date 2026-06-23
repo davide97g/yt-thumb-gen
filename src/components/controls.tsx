@@ -30,7 +30,7 @@ export function Section({ title, action, children }: { title: string; action?: R
   return (
     <section className="space-y-2.5">
       <div className="flex items-center justify-between">
-        <h3 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">{title}</h3>
+        <h3 className="font-mono text-[11px] font-medium tracking-[0.16em] text-muted-foreground uppercase">{title}</h3>
         {action}
       </div>
       <div className="space-y-2.5">{children}</div>

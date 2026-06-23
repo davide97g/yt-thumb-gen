@@ -2,49 +2,52 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Warm "darkroom" editor chrome. The canvas content is loud and colourful, so the
+   tool around it stays quiet, warm, and precise — Claude terracotta is the single
+   accent, monospace is the instrument readout. */
 :root {
   --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
+  --background: oklch(0.985 0.004 70);
+  --foreground: oklch(0.18 0.01 55);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
+  --card-foreground: oklch(0.18 0.01 55);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.64 0.16 38);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.64 0.16 38);
+  --popover-foreground: oklch(0.18 0.01 55);
+  --primary: oklch(0.64 0.16 40);
+  --primary-foreground: oklch(0.99 0.01 80);
+  --secondary: oklch(0.96 0.006 70);
+  --secondary-foreground: oklch(0.22 0.01 55);
+  --muted: oklch(0.96 0.006 70);
+  --muted-foreground: oklch(0.52 0.012 60);
+  --accent: oklch(0.95 0.008 65);
+  --accent-foreground: oklch(0.22 0.01 55);
+  --destructive: oklch(0.6 0.21 25);
+  --destructive-foreground: oklch(0.99 0.01 80);
+  --border: oklch(0.2 0.01 55 / 12%);
+  --input: oklch(0.2 0.01 55 / 14%);
+  --ring: oklch(0.64 0.16 40);
 }
 
 .dark {
-  --background: oklch(0.16 0.005 285);
-  --foreground: oklch(0.97 0 0);
-  --card: oklch(0.205 0.006 285);
-  --card-foreground: oklch(0.97 0 0);
-  --popover: oklch(0.205 0.006 285);
-  --popover-foreground: oklch(0.97 0 0);
-  --primary: oklch(0.66 0.17 39);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.27 0.006 285);
-  --secondary-foreground: oklch(0.97 0 0);
-  --muted: oklch(0.27 0.006 285);
-  --muted-foreground: oklch(0.705 0.01 285);
-  --accent: oklch(0.27 0.006 285);
-  --accent-foreground: oklch(0.97 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(1 0 0 / 12%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.66 0.17 39);
+  --background: oklch(0.145 0.006 55); /* warm near-black — the stage void */
+  --foreground: oklch(0.95 0.008 75);
+  --card: oklch(0.195 0.008 58); /* warm charcoal panel */
+  --card-foreground: oklch(0.95 0.008 75);
+  --popover: oklch(0.215 0.009 58);
+  --popover-foreground: oklch(0.95 0.008 75);
+  --primary: oklch(0.67 0.17 42); /* Claude terracotta */
+  --primary-foreground: oklch(0.99 0.012 80);
+  --secondary: oklch(0.255 0.01 58);
+  --secondary-foreground: oklch(0.95 0.008 75);
+  --muted: oklch(0.255 0.01 58);
+  --muted-foreground: oklch(0.7 0.015 65);
+  --accent: oklch(0.29 0.012 56);
+  --accent-foreground: oklch(0.96 0.008 75);
+  --destructive: oklch(0.64 0.2 22);
+  --destructive-foreground: oklch(0.99 0.012 80);
+  --border: oklch(0.92 0.02 70 / 9%);
+  --input: oklch(0.92 0.02 70 / 13%);
+  --ring: oklch(0.67 0.17 42);
 }
 
 @theme inline {
@@ -72,6 +75,7 @@
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
   --font-sans: "Inter", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, "JetBrains Mono", monospace;
 }
 
 @layer base {
@@ -86,6 +90,7 @@
     background-color: var(--background);
     color: var(--foreground);
     font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
   }
 }
 
@@ -101,3 +106,119 @@ input[type="color"] {
 }
 input[type="color"]::-webkit-color-swatch-wrapper { padding: 2px; }
 input[type="color"]::-webkit-color-swatch { border: none; border-radius: calc(var(--radius-sm) - 2px); }
+
+/* ── Editor shell ──────────────────────────────────────────────────────────── */
+
+/* The stage the canvas floats in: faint dotted grid + a warm glow up top, the way
+   an infinite-canvas editor signals "this is a workspace, not a page." */
+.stage {
+  background-color: var(--background);
+  background-image:
+    radial-gradient(110% 80% at 50% -10%, oklch(0.67 0.17 42 / 7%), transparent 60%),
+    radial-gradient(oklch(0.92 0.02 70 / 6%) 1px, transparent 1.4px);
+  background-size: auto, 22px 22px;
+  background-position: center, center;
+}
+
+/* The floating creation dock — the one bold object in the chrome. */
+.dock {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.4375rem;
+  border-radius: 1rem;
+  border: 1px solid var(--border);
+  background: color-mix(in oklch, var(--popover) 90%, transparent);
+  backdrop-filter: blur(14px) saturate(1.2);
+  box-shadow:
+    inset 0 1px 0 oklch(1 0 0 / 7%),
+    0 2px 6px oklch(0 0 0 / 35%),
+    0 22px 48px -16px oklch(0 0 0 / 75%),
+    0 0 0 1px oklch(0.67 0.17 42 / 6%);
+}
+.dock-sep {
+  width: 1px;
+  align-self: stretch;
+  margin: 0.25rem 0.1875rem;
+  background: var(--border);
+}
+
+/* Icon button inside the dock + its hover label. */
+.dock-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.375rem;
+  height: 2.375rem;
+  border-radius: 0.625rem;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  transition: background-color 0.13s ease, color 0.13s ease, transform 0.13s ease;
+}
+.dock-btn:hover {
+  background: var(--accent);
+  color: var(--foreground);
+}
+.dock-btn:active { transform: translateY(1px); }
+.dock-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--ring);
+}
+.dock-btn svg { width: 1.125rem; height: 1.125rem; }
+.dock-tip {
+  position: absolute;
+  bottom: calc(100% + 0.625rem);
+  left: 50%;
+  transform: translateX(-50%) translateY(0.25rem);
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border);
+  background: var(--popover);
+  color: var(--popover-foreground);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  box-shadow: 0 6px 16px oklch(0 0 0 / 45%);
+  transition: opacity 0.12s ease, transform 0.12s ease;
+}
+.dock-btn:hover .dock-tip,
+.dock-btn:focus-visible .dock-tip {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* Thin, warm panel scrollbars. */
+.panel-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.panel-scroll::-webkit-scrollbar { width: 8px; }
+.panel-scroll::-webkit-scrollbar-thumb {
+  background: oklch(0.92 0.02 70 / 12%);
+  border-radius: 99px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.panel-scroll::-webkit-scrollbar-thumb:hover { background: oklch(0.92 0.02 70 / 20%); background-clip: padding-box; }
+
+/* One orchestrated page-load settle — dock rises, panels fade. (The dock is
+   horizontally centred by its wrapper, so the keyframe only moves Y.) */
+@keyframes dock-rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes panel-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.anim-dock { animation: dock-rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.anim-panel { animation: panel-in 0.4s ease both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .anim-dock, .anim-panel { animation: none; }
+  .dock-btn, .dock-tip { transition: none; }
+}
