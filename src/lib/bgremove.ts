@@ -7,9 +7,11 @@ const BGREMOVE_URL = import.meta.env.VITE_BGREMOVE_URL ?? "http://localhost:8000
  */
 export async function removeBackground(dataUrl: string): Promise<string> {
   if (import.meta.env.DEV) return removeViaService(dataUrl);
-  // ponytail: AGPL lib, model served from IMG.LY's CDN; self-host via `publicPath` config if the CDN ever matters
+  // ponytail: AGPL lib, model served from IMG.LY's CDN; self-host via `publicPath` config if the CDN ever matters.
+  // model:"isnet" = full precision (best cutout the lib offers, vs the default half-precision "isnet_fp16").
+  // device:"gpu" uses WebGPU when present (no cross-origin-isolation headers needed) and falls back to CPU.
   const { removeBackground: imglyRemoveBackground } = await import("@imgly/background-removal");
-  return blobToDataUrl(await imglyRemoveBackground(dataUrl));
+  return blobToDataUrl(await imglyRemoveBackground(dataUrl, { model: "isnet", device: "gpu" }));
 }
 
 async function removeViaService(dataUrl: string): Promise<string> {
