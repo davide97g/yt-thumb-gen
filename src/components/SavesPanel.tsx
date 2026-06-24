@@ -13,14 +13,14 @@ import { Hint, Section, UploadButton } from "./controls";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 
-type Props = { doc: ThumbDoc; dispatch: Dispatch<Action>; onError: (msg: string) => void };
+type Props = { doc: ThumbDoc; dispatch: Dispatch<Action>; onError: (msg: string) => void; refreshKey?: number };
 
-export function SavesPanel({ doc, dispatch, onError }: Props) {
+export function SavesPanel({ doc, dispatch, onError, refreshKey }: Props) {
   const [configs, setConfigs] = useState<SavedConfig[]>([]);
   const [name, setName] = useState("");
 
   const refresh = () => listConfigs().then(setConfigs).catch(() => onError("Impossibile leggere i salvataggi."));
-  useEffect(() => { void refresh(); }, []);
+  useEffect(() => { void refresh(); }, [refreshKey]);
 
   async function onSave() {
     try {
@@ -77,11 +77,11 @@ export function SavesPanel({ doc, dispatch, onError }: Props) {
         <Hint>Nessun salvataggio ancora.</Hint>
       )}
 
-      <div className="flex gap-2">
-        <Button variant="outline" size="sm" className="flex-1" onClick={() => exportConfigFile(doc, name || "grocerai-thumb")}>
+      <div className="flex flex-col gap-2">
+        <Button variant="outline" size="sm" className="w-full justify-center" onClick={() => exportConfigFile(doc, name || "grocerai-thumb")}>
           <FileDown /> Esporta JSON
         </Button>
-        <UploadButton label="Importa JSON" icon={<FileUp />} accept="application/json,.json" className="flex-1" onFile={(f) => void onImport(f)} />
+        <UploadButton label="Importa JSON" icon={<FileUp />} accept="application/json,.json" className="w-full justify-center" onFile={(f) => void onImport(f)} />
       </div>
     </Section>
   );

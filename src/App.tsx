@@ -1,9 +1,10 @@
 import { useEffect, useReducer, useRef, useState } from "react";
-import { Download } from "lucide-react";
+import { Download, FilePlus, Maximize2, PanelsTopLeft } from "lucide-react";
 import { CANVAS_H, CANVAS_W, ThumbCanvas } from "./components/ThumbCanvas";
 import { Inspector, BackgroundInspector } from "./components/Inspector";
 import { LayerList } from "./components/LayerList";
 import { SavesPanel } from "./components/SavesPanel";
+import { NewProjectDialog } from "./components/NewProjectDialog";
 import { Toolbar } from "./components/Toolbar";
 import { Section } from "./components/controls";
 import { Button } from "./components/ui/button";
@@ -11,7 +12,7 @@ import { Input } from "./components/ui/input";
 import { exportThumb } from "./lib/export";
 import { getWorking, setWorking } from "./lib/storage";
 import { reducer, type AppState } from "./state";
-import { TEMPLATE_LABELS, TEMPLATES, type TemplateKey } from "./presets";
+import { TEMPLATES } from "./presets";
 
 const initial: AppState = { doc: TEMPLATES.loud(), selectedId: null };
 
@@ -21,6 +22,9 @@ export default function App() {
   const canvasRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(0.4);
+  const [chromeHidden, setChromeHidden] = useState(false);
+  const [newOpen, setNewOpen] = useState(false);
+  const [savesKey, setSavesKey] = useState(0);
   const [exporting, setExporting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [fileName, setFileName] = useState("thumb.png");
@@ -50,9 +54,12 @@ export default function App() {
   // Backspace / Delete removes the selected layer, unless focus is in a text field.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key !== "Backspace" && e.key !== "Delete") return;
       const el = document.activeElement as HTMLElement | null;
-      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable)) return;
+      const typing = el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
+      if (typing) return;
+      // "\" toggles all chrome (rails + dock) for a full-bleed preview.
+      if (e.key === "\\") { e.preventDefault(); setChromeHidden((v) => !v); return; }
+      if (e.key !== "Backspace" && e.key !== "Delete") return;
       if (selRef.current) dispatch({ type: "removeLayer", id: selRef.current });
     }
     window.addEventListener("keydown", onKey);
@@ -93,6 +100,17 @@ export default function App() {
       {/* ── Top bar ─────────────────────────────────────────────────────── */}
       <header className="flex h-14 shrink-0 items-center justify-between gap-4 border-b border-border bg-card/40 px-4 backdrop-blur">
         <div className="flex items-center gap-2.5">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="text-muted-foreground hover:text-foreground"
+            onClick={() => setChromeHidden((v) => !v)}
+            title={chromeHidden ? "Mostra pannelli (\\)" : "Nascondi pannelli (\\)"}
+            aria-label={chromeHidden ? "Mostra pannelli" : "Nascondi pannelli"}
+            aria-pressed={chromeHidden}
+          >
+            {chromeHidden ? <Maximize2 /> : <PanelsTopLeft />}
+          </Button>
           <span className="grid size-7 place-items-center rounded-lg bg-primary/15 ring-1 ring-primary/25">
             <span className="size-2.5 rounded-full bg-primary shadow-[0_0_8px_var(--color-primary)]" />
           </span>
@@ -126,28 +144,26 @@ export default function App() {
 
       {/* ── Body: left rail · stage · inspector ─────────────────────────── */}
       <div className="flex min-h-0 flex-1">
-        <aside className="anim-panel panel-scroll flex w-64 shrink-0 flex-col gap-5 overflow-y-auto border-r border-border bg-card/40 p-4">
-          <Section title="Modelli">
-            <div className="grid grid-cols-2 gap-2">
-              {(Object.keys(TEMPLATE_LABELS) as TemplateKey[]).map((key) => (
-                <Button
-                  key={key}
-                  variant="outline"
-                  size="sm"
-                  onClick={() => dispatch({ type: "loadDoc", doc: TEMPLATES[key]() })}
-                >
-                  {TEMPLATE_LABELS[key]}
-                </Button>
-              ))}
-            </div>
-          </Section>
+        {!chromeHidden && (
+          <aside className="anim-panel-l panel panel-scroll flex w-64 shrink-0 flex-col gap-5 overflow-y-auto border-r border-border p-4">
+            <Section title="Progetto">
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full justify-start"
+                onClick={() => setNewOpen(true)}
+              >
+                <FilePlus /> Nuovo progetto
+              </Button>
+            </Section>
 
-          <Section title="Livelli">
-            <LayerList layers={doc.layers} selectedId={selectedId} dispatch={dispatch} />
-          </Section>
+            <Section title="Livelli">
+              <LayerList layers={doc.layers} selectedId={selectedId} dispatch={dispatch} />
+            </Section>
 
-          <SavesPanel doc={doc} dispatch={dispatch} onError={setMessage} />
-        </aside>
+            <SavesPanel doc={doc} dispatch={dispatch} onError={setMessage} refreshKey={savesKey} />
+          </aside>
+        )}
 
         <main ref={previewRef} className="stage relative flex min-w-0 flex-1 items-center justify-center overflow-hidden p-8">
           <div
@@ -168,16 +184,29 @@ export default function App() {
             1280 × 720 · {Math.round(scale * 100)}%
           </div>
 
-          <div className="pointer-events-none absolute bottom-5 left-1/2 -translate-x-1/2">
-            <Toolbar dispatch={dispatch} onError={setMessage} />
-          </div>
+          {!chromeHidden && (
+            <div className="pointer-events-none absolute bottom-5 left-1/2 -translate-x-1/2">
+              <Toolbar dispatch={dispatch} onError={setMessage} />
+            </div>
+          )}
         </main>
 
-        <aside className="anim-panel panel-scroll flex w-80 shrink-0 flex-col gap-5 overflow-y-auto border-l border-border bg-card/40 p-4">
-          <Inspector selected={selected} dispatch={dispatch} onError={setMessage} />
-          <BackgroundInspector background={doc.background} dispatch={dispatch} onError={setMessage} />
-        </aside>
+        {!chromeHidden && (
+          <aside className="anim-panel-r panel panel-scroll flex w-80 shrink-0 flex-col gap-5 overflow-y-auto border-l border-border p-4">
+            <Inspector selected={selected} dispatch={dispatch} onError={setMessage} />
+            <BackgroundInspector background={doc.background} dispatch={dispatch} onError={setMessage} />
+          </aside>
+        )}
       </div>
+
+      {newOpen && (
+        <NewProjectDialog
+          doc={doc}
+          onClose={() => setNewOpen(false)}
+          onCreated={(d) => { dispatch({ type: "loadDoc", doc: d }); setSavesKey((k) => k + 1); }}
+          onError={setMessage}
+        />
+      )}
     </div>
   );
 }

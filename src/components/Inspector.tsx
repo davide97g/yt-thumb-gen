@@ -71,7 +71,7 @@ function TextProps({ layer, set }: { layer: TextLayer; set: Setter }) {
       <ColorRow label="Colore" value={layer.color} onChange={(color) => set({ color })} />
       <SelectField label="Allineamento" value={layer.align} options={ALIGN_OPTIONS} onChange={(align) => set({ align })} />
       <SliderRow label="Interlinea" min={0.8} max={2} step={0.05} value={layer.lineHeight} display={layer.lineHeight.toFixed(2)} onChange={(lineHeight) => set({ lineHeight })} />
-      <SliderRow label="Rotazione" min={-45} max={45} value={layer.rotation} display={`${layer.rotation}°`} onChange={(rotation) => set({ rotation })} />
+      <SliderRow label="Rotazione" min={-180} max={180} value={layer.rotation} display={`${layer.rotation}°`} onChange={(rotation) => set({ rotation })} />
       <SwitchRow label="Contorno" checked={layer.stroke} onChange={(stroke) => set({ stroke })} />
       <SwitchRow label="Ombra" checked={layer.shadow} onChange={(shadow) => set({ shadow })} />
       <SwitchRow label="Sfondo pillola" checked={layer.bg.enabled} onChange={(enabled) => set({ bg: { ...layer.bg, enabled } })} />
@@ -148,7 +148,7 @@ function ImageProps({ layer, set, onError }: { layer: ImageLayer; set: Setter; o
         </div>
       )}
       <SliderRow label="Scala" min={0.2} max={3} step={0.05} value={layer.scale} display={layer.scale.toFixed(2)} onChange={(scale) => set({ scale })} />
-      <SliderRow label="Rotazione" min={-45} max={45} value={layer.rotation} display={`${layer.rotation}°`} onChange={(rotation) => set({ rotation })} />
+      <SliderRow label="Rotazione" min={-180} max={180} value={layer.rotation} display={`${layer.rotation}°`} onChange={(rotation) => set({ rotation })} />
       {!layer.brand && (
         <>
           <SliderRow label="Arrotonda" min={0} max={220} value={layer.radius} onChange={(radius) => set({ radius })} />
@@ -180,7 +180,7 @@ function EmojiProps({ layer, set }: { layer: EmojiLayer; set: Setter }) {
         <Input value={layer.glyph} onChange={(e) => set({ glyph: e.target.value })} />
       </Field>
       <SliderRow label="Dimensione" min={40} max={360} value={layer.size} onChange={(size) => set({ size })} />
-      <SliderRow label="Rotazione" min={-45} max={45} value={layer.rotation} display={`${layer.rotation}°`} onChange={(rotation) => set({ rotation })} />
+      <SliderRow label="Rotazione" min={-180} max={180} value={layer.rotation} display={`${layer.rotation}°`} onChange={(rotation) => set({ rotation })} />
     </>
   );
 }
@@ -193,7 +193,7 @@ function ShapeProps({ layer, set }: { layer: ShapeLayer; set: Setter }) {
       <SliderRow label="Larghezza" min={20} max={1280} value={layer.w} onChange={(w) => set({ w })} />
       <SliderRow label="Altezza" min={6} max={720} value={layer.h} onChange={(h) => set({ h })} />
       {layer.kind === "rect" && <SliderRow label="Arrotonda" min={0} max={220} value={layer.radius} onChange={(radius) => set({ radius })} />}
-      <SliderRow label="Rotazione" min={-45} max={45} value={layer.rotation} display={`${layer.rotation}°`} onChange={(rotation) => set({ rotation })} />
+      <SliderRow label="Rotazione" min={-180} max={180} value={layer.rotation} display={`${layer.rotation}°`} onChange={(rotation) => set({ rotation })} />
       {layer.kind === "bar" && (
         <>
           <SliderRow label="Guardato" min={0} max={100} value={layer.pct} display={`${layer.pct}%`} onChange={(pct) => set({ pct })} />

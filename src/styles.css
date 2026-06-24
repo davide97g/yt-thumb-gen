@@ -191,6 +191,22 @@ input[type="color"]::-webkit-color-swatch { border: none; border-radius: calc(va
   transform: translateX(-50%) translateY(0);
 }
 
+/* Side rails share the dock's glass: warm translucency, a faint top highlight,
+   a soft inner depth. Quiet next to the dock, but cut from the same material. */
+.panel {
+  background: color-mix(in oklch, var(--card) 72%, transparent);
+  backdrop-filter: blur(12px) saturate(1.1);
+  box-shadow:
+    inset 0 1px 0 oklch(1 0 0 / 4%),
+    inset 0 0 40px oklch(0 0 0 / 12%);
+}
+
+/* Layer-row left accent — a terracotta tick that marks the selected layer,
+   echoing the dock's single-accent restraint. */
+.layer-accent {
+  box-shadow: inset 2px 0 0 var(--primary);
+}
+
 /* Thin, warm panel scrollbars. */
 .panel-scroll {
   scrollbar-width: thin;
@@ -215,10 +231,22 @@ input[type="color"]::-webkit-color-swatch { border: none; border-radius: calc(va
   from { opacity: 0; }
   to { opacity: 1; }
 }
+/* Rails slide in from their own edge — so re-showing the chrome settles inward
+   toward the stage rather than just fading. */
+@keyframes panel-in-l {
+  from { opacity: 0; transform: translateX(-12px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes panel-in-r {
+  from { opacity: 0; transform: translateX(12px); }
+  to { opacity: 1; transform: translateX(0); }
+}
 .anim-dock { animation: dock-rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; }
 .anim-panel { animation: panel-in 0.4s ease both; }
+.anim-panel-l { animation: panel-in-l 0.42s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.anim-panel-r { animation: panel-in-r 0.42s cubic-bezier(0.16, 1, 0.3, 1) both; }
 
 @media (prefers-reduced-motion: reduce) {
-  .anim-dock, .anim-panel { animation: none; }
+  .anim-dock, .anim-panel, .anim-panel-l, .anim-panel-r { animation: none; }
   .dock-btn, .dock-tip { transition: none; }
 }

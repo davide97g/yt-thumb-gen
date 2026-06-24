@@ -32,8 +32,11 @@ export function LayerList({ layers, selectedId, dispatch }: Props) {
               key={layer.id}
               onClick={() => dispatch({ type: "select", id: layer.id })}
               className={cn(
-                "flex cursor-pointer items-center gap-0.5 rounded-md border px-1.5 py-1 text-sm transition-colors",
-                active ? "border-primary/60 bg-primary/10" : "border-border bg-card hover:bg-accent"
+                "group/row relative flex cursor-pointer items-center gap-1 rounded-lg border px-1.5 py-1.5 text-sm transition-colors",
+                active
+                  ? "layer-accent border-primary/40 bg-primary/10"
+                  : "border-transparent hover:border-border hover:bg-accent",
+                !layer.visible && "opacity-55"
               )}
             >
               <Button
@@ -45,37 +48,39 @@ export function LayerList({ layers, selectedId, dispatch }: Props) {
               >
                 {layer.visible ? <Eye /> : <EyeOff />}
               </Button>
-              <span className="text-muted-foreground">{TYPE_ICON[layer.type]}</span>
-              <span className="flex-1 truncate px-1">{layer.name}</span>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                className="size-6 [&_svg]:size-3.5"
-                disabled={front}
-                title="Porta avanti"
-                onClick={(e) => { e.stopPropagation(); dispatch({ type: "reorder", id: layer.id, dir: 1 }); }}
-              >
-                <ChevronUp />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                className="size-6 [&_svg]:size-3.5"
-                disabled={back}
-                title="Porta indietro"
-                onClick={(e) => { e.stopPropagation(); dispatch({ type: "reorder", id: layer.id, dir: -1 }); }}
-              >
-                <ChevronDown />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                className="size-6 text-muted-foreground hover:text-destructive [&_svg]:size-3.5"
-                title="Elimina"
-                onClick={(e) => { e.stopPropagation(); dispatch({ type: "removeLayer", id: layer.id }); }}
-              >
-                <Trash2 />
-              </Button>
+              <span className={cn("shrink-0", active ? "text-primary" : "text-muted-foreground")}>{TYPE_ICON[layer.type]}</span>
+              <span className="flex-1 truncate px-1 transition-[padding] group-hover/row:pr-[4.75rem] group-focus-within/row:pr-[4.75rem]">{layer.name}</span>
+              <div className="absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center rounded-md opacity-0 transition-opacity pointer-events-none group-hover/row:pointer-events-auto group-focus-within/row:pointer-events-auto group-hover/row:opacity-100 group-focus-within/row:opacity-100">
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="size-6 [&_svg]:size-3.5"
+                  disabled={front}
+                  title="Porta avanti"
+                  onClick={(e) => { e.stopPropagation(); dispatch({ type: "reorder", id: layer.id, dir: 1 }); }}
+                >
+                  <ChevronUp />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="size-6 [&_svg]:size-3.5"
+                  disabled={back}
+                  title="Porta indietro"
+                  onClick={(e) => { e.stopPropagation(); dispatch({ type: "reorder", id: layer.id, dir: -1 }); }}
+                >
+                  <ChevronDown />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="size-6 text-muted-foreground hover:text-destructive [&_svg]:size-3.5"
+                  title="Elimina"
+                  onClick={(e) => { e.stopPropagation(); dispatch({ type: "removeLayer", id: layer.id }); }}
+                >
+                  <Trash2 />
+                </Button>
+              </div>
             </div>
           );
         })}

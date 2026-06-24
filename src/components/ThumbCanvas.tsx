@@ -1,5 +1,5 @@
-import type { Dispatch, PointerEvent as ReactPointerEvent, RefObject } from "react";
-import { CANVAS_H, CANVAS_W, FONTS, FONT_WEIGHT, type Action, type ImageLayer, type Layer, type ThumbDoc } from "../state";
+import type { CSSProperties, Dispatch, PointerEvent as ReactPointerEvent, RefObject } from "react";
+import { CANVAS_H, CANVAS_W, FONTS, FONT_WEIGHT, type Action, type ImageLayer, type Layer, type LayerPatch, type TextLayer, type ThumbDoc } from "../state";
 import { ClaudeLogo, ClaudeWordmark } from "./brand";
 
 export { CANVAS_H, CANVAS_W };
@@ -73,6 +73,7 @@ export function ThumbCanvas({ doc, scale, selectedId, exporting, canvasRef, disp
         layer.visible ? (
           <div
             key={layer.id}
+            data-lbox
             onPointerDown={(e) => startDrag(e, layer.id)}
             style={{
               position: "absolute",
@@ -81,14 +82,104 @@ export function ThumbCanvas({ doc, scale, selectedId, exporting, canvasRef, disp
               transform: layer.rotation ? `rotate(${layer.rotation}deg)` : undefined,
               cursor: "grab",
               touchAction: "none",
-              outline: !exporting && layer.id === selectedId ? `2px solid ${SELECT_COLOR}` : undefined,
-              outlineOffset: 3,
             }}
           >
             <LayerContent layer={layer} />
+            {!exporting && layer.id === selectedId && (
+              <SelectionFrame layer={layer} scale={scale} canvasRef={canvasRef} dispatch={dispatch} />
+            )}
           </div>
         ) : null
       )}
+    </div>
+  );
+}
+
+/** Transform handles drawn inside the selected layer's box, so they ride along with
+ *  its position and rotation for free. Corners scale the layer around its (rotation-
+ *  invariant) centre; the top knob rotates it. Handles counter-scale by `scale` so
+ *  they stay a constant on-screen size regardless of canvas zoom. */
+function SelectionFrame({
+  layer, scale, canvasRef, dispatch,
+}: { layer: Layer; scale: number; canvasRef: RefObject<HTMLDivElement | null>; dispatch: Dispatch<Action> }) {
+  const h = 11 / scale; // handle size in canvas units → ~11px on screen
+  const bw = 1.5 / scale; // frame/handle border width
+  const pad = 3 / scale; // breathing room outside the content box
+  const gap = 26 / scale; // rotate-knob distance above the top edge
+
+  const toCanvas = (rect: DOMRect, cx: number, cy: number) => ({ x: (cx - rect.left) / scale, y: (cy - rect.top) / scale });
+
+  function begin(e: ReactPointerEvent) {
+    e.stopPropagation();
+    e.preventDefault();
+    const box = (e.currentTarget as HTMLElement).closest<HTMLElement>("[data-lbox]");
+    const canvas = canvasRef.current;
+    if (!box || !canvas) return null;
+    const w = box.offsetWidth, ht = box.offsetHeight; // unrotated layout size, canvas units
+    return { box, rect: canvas.getBoundingClientRect(), cx: layer.x + w / 2, cy: layer.y + ht / 2, w, h: ht };
+  }
+
+  function drag(move: (e: PointerEvent) => void) {
+    const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  }
+
+  function startResize(e: ReactPointerEvent) {
+    const s = begin(e);
+    if (!s) return;
+    const p0 = toCanvas(s.rect, e.clientX, e.clientY);
+    const startDist = Math.hypot(p0.x - s.cx, p0.y - s.cy) || 1;
+    const base = layer;
+    // Bound the scale factor so the resized value stays within the matching
+    // Inspector slider's range — canvas and slider then never disagree.
+    let fMin = 0.05, fMax = 40;
+    if (base.type === "image") { fMin = 0.2 / base.scale; fMax = 3 / base.scale; }
+    else if (base.type === "shape") { fMin = Math.max(20 / base.w, 6 / base.h); fMax = Math.min(1280 / base.w, 720 / base.h); }
+    else { const lo = base.type === "emoji" ? 40 : 24, hi = base.type === "emoji" ? 360 : 220; fMin = lo / base.size; fMax = hi / base.size; }
+    drag((ev) => {
+      const p = toCanvas(s.rect, ev.clientX, ev.clientY);
+      const f = Math.min(fMax, Math.max(fMin, Math.hypot(p.x - s.cx, p.y - s.cy) / startDist));
+      const nw = s.w * f, nh = s.h * f;
+      const pos = { x: s.cx - nw / 2, y: s.cy - nh / 2 };
+      let patch: LayerPatch;
+      if (base.type === "image") patch = { ...pos, scale: base.scale * f };
+      else if (base.type === "shape") patch = { ...pos, w: base.w * f, h: base.h * f };
+      else patch = { ...pos, size: Math.round((base as TextLayer).size * f) };
+      dispatch({ type: "updateLayer", id: layer.id, patch });
+    });
+  }
+
+  function startRotate(e: ReactPointerEvent) {
+    const s = begin(e);
+    if (!s) return;
+    const p0 = toCanvas(s.rect, e.clientX, e.clientY);
+    const a0 = Math.atan2(p0.y - s.cy, p0.x - s.cx);
+    const baseRot = layer.rotation;
+    drag((ev) => {
+      const p = toCanvas(s.rect, ev.clientX, ev.clientY);
+      const a = Math.atan2(p.y - s.cy, p.x - s.cx);
+      let deg = baseRot + ((a - a0) * 180) / Math.PI;
+      if (ev.shiftKey) deg = Math.round(deg / 15) * 15;
+      deg = ((Math.round(deg) % 360) + 540) % 360 - 180; // normalise to (-180, 180]
+      dispatch({ type: "updateLayer", id: layer.id, patch: { rotation: deg } });
+    });
+  }
+
+  const knob = (extra: CSSProperties): CSSProperties => ({
+    position: "absolute", width: h, height: h, background: "#fff",
+    border: `${bw}px solid ${SELECT_COLOR}`, borderRadius: 2 / scale, boxSizing: "border-box",
+    pointerEvents: "auto", ...extra,
+  });
+
+  return (
+    <div style={{ position: "absolute", inset: -pad, border: `${bw}px solid ${SELECT_COLOR}`, pointerEvents: "none", boxSizing: "border-box" }}>
+      <div style={{ position: "absolute", left: "50%", top: -gap, width: bw, height: gap, background: SELECT_COLOR, transform: "translateX(-50%)" }} />
+      <div onPointerDown={startRotate} style={knob({ left: "50%", top: -gap, borderRadius: "50%", transform: "translate(-50%,-50%)", cursor: "grab" })} />
+      <div onPointerDown={startResize} style={knob({ left: -h / 2, top: -h / 2, cursor: "nwse-resize" })} />
+      <div onPointerDown={startResize} style={knob({ right: -h / 2, top: -h / 2, cursor: "nesw-resize" })} />
+      <div onPointerDown={startResize} style={knob({ left: -h / 2, bottom: -h / 2, cursor: "nesw-resize" })} />
+      <div onPointerDown={startResize} style={knob({ right: -h / 2, bottom: -h / 2, cursor: "nwse-resize" })} />
     </div>
   );
 }

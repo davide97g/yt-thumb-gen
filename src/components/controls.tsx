@@ -29,8 +29,9 @@ export function UploadButton({
 export function Section({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) {
   return (
     <section className="space-y-2.5">
-      <div className="flex items-center justify-between">
-        <h3 className="font-mono text-[11px] font-medium tracking-[0.16em] text-muted-foreground uppercase">{title}</h3>
+      <div className="flex items-center gap-3">
+        <h3 className="shrink-0 font-mono text-[11px] font-medium tracking-[0.16em] text-muted-foreground uppercase">{title}</h3>
+        <span className="h-px flex-1 bg-border" aria-hidden />
         {action}
       </div>
       <div className="space-y-2.5">{children}</div>
