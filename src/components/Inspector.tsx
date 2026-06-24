@@ -7,6 +7,7 @@ import {
   type Action,
   type Background,
   type BgEffect,
+  type EffectLayer,
   type EmojiLayer,
   type FontKey,
   type ImageLayer,
@@ -58,6 +59,7 @@ export function Inspector({ selected, dispatch, onError }: InspectorProps) {
       {selected.type === "image" && <ImageProps layer={selected} set={set} onError={onError} />}
       {selected.type === "emoji" && <EmojiProps layer={selected} set={set} />}
       {selected.type === "shape" && <ShapeProps layer={selected} set={set} />}
+      {selected.type === "effect" && <EffectProps layer={selected} set={set} />}
     </Section>
   );
 }
@@ -101,27 +103,48 @@ function TextProps({ layer, set }: { layer: TextLayer; set: Setter }) {
 const TEXT_FX_OPTIONS: { value: TextFx["kind"]; label: string }[] = [
   { value: "none", label: "Nessuno" },
   { value: "gradient", label: "Gradiente" },
-  { value: "glow", label: "Bagliore" },
-  { value: "glitch", label: "Glitch" },
   { value: "shiny", label: "Lucido" },
+  { value: "glitch", label: "Glitch" },
+];
+
+const GRAD_DIR_OPTIONS: { value: "horizontal" | "vertical" | "diagonal"; label: string }[] = [
+  { value: "horizontal", label: "Orizzontale" },
+  { value: "vertical", label: "Verticale" },
+  { value: "diagonal", label: "Diagonale" },
+];
+
+const SHINY_DIR_OPTIONS: { value: "left" | "right"; label: string }[] = [
+  { value: "left", label: "Sinistra" },
+  { value: "right", label: "Destra" },
 ];
 
 function TextFxControls({ fx, set }: { fx: TextFx; set: Setter }) {
-  const upd = (patch: Record<string, number | string>) => set({ fx: { ...fx, ...patch } as TextFx });
+  const upd = (patch: Record<string, unknown>) => set({ fx: { ...fx, ...patch } as TextFx });
   switch (fx.kind) {
-    case "gradient":
+    case "gradient": {
+      const setColor = (i: number, v: string) => {
+        const colors = [...fx.colors] as [string, string, string];
+        colors[i] = v;
+        upd({ colors });
+      };
       return (
         <>
-          <ColorRow label="Colore 1" value={fx.from} onChange={(from) => upd({ from })} />
-          <ColorRow label="Colore 2" value={fx.to} onChange={(to) => upd({ to })} />
-          <SliderRow label="Angolo" min={0} max={360} value={fx.angle} display={`${fx.angle}°`} onChange={(angle) => upd({ angle })} />
+          <ColorRow label="Colore 1" value={fx.colors[0]} onChange={(v) => setColor(0, v)} />
+          <ColorRow label="Colore 2" value={fx.colors[1]} onChange={(v) => setColor(1, v)} />
+          <ColorRow label="Colore 3" value={fx.colors[2]} onChange={(v) => setColor(2, v)} />
+          <SelectField label="Direzione" value={fx.direction} options={GRAD_DIR_OPTIONS} onChange={(direction) => upd({ direction })} />
+          <SliderRow label="Velocità" min={1} max={20} value={fx.speed} display={`${fx.speed}s`} onChange={(speed) => upd({ speed })} />
         </>
       );
-    case "glow":
+    }
+    case "shiny":
       return (
         <>
           <ColorRow label="Colore" value={fx.color} onChange={(color) => upd({ color })} />
-          <SliderRow label="Intensità" min={2} max={60} value={fx.size} onChange={(size) => upd({ size })} />
+          <ColorRow label="Riflesso" value={fx.shineColor} onChange={(shineColor) => upd({ shineColor })} />
+          <SliderRow label="Ampiezza" min={0} max={360} value={fx.spread} display={`${fx.spread}°`} onChange={(spread) => upd({ spread })} />
+          <SelectField label="Direzione" value={fx.direction} options={SHINY_DIR_OPTIONS} onChange={(direction) => upd({ direction })} />
+          <SliderRow label="Velocità" min={0.5} max={8} step={0.5} value={fx.speed} display={`${fx.speed}s`} onChange={(speed) => upd({ speed })} />
         </>
       );
     case "glitch":
@@ -129,14 +152,8 @@ function TextFxControls({ fx, set }: { fx: TextFx; set: Setter }) {
         <>
           <ColorRow label="Colore 1" value={fx.color1} onChange={(color1) => upd({ color1 })} />
           <ColorRow label="Colore 2" value={fx.color2} onChange={(color2) => upd({ color2 })} />
-          <SliderRow label="Scarto" min={1} max={20} value={fx.offset} onChange={(offset) => upd({ offset })} />
-        </>
-      );
-    case "shiny":
-      return (
-        <>
-          <ColorRow label="Colore" value={fx.color} onChange={(color) => upd({ color })} />
-          <SliderRow label="Angolo" min={0} max={360} value={fx.angle} display={`${fx.angle}°`} onChange={(angle) => upd({ angle })} />
+          <SliderRow label="Velocità" min={0.2} max={5} step={0.1} value={fx.speed} display={`${fx.speed.toFixed(1)}×`} onChange={(speed) => upd({ speed })} />
+          <SwitchRow label="Ombre" checked={fx.enableShadows} onChange={(enableShadows) => upd({ enableShadows })} />
         </>
       );
     default:
@@ -362,7 +379,7 @@ function DotsControls({ e, upd }: { e: Extract<BgEffect, { preset: "dots" }>; up
   );
 }
 
-function EffectControls({ effect, set }: { effect: BgEffect; set: (patch: Partial<Background>) => void }) {
+function EffectControls({ effect, set }: { effect: BgEffect; set: (patch: { effect: BgEffect }) => void }) {
   const upd: Upd = (patch) => set({ effect: { ...effect, ...patch } as BgEffect });
   return (
     <>
@@ -372,6 +389,15 @@ function EffectControls({ effect, set }: { effect: BgEffect; set: (patch: Partia
       {effect.preset === "mesh" && <MeshControls e={effect} upd={upd} />}
       {effect.preset === "dots" && <DotsControls e={effect} upd={upd} />}
     </>
+  );
+}
+
+function EffectProps({ layer, set }: { layer: EffectLayer; set: Setter }) {
+  return (
+    <Section title="Effetto">
+      <EffectControls effect={layer.effect} set={set} />
+      <SliderRow label="Arrotonda" min={0} max={400} value={layer.radius} onChange={(radius) => set({ radius })} />
+    </Section>
   );
 }
 

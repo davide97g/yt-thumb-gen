@@ -71,7 +71,7 @@ export const FONT_LABELS: Record<FontKey, string> = {
   segoe: "Segoe UI Variable",
 };
 
-export type LayerType = "text" | "image" | "emoji" | "shape";
+export type LayerType = "text" | "image" | "emoji" | "shape" | "effect";
 
 /** Fields shared by every layer. */
 type LayerBase = {
@@ -90,10 +90,12 @@ type LayerBase = {
  */
 export type TextFx =
   | { kind: "none" }
-  | { kind: "gradient"; from: string; to: string; angle: number } // colour ramp clipped to glyphs
-  | { kind: "glow"; color: string; size: number } // neon halo
-  | { kind: "glitch"; color1: string; color2: string; offset: number } // RGB-split chromatic offset
-  | { kind: "shiny"; color: string; angle: number }; // static metallic sheen band
+  // React Bits "Gradient Text": animated multi-colour gradient clipped to glyphs.
+  | { kind: "gradient"; colors: [string, string, string]; speed: number; direction: "horizontal" | "vertical" | "diagonal" }
+  // React Bits "Shiny Text": a sheen sweeping across the text.
+  | { kind: "shiny"; color: string; shineColor: string; spread: number; speed: number; direction: "left" | "right" }
+  // React Bits "Glitch Text": RGB-split duplicates jittering via clip-path (uses the .rb-glitch CSS class).
+  | { kind: "glitch"; speed: number; color1: string; color2: string; enableShadows: boolean };
 
 /** A run of text. Today's title lines, badge, and episode pill are all Text layers. */
 export type TextLayer = LayerBase & {
@@ -147,14 +149,24 @@ export type ShapeLayer = LayerBase & {
   trackColor: string; // "bar" only: unwatched track colour
 };
 
-export type Layer = TextLayer | ImageLayer | EmojiLayer | ShapeLayer;
+/** A React Bits background effect dropped onto the canvas as a movable, resizable box. */
+export type EffectLayer = LayerBase & {
+  type: "effect";
+  w: number; // box width in 1280×720 space
+  h: number; // box height
+  radius: number; // corner radius
+  effect: BgEffect; // preset + params — same shape as a Background effect
+};
+
+export type Layer = TextLayer | ImageLayer | EmojiLayer | ShapeLayer | EffectLayer;
 
 /** A partial patch for any single layer type (used by inspectors → updateLayer). */
 export type LayerPatch =
   | Partial<TextLayer>
   | Partial<ImageLayer>
   | Partial<EmojiLayer>
-  | Partial<ShapeLayer>;
+  | Partial<ShapeLayer>
+  | Partial<EffectLayer>;
 
 /**
  * Animated background presets ported from React Bits. `grainient`/`aurora` are WebGL
@@ -239,19 +251,17 @@ export function defaultEffect(preset: BgEffect["preset"]): BgEffect {
   }
 }
 
-/** Fresh, sane defaults for a text effect kind. */
+/** Fresh, sane defaults for a text effect kind — matching the React Bits component defaults. */
 export function defaultFx(kind: TextFx["kind"]): TextFx {
   switch (kind) {
     case "none":
       return { kind };
     case "gradient":
-      return { kind, from: "#ff9ffc", to: "#5227ff", angle: 90 };
-    case "glow":
-      return { kind, color: "#3ddc84", size: 18 };
-    case "glitch":
-      return { kind, color1: "#00e5ff", color2: "#ff00d4", offset: 4 };
+      return { kind, colors: ["#5227ff", "#ff9ffc", "#b497cf"], speed: 8, direction: "horizontal" };
     case "shiny":
-      return { kind, color: "#b0b0b0", angle: 120 };
+      return { kind, color: "#b5b5b5", shineColor: "#ffffff", spread: 120, speed: 2, direction: "left" };
+    case "glitch":
+      return { kind, speed: 1, color1: "#00ffff", color2: "#ff0000", enableShadows: true };
   }
 }
 
@@ -320,6 +330,22 @@ export function newBrandLayer(brand: "logo" | "wordmark"): ImageLayer {
     x: brand === "logo" ? 1120 : 800,
     y: brand === "logo" ? 36 : 600,
     scale: brand === "logo" ? 0.6 : 0.7,
+  };
+}
+
+export function newEffectLayer(): EffectLayer {
+  return {
+    id: uid(),
+    type: "effect",
+    name: "Effetto",
+    x: 360,
+    y: 220,
+    rotation: 0,
+    visible: true,
+    w: 560,
+    h: 320,
+    radius: 16,
+    effect: defaultEffect("grainient"),
   };
 }
 

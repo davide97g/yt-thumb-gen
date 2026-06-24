@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { Mesh, Program, Renderer, Triangle } from "ogl";
-import { CANVAS_H, CANVAS_W, type BgEffect } from "../state";
+import type { BgEffect } from "../state";
 import { AURORA_FRAG, AURORA_VERT, GRAINIENT_FRAG, GRAINIENT_VERT, hexToRgb } from "../lib/effects/shaders";
 
 type Uniforms = Record<string, { value: unknown }>;
@@ -41,10 +41,16 @@ function useShader(vertex: string, fragment: string, initUniforms: () => Uniform
     canvas.style.display = "block";
     container.appendChild(canvas);
 
-    renderer.setSize(CANVAS_W, CANVAS_H);
-
     const program = new Program(gl, { vertex, fragment, uniforms: initUniforms() });
     const mesh = new Mesh(gl, { geometry: new Triangle(gl), program });
+
+    // Size the drawing buffer from the container's LAYOUT size (offsetWidth, which ignores
+    // the stage's `transform: scale()`), so it's constant whether zoomed or reset for export,
+    // and tracks an effect-element box being resized. ResizeObserver avoids per-frame reflow.
+    const setSize = () => renderer.setSize(Math.max(1, container.offsetWidth), Math.max(1, container.offsetHeight));
+    const ro = new ResizeObserver(setSize);
+    ro.observe(container);
+    setSize();
 
     let raf = 0;
     const t0 = performance.now();
@@ -57,6 +63,7 @@ function useShader(vertex: string, fragment: string, initUniforms: () => Uniform
 
     return () => {
       cancelAnimationFrame(raf);
+      ro.disconnect();
       try {
         container.removeChild(canvas);
       } catch {

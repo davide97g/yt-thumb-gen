@@ -1,7 +1,8 @@
 import { useState, type Dispatch, type ReactNode } from "react";
-import { Camera, ImagePlus, Minus, Smile, Square, Type } from "lucide-react";
+import { Camera, ImagePlus, Minus, Smile, Sparkles, Square, Type } from "lucide-react";
 import {
   newBrandLayer,
+  newEffectLayer,
   newEmojiLayer,
   newImageLayer,
   newShapeLayer,
@@ -55,6 +56,9 @@ export function Toolbar({ dispatch, onError }: { dispatch: Dispatch<Action>; onE
         </DockButton>
         <DockButton label="Barra progresso" onClick={() => add(newShapeLayer("bar"))}>
           <Minus />
+        </DockButton>
+        <DockButton label="Effetto" onClick={() => add(newEffectLayer())}>
+          <Sparkles />
         </DockButton>
         <DockButton label="Logo Claude" onClick={() => add(newBrandLayer("logo"))}>
           <span className="size-[1.125rem]"><ClaudeLogo color="currentColor" /></span>

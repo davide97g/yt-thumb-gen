@@ -139,7 +139,7 @@ function SelectionFrame({
     // Inspector slider's range — canvas and slider then never disagree.
     let fMin = 0.05, fMax = 40;
     if (base.type === "image") { fMin = 0.2 / base.scale; fMax = 3 / base.scale; }
-    else if (base.type === "shape") { fMin = Math.max(20 / base.w, 6 / base.h); fMax = Math.min(1280 / base.w, 720 / base.h); }
+    else if (base.type === "shape" || base.type === "effect") { fMin = Math.max(20 / base.w, 6 / base.h); fMax = Math.min(1280 / base.w, 720 / base.h); }
     else { const lo = base.type === "emoji" ? 40 : 24, hi = base.type === "emoji" ? 360 : 220; fMin = lo / base.size; fMax = hi / base.size; }
     drag((ev) => {
       const p = toCanvas(s.rect, ev.clientX, ev.clientY);
@@ -148,7 +148,7 @@ function SelectionFrame({
       const pos = { x: s.cx - nw / 2, y: s.cy - nh / 2 };
       let patch: LayerPatch;
       if (base.type === "image") patch = { ...pos, scale: base.scale * f };
-      else if (base.type === "shape") patch = { ...pos, w: base.w * f, h: base.h * f };
+      else if (base.type === "shape" || base.type === "effect") patch = { ...pos, w: base.w * f, h: base.h * f };
       else patch = { ...pos, size: Math.round((base as TextLayer).size * f) };
       dispatch({ type: "updateLayer", id: layer.id, patch });
     });
@@ -190,51 +190,8 @@ function SelectionFrame({
 
 function LayerContent({ layer }: { layer: Layer }) {
   switch (layer.type) {
-    case "text": {
-      const fx = layer.fx;
-      // gradient/shiny "fill" the glyphs via background-clip:text, so they own `background`
-      // and suppress the pill; glow/glitch stack onto textShadow alongside the hard shadow.
-      const clip = fx?.kind === "gradient" || fx?.kind === "shiny";
-      const shadows: string[] = [];
-      if (layer.shadow) shadows.push("0 8px 0 rgba(0,0,0,.85)");
-      if (fx?.kind === "glow") for (const r of [fx.size, fx.size, Math.round(fx.size / 2)]) shadows.push(`0 0 ${r}px ${fx.color}`);
-      if (fx?.kind === "glitch") {
-        shadows.push(`${fx.offset}px 0 0 ${fx.color1}`);
-        shadows.push(`${-fx.offset}px 0 0 ${fx.color2}`);
-      }
-      const backgroundImage =
-        fx?.kind === "gradient"
-          ? `linear-gradient(${fx.angle}deg, ${fx.from}, ${fx.to})`
-          : fx?.kind === "shiny"
-            ? `linear-gradient(${fx.angle}deg, ${fx.color} 0%, #ffffff 45%, #ffffff 55%, ${fx.color} 100%)`
-            : undefined;
-      return (
-        <div
-          style={{
-            display: "inline-block",
-            fontFamily: FONTS[layer.font],
-            fontSize: layer.size,
-            fontWeight: FONT_WEIGHT[layer.font],
-            lineHeight: layer.lineHeight,
-            color: clip ? "transparent" : layer.color,
-            textAlign: layer.align,
-            whiteSpace: "pre",
-            WebkitTextStroke: layer.stroke ? "5px #000000" : undefined,
-            paintOrder: "stroke fill",
-            textShadow: shadows.length ? shadows.join(", ") : undefined,
-            background: layer.bg.enabled && !clip ? layer.bg.color : undefined,
-            padding: layer.bg.enabled && !clip ? `${layer.bg.padY}px ${layer.bg.padX}px` : undefined,
-            borderRadius: layer.bg.enabled && !clip ? layer.bg.radius : undefined,
-            backgroundImage,
-            WebkitBackgroundClip: clip ? "text" : undefined,
-            backgroundClip: clip ? "text" : undefined,
-            WebkitTextFillColor: clip ? "transparent" : undefined,
-          }}
-        >
-          {layer.text}
-        </div>
-      );
-    }
+    case "text":
+      return <TextContent layer={layer} />;
 
     case "emoji":
       return <div style={{ fontSize: layer.size, lineHeight: 1 }}>{layer.glyph}</div>;
@@ -261,7 +218,77 @@ function LayerContent({ layer }: { layer: Layer }) {
         />
       );
     }
+
+    case "effect":
+      return (
+        <div style={{ width: layer.w, height: layer.h, borderRadius: layer.radius, overflow: "hidden", position: "relative" }}>
+          <EffectBackground effect={layer.effect} />
+        </div>
+      );
   }
+}
+
+/** Text layer, including its optional React Bits effect (gradient / shiny / glitch). */
+function TextContent({ layer }: { layer: TextLayer }) {
+  const fx = layer.fx;
+  // gradient/shiny "fill" the glyphs via background-clip:text, so they own `background` and
+  // suppress the pill. Their movement is a CSS animation (frozen to one frame on PNG export).
+  const clip = fx?.kind === "gradient" || fx?.kind === "shiny";
+  const style: CSSProperties = {
+    display: "inline-block",
+    fontFamily: FONTS[layer.font],
+    fontSize: layer.size,
+    fontWeight: FONT_WEIGHT[layer.font],
+    lineHeight: layer.lineHeight,
+    color: clip ? "transparent" : layer.color,
+    textAlign: layer.align,
+    whiteSpace: "pre",
+    WebkitTextStroke: layer.stroke ? "5px #000000" : undefined,
+    paintOrder: "stroke fill",
+    textShadow: layer.shadow ? "0 8px 0 rgba(0,0,0,.85)" : undefined,
+    background: layer.bg.enabled && !clip ? layer.bg.color : undefined,
+    padding: layer.bg.enabled && !clip ? `${layer.bg.padY}px ${layer.bg.padX}px` : undefined,
+    borderRadius: layer.bg.enabled && !clip ? layer.bg.radius : undefined,
+  };
+
+  if (fx?.kind === "gradient") {
+    const angle = fx.direction === "horizontal" ? "to right" : fx.direction === "vertical" ? "to bottom" : "to bottom right";
+    const size = fx.direction === "horizontal" ? "300% 100%" : fx.direction === "vertical" ? "100% 300%" : "300% 300%";
+    const anim = fx.direction === "horizontal" ? "rb-gradient-x" : fx.direction === "vertical" ? "rb-gradient-y" : "rb-gradient-d";
+    Object.assign(style, {
+      backgroundImage: `linear-gradient(${angle}, ${[...fx.colors, fx.colors[0]].join(", ")})`,
+      backgroundSize: size,
+      WebkitBackgroundClip: "text",
+      backgroundClip: "text",
+      WebkitTextFillColor: "transparent",
+      animation: `${anim} ${fx.speed}s ease infinite alternate`,
+    });
+  } else if (fx?.kind === "shiny") {
+    Object.assign(style, {
+      backgroundImage: `linear-gradient(${fx.spread}deg, ${fx.color} 0%, ${fx.color} 35%, ${fx.shineColor} 50%, ${fx.color} 65%, ${fx.color} 100%)`,
+      backgroundSize: "200% auto",
+      WebkitBackgroundClip: "text",
+      backgroundClip: "text",
+      WebkitTextFillColor: "transparent",
+      animation: `rb-shine ${fx.speed}s linear infinite${fx.direction === "right" ? " reverse" : ""}`,
+    });
+  } else if (fx?.kind === "glitch") {
+    // Glitch needs ::before/::after pseudo-elements → the .rb-glitch class in styles.css,
+    // driven by CSS custom properties. data-text feeds the pseudo content.
+    const vars: Record<string, string> = {
+      "--before-duration": `${fx.speed * 2}s`,
+      "--after-duration": `${fx.speed * 3}s`,
+      "--before-shadow": fx.enableShadows ? `5px 0 ${fx.color1}` : "none",
+      "--after-shadow": fx.enableShadows ? `-5px 0 ${fx.color2}` : "none",
+    };
+    return (
+      <div className="rb-glitch" data-text={layer.text} style={{ ...style, ...vars } as CSSProperties}>
+        {layer.text}
+      </div>
+    );
+  }
+
+  return <div style={style}>{layer.text}</div>;
 }
 
 function ImageContent({ layer }: { layer: ImageLayer }) {

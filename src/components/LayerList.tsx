@@ -1,5 +1,5 @@
 import type { Dispatch, ReactNode } from "react";
-import { ChevronDown, ChevronUp, Copy, Eye, EyeOff, Image as ImageIcon, Smile, Square, Trash2, Type } from "lucide-react";
+import { ChevronDown, ChevronUp, Copy, Eye, EyeOff, Image as ImageIcon, Smile, Sparkles, Square, Trash2, Type } from "lucide-react";
 import type { Action, Layer, LayerType } from "../state";
 import { Button } from "./ui/button";
 import { Hint } from "./controls";
@@ -10,6 +10,7 @@ const TYPE_ICON: Record<LayerType, ReactNode> = {
   image: <ImageIcon className="size-3.5" />,
   emoji: <Smile className="size-3.5" />,
   shape: <Square className="size-3.5" />,
+  effect: <Sparkles className="size-3.5" />,
 };
 
 type Props = { layers: Layer[]; selectedId: string | null; dispatch: Dispatch<Action> };
