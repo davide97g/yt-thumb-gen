@@ -84,6 +84,17 @@ type LayerBase = {
   visible: boolean;
 };
 
+/**
+ * A pure-CSS text effect (React Bits-inspired). All variants render via background-clip
+ * or text-shadow so they're captured 1:1 by html-to-image on export. See ThumbCanvas.
+ */
+export type TextFx =
+  | { kind: "none" }
+  | { kind: "gradient"; from: string; to: string; angle: number } // colour ramp clipped to glyphs
+  | { kind: "glow"; color: string; size: number } // neon halo
+  | { kind: "glitch"; color1: string; color2: string; offset: number } // RGB-split chromatic offset
+  | { kind: "shiny"; color: string; angle: number }; // static metallic sheen band
+
 /** A run of text. Today's title lines, badge, and episode pill are all Text layers. */
 export type TextLayer = LayerBase & {
   type: "text";
@@ -97,6 +108,7 @@ export type TextLayer = LayerBase & {
   shadow: boolean; // hard drop shadow
   /** Optional background pill behind the text — turns a Text layer into a badge/pill. */
   bg: { enabled: boolean; color: string; padX: number; padY: number; radius: number };
+  fx?: TextFx; // optional special effect; absent/"none" = plain fill
 };
 
 /** An uploaded/captured photo, or a built-in Claude brand mark (logo/wordmark). */
@@ -144,13 +156,104 @@ export type LayerPatch =
   | Partial<EmojiLayer>
   | Partial<ShapeLayer>;
 
+/**
+ * Animated background presets ported from React Bits. `grainient`/`aurora` are WebGL
+ * shaders (see EffectBackground.tsx); `mesh`/`dots` are pure CSS. Rendered only when
+ * Background.mode === "effect". Field names mirror the React Bits component props /
+ * Background Studio knobs 1:1.
+ */
+export type BgEffect =
+  | {
+      preset: "grainient";
+      color1: string;
+      color2: string;
+      color3: string;
+      timeSpeed: number;
+      colorBalance: number;
+      warpStrength: number;
+      warpFrequency: number;
+      warpSpeed: number;
+      warpAmplitude: number;
+      blendAngle: number;
+      blendSoftness: number;
+      rotationAmount: number;
+      noiseScale: number;
+      grainAmount: number;
+      grainScale: number;
+      grainAnimated: boolean;
+      contrast: number;
+      gamma: number;
+      saturation: number;
+      centerX: number;
+      centerY: number;
+      zoom: number;
+    }
+  | { preset: "aurora"; color1: string; color2: string; color3: string; speed: number; blend: number; amplitude: number }
+  | { preset: "mesh"; color1: string; color2: string; color3: string; bgColor: string; softness: number }
+  | { preset: "dots"; dotColor: string; bgColor: string; size: number; gap: number };
+
 export type Background = {
-  mode: "gradient" | "solid" | "image";
+  mode: "gradient" | "solid" | "image" | "effect";
   from: string;
   to: string;
   image: string | null; // dataURL for a custom background image
   overlay: number; // 0–100 darkness of the scrim over the background
+  effect?: BgEffect; // present when mode === "effect"
 };
+
+/** Fresh, sane defaults for an effect preset — the React Bits component defaults. */
+export function defaultEffect(preset: BgEffect["preset"]): BgEffect {
+  switch (preset) {
+    case "grainient":
+      return {
+        preset,
+        color1: "#ff9ffc",
+        color2: "#5227ff",
+        color3: "#b497cf",
+        timeSpeed: 0.25,
+        colorBalance: 0,
+        warpStrength: 1,
+        warpFrequency: 5,
+        warpSpeed: 2,
+        warpAmplitude: 50,
+        blendAngle: 0,
+        blendSoftness: 0.05,
+        rotationAmount: 500,
+        noiseScale: 2,
+        grainAmount: 0.1,
+        grainScale: 2,
+        grainAnimated: false,
+        contrast: 1.5,
+        gamma: 1,
+        saturation: 1,
+        centerX: 0,
+        centerY: 0,
+        zoom: 0.9,
+      };
+    case "aurora":
+      return { preset, color1: "#5227ff", color2: "#7cff67", color3: "#5227ff", speed: 1, blend: 0.5, amplitude: 1 };
+    case "mesh":
+      return { preset, color1: "#ff9ffc", color2: "#5227ff", color3: "#b497cf", bgColor: "#120f17", softness: 0.6 };
+    case "dots":
+      return { preset, dotColor: "#2a2342", bgColor: "#120f17", size: 2, gap: 26 };
+  }
+}
+
+/** Fresh, sane defaults for a text effect kind. */
+export function defaultFx(kind: TextFx["kind"]): TextFx {
+  switch (kind) {
+    case "none":
+      return { kind };
+    case "gradient":
+      return { kind, from: "#ff9ffc", to: "#5227ff", angle: 90 };
+    case "glow":
+      return { kind, color: "#3ddc84", size: 18 };
+    case "glitch":
+      return { kind, color1: "#00e5ff", color2: "#ff00d4", offset: 4 };
+    case "shiny":
+      return { kind, color: "#b0b0b0", angle: 120 };
+  }
+}
 
 export type ThumbDoc = {
   background: Background;

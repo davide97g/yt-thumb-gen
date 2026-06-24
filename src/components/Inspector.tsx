@@ -1,15 +1,19 @@
 import { useState, type Dispatch } from "react";
-import { Camera, ImagePlus, RotateCcw, Scissors, Undo2 } from "lucide-react";
+import { Camera, ChevronDown, ChevronRight, ImagePlus, RotateCcw, Scissors, Undo2 } from "lucide-react";
 import {
   FONT_LABELS,
+  defaultEffect,
+  defaultFx,
   type Action,
   type Background,
+  type BgEffect,
   type EmojiLayer,
   type FontKey,
   type ImageLayer,
   type Layer,
   type LayerPatch,
   type ShapeLayer,
+  type TextFx,
   type TextLayer,
 } from "../state";
 import { removeBackground } from "../lib/bgremove";
@@ -83,8 +87,61 @@ function TextProps({ layer, set }: { layer: TextLayer; set: Setter }) {
           <SliderRow label="Arrotonda" min={0} max={999} value={layer.bg.radius} onChange={(radius) => set({ bg: { ...layer.bg, radius } })} />
         </>
       )}
+      <SelectField
+        label="Effetto"
+        value={layer.fx?.kind ?? "none"}
+        options={TEXT_FX_OPTIONS}
+        onChange={(kind) => set({ fx: defaultFx(kind) })}
+      />
+      {layer.fx && layer.fx.kind !== "none" && <TextFxControls fx={layer.fx} set={set} />}
     </>
   );
+}
+
+const TEXT_FX_OPTIONS: { value: TextFx["kind"]; label: string }[] = [
+  { value: "none", label: "Nessuno" },
+  { value: "gradient", label: "Gradiente" },
+  { value: "glow", label: "Bagliore" },
+  { value: "glitch", label: "Glitch" },
+  { value: "shiny", label: "Lucido" },
+];
+
+function TextFxControls({ fx, set }: { fx: TextFx; set: Setter }) {
+  const upd = (patch: Record<string, number | string>) => set({ fx: { ...fx, ...patch } as TextFx });
+  switch (fx.kind) {
+    case "gradient":
+      return (
+        <>
+          <ColorRow label="Colore 1" value={fx.from} onChange={(from) => upd({ from })} />
+          <ColorRow label="Colore 2" value={fx.to} onChange={(to) => upd({ to })} />
+          <SliderRow label="Angolo" min={0} max={360} value={fx.angle} display={`${fx.angle}°`} onChange={(angle) => upd({ angle })} />
+        </>
+      );
+    case "glow":
+      return (
+        <>
+          <ColorRow label="Colore" value={fx.color} onChange={(color) => upd({ color })} />
+          <SliderRow label="Intensità" min={2} max={60} value={fx.size} onChange={(size) => upd({ size })} />
+        </>
+      );
+    case "glitch":
+      return (
+        <>
+          <ColorRow label="Colore 1" value={fx.color1} onChange={(color1) => upd({ color1 })} />
+          <ColorRow label="Colore 2" value={fx.color2} onChange={(color2) => upd({ color2 })} />
+          <SliderRow label="Scarto" min={1} max={20} value={fx.offset} onChange={(offset) => upd({ offset })} />
+        </>
+      );
+    case "shiny":
+      return (
+        <>
+          <ColorRow label="Colore" value={fx.color} onChange={(color) => upd({ color })} />
+          <SliderRow label="Angolo" min={0} max={360} value={fx.angle} display={`${fx.angle}°`} onChange={(angle) => upd({ angle })} />
+        </>
+      );
+    default:
+      return null;
+  }
 }
 
 function ImageProps({ layer, set, onError }: { layer: ImageLayer; set: Setter; onError: (msg: string) => void }) {
@@ -206,6 +263,118 @@ function ShapeProps({ layer, set }: { layer: ShapeLayer; set: Setter }) {
 
 // ── Background ────────────────────────────────────────────────────────────────
 
+const BG_MODE_OPTIONS: { value: "solid" | "gradient" | "effect"; label: string }[] = [
+  { value: "solid", label: "Tinta unita" },
+  { value: "gradient", label: "Gradiente" },
+  { value: "effect", label: "Effetto" },
+];
+
+const BG_PRESET_OPTIONS: { value: BgEffect["preset"]; label: string }[] = [
+  { value: "grainient", label: "Grainient" },
+  { value: "aurora", label: "Aurora" },
+  { value: "mesh", label: "Mesh" },
+  { value: "dots", label: "Punti" },
+];
+
+type Upd = (patch: Record<string, number | string | boolean>) => void;
+
+function DisclosureRow({ open, onToggle, label }: { open: boolean; onToggle: () => void; label: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className="flex w-full items-center gap-1.5 pt-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground [&_svg]:size-3.5"
+    >
+      {open ? <ChevronDown /> : <ChevronRight />}
+      {label}
+    </button>
+  );
+}
+
+function GrainientControls({ e, upd }: { e: Extract<BgEffect, { preset: "grainient" }>; upd: Upd }) {
+  const [adv, setAdv] = useState(false);
+  return (
+    <>
+      <ColorRow label="Colore 1" value={e.color1} onChange={(color1) => upd({ color1 })} />
+      <ColorRow label="Colore 2" value={e.color2} onChange={(color2) => upd({ color2 })} />
+      <ColorRow label="Colore 3" value={e.color3} onChange={(color3) => upd({ color3 })} />
+      <SliderRow label="Velocità" min={0} max={2} step={0.05} value={e.timeSpeed} display={e.timeSpeed.toFixed(2)} onChange={(timeSpeed) => upd({ timeSpeed })} />
+      <SliderRow label="Bilanc. colore" min={-1} max={1} step={0.01} value={e.colorBalance} display={e.colorBalance.toFixed(2)} onChange={(colorBalance) => upd({ colorBalance })} />
+      <SliderRow label="Warp forza" min={0} max={3} step={0.05} value={e.warpStrength} display={e.warpStrength.toFixed(2)} onChange={(warpStrength) => upd({ warpStrength })} />
+      <SliderRow label="Warp frequenza" min={0} max={20} step={0.1} value={e.warpFrequency} display={e.warpFrequency.toFixed(1)} onChange={(warpFrequency) => upd({ warpFrequency })} />
+      <SliderRow label="Warp velocità" min={0} max={10} step={0.1} value={e.warpSpeed} display={e.warpSpeed.toFixed(1)} onChange={(warpSpeed) => upd({ warpSpeed })} />
+      <SliderRow label="Warp ampiezza" min={1} max={200} value={e.warpAmplitude} onChange={(warpAmplitude) => upd({ warpAmplitude })} />
+      <SliderRow label="Angolo blend" min={-180} max={180} value={e.blendAngle} display={`${e.blendAngle}°`} onChange={(blendAngle) => upd({ blendAngle })} />
+      <SliderRow label="Morbidezza blend" min={0} max={1} step={0.01} value={e.blendSoftness} display={e.blendSoftness.toFixed(2)} onChange={(blendSoftness) => upd({ blendSoftness })} />
+      <SliderRow label="Grana quantità" min={0} max={1} step={0.01} value={e.grainAmount} display={e.grainAmount.toFixed(2)} onChange={(grainAmount) => upd({ grainAmount })} />
+      <SliderRow label="Grana scala" min={0} max={10} step={0.1} value={e.grainScale} display={e.grainScale.toFixed(1)} onChange={(grainScale) => upd({ grainScale })} />
+      <SwitchRow label="Grana animata" checked={e.grainAnimated} onChange={(grainAnimated) => upd({ grainAnimated })} />
+      <SliderRow label="Contrasto" min={0} max={3} step={0.05} value={e.contrast} display={e.contrast.toFixed(2)} onChange={(contrast) => upd({ contrast })} />
+      <SliderRow label="Saturazione" min={0} max={2} step={0.05} value={e.saturation} display={e.saturation.toFixed(2)} onChange={(saturation) => upd({ saturation })} />
+      <DisclosureRow open={adv} onToggle={() => setAdv((v) => !v)} label="Avanzate" />
+      {adv && (
+        <>
+          <SliderRow label="Rotazione" min={0} max={1000} step={10} value={e.rotationAmount} onChange={(rotationAmount) => upd({ rotationAmount })} />
+          <SliderRow label="Scala rumore" min={0} max={10} step={0.1} value={e.noiseScale} display={e.noiseScale.toFixed(1)} onChange={(noiseScale) => upd({ noiseScale })} />
+          <SliderRow label="Gamma" min={0.1} max={3} step={0.05} value={e.gamma} display={e.gamma.toFixed(2)} onChange={(gamma) => upd({ gamma })} />
+          <SliderRow label="Centro X" min={-1} max={1} step={0.01} value={e.centerX} display={e.centerX.toFixed(2)} onChange={(centerX) => upd({ centerX })} />
+          <SliderRow label="Centro Y" min={-1} max={1} step={0.01} value={e.centerY} display={e.centerY.toFixed(2)} onChange={(centerY) => upd({ centerY })} />
+          <SliderRow label="Zoom" min={0.1} max={3} step={0.05} value={e.zoom} display={e.zoom.toFixed(2)} onChange={(zoom) => upd({ zoom })} />
+        </>
+      )}
+    </>
+  );
+}
+
+function AuroraControls({ e, upd }: { e: Extract<BgEffect, { preset: "aurora" }>; upd: Upd }) {
+  return (
+    <>
+      <ColorRow label="Colore 1" value={e.color1} onChange={(color1) => upd({ color1 })} />
+      <ColorRow label="Colore 2" value={e.color2} onChange={(color2) => upd({ color2 })} />
+      <ColorRow label="Colore 3" value={e.color3} onChange={(color3) => upd({ color3 })} />
+      <SliderRow label="Velocità" min={0} max={3} step={0.05} value={e.speed} display={e.speed.toFixed(2)} onChange={(speed) => upd({ speed })} />
+      <SliderRow label="Sfumatura" min={0} max={1} step={0.01} value={e.blend} display={e.blend.toFixed(2)} onChange={(blend) => upd({ blend })} />
+      <SliderRow label="Ampiezza" min={0} max={3} step={0.05} value={e.amplitude} display={e.amplitude.toFixed(2)} onChange={(amplitude) => upd({ amplitude })} />
+    </>
+  );
+}
+
+function MeshControls({ e, upd }: { e: Extract<BgEffect, { preset: "mesh" }>; upd: Upd }) {
+  return (
+    <>
+      <ColorRow label="Colore 1" value={e.color1} onChange={(color1) => upd({ color1 })} />
+      <ColorRow label="Colore 2" value={e.color2} onChange={(color2) => upd({ color2 })} />
+      <ColorRow label="Colore 3" value={e.color3} onChange={(color3) => upd({ color3 })} />
+      <ColorRow label="Sfondo" value={e.bgColor} onChange={(bgColor) => upd({ bgColor })} />
+      <SliderRow label="Morbidezza" min={0} max={1} step={0.01} value={e.softness} display={e.softness.toFixed(2)} onChange={(softness) => upd({ softness })} />
+    </>
+  );
+}
+
+function DotsControls({ e, upd }: { e: Extract<BgEffect, { preset: "dots" }>; upd: Upd }) {
+  return (
+    <>
+      <ColorRow label="Punti" value={e.dotColor} onChange={(dotColor) => upd({ dotColor })} />
+      <ColorRow label="Sfondo" value={e.bgColor} onChange={(bgColor) => upd({ bgColor })} />
+      <SliderRow label="Dimensione" min={1} max={10} step={0.5} value={e.size} display={e.size.toFixed(1)} onChange={(size) => upd({ size })} />
+      <SliderRow label="Distanza" min={6} max={80} value={e.gap} onChange={(gap) => upd({ gap })} />
+    </>
+  );
+}
+
+function EffectControls({ effect, set }: { effect: BgEffect; set: (patch: Partial<Background>) => void }) {
+  const upd: Upd = (patch) => set({ effect: { ...effect, ...patch } as BgEffect });
+  return (
+    <>
+      <SelectField label="Preset" value={effect.preset} options={BG_PRESET_OPTIONS} onChange={(preset) => set({ effect: defaultEffect(preset) })} />
+      {effect.preset === "grainient" && <GrainientControls e={effect} upd={upd} />}
+      {effect.preset === "aurora" && <AuroraControls e={effect} upd={upd} />}
+      {effect.preset === "mesh" && <MeshControls e={effect} upd={upd} />}
+      {effect.preset === "dots" && <DotsControls e={effect} upd={upd} />}
+    </>
+  );
+}
+
 export function BackgroundInspector({
   background, dispatch, onError,
 }: { background: Background; dispatch: Dispatch<Action>; onError: (msg: string) => void }) {
@@ -235,9 +404,25 @@ export function BackgroundInspector({
         </>
       ) : (
         <>
-          <SwitchRow label="Gradiente" checked={background.mode === "gradient"} onChange={(g) => set({ mode: g ? "gradient" : "solid" })} />
-          <ColorRow label="Colore" value={background.from} onChange={(from) => set({ from })} />
-          {background.mode === "gradient" && <ColorRow label="Colore 2" value={background.to} onChange={(to) => set({ to })} />}
+          <SelectField
+            label="Tipo"
+            value={background.mode === "image" ? "solid" : background.mode}
+            options={BG_MODE_OPTIONS}
+            onChange={(mode) => (mode === "effect" ? set({ mode, effect: background.effect ?? defaultEffect("grainient") }) : set({ mode }))}
+          />
+          {background.mode === "solid" && <ColorRow label="Colore" value={background.from} onChange={(from) => set({ from })} />}
+          {background.mode === "gradient" && (
+            <>
+              <ColorRow label="Colore" value={background.from} onChange={(from) => set({ from })} />
+              <ColorRow label="Colore 2" value={background.to} onChange={(to) => set({ to })} />
+            </>
+          )}
+          {background.mode === "effect" && background.effect && (
+            <>
+              <EffectControls effect={background.effect} set={set} />
+              <SliderRow label="Ombra" min={0} max={100} value={background.overlay} display={`${background.overlay}%`} onChange={(overlay) => set({ overlay })} />
+            </>
+          )}
         </>
       )}
     </Section>

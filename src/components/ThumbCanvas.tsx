@@ -1,6 +1,7 @@
 import type { CSSProperties, Dispatch, PointerEvent as ReactPointerEvent, RefObject } from "react";
 import { CANVAS_H, CANVAS_W, FONTS, FONT_WEIGHT, type Action, type ImageLayer, type Layer, type LayerPatch, type TextLayer, type ThumbDoc } from "../state";
 import { ClaudeLogo, ClaudeWordmark } from "./brand";
+import { EffectBackground } from "./EffectBackground";
 
 export { CANVAS_H, CANVAS_W };
 
@@ -32,7 +33,9 @@ export function ThumbCanvas({ doc, scale, selectedId, exporting, canvasRef, disp
       ? `#000 url(${bg.image}) center / cover no-repeat`
       : bg.mode === "gradient"
         ? `radial-gradient(circle at 68% 32%, ${bg.from}, ${bg.to} 72%)`
-        : bg.from;
+        : bg.mode === "effect"
+          ? "#000" // backdrop behind the effect (aurora has transparency)
+          : bg.from;
 
   /** pointerdown on a layer: select it, then stream drag deltas (divided by screen scale). */
   function startDrag(e: ReactPointerEvent, id: string) {
@@ -67,6 +70,7 @@ export function ThumbCanvas({ doc, scale, selectedId, exporting, canvasRef, disp
         userSelect: "none",
       }}
     >
+      {bg.mode === "effect" && bg.effect && <EffectBackground effect={bg.effect} />}
       {bg.overlay > 0 && <div style={{ position: "absolute", inset: 0, background: "#000", opacity: bg.overlay / 100 }} />}
 
       {doc.layers.map((layer) =>
@@ -186,7 +190,24 @@ function SelectionFrame({
 
 function LayerContent({ layer }: { layer: Layer }) {
   switch (layer.type) {
-    case "text":
+    case "text": {
+      const fx = layer.fx;
+      // gradient/shiny "fill" the glyphs via background-clip:text, so they own `background`
+      // and suppress the pill; glow/glitch stack onto textShadow alongside the hard shadow.
+      const clip = fx?.kind === "gradient" || fx?.kind === "shiny";
+      const shadows: string[] = [];
+      if (layer.shadow) shadows.push("0 8px 0 rgba(0,0,0,.85)");
+      if (fx?.kind === "glow") for (const r of [fx.size, fx.size, Math.round(fx.size / 2)]) shadows.push(`0 0 ${r}px ${fx.color}`);
+      if (fx?.kind === "glitch") {
+        shadows.push(`${fx.offset}px 0 0 ${fx.color1}`);
+        shadows.push(`${-fx.offset}px 0 0 ${fx.color2}`);
+      }
+      const backgroundImage =
+        fx?.kind === "gradient"
+          ? `linear-gradient(${fx.angle}deg, ${fx.from}, ${fx.to})`
+          : fx?.kind === "shiny"
+            ? `linear-gradient(${fx.angle}deg, ${fx.color} 0%, #ffffff 45%, #ffffff 55%, ${fx.color} 100%)`
+            : undefined;
       return (
         <div
           style={{
@@ -195,20 +216,25 @@ function LayerContent({ layer }: { layer: Layer }) {
             fontSize: layer.size,
             fontWeight: FONT_WEIGHT[layer.font],
             lineHeight: layer.lineHeight,
-            color: layer.color,
+            color: clip ? "transparent" : layer.color,
             textAlign: layer.align,
             whiteSpace: "pre",
             WebkitTextStroke: layer.stroke ? "5px #000000" : undefined,
             paintOrder: "stroke fill",
-            textShadow: layer.shadow ? "0 8px 0 rgba(0,0,0,.85)" : undefined,
-            background: layer.bg.enabled ? layer.bg.color : undefined,
-            padding: layer.bg.enabled ? `${layer.bg.padY}px ${layer.bg.padX}px` : undefined,
-            borderRadius: layer.bg.enabled ? layer.bg.radius : undefined,
+            textShadow: shadows.length ? shadows.join(", ") : undefined,
+            background: layer.bg.enabled && !clip ? layer.bg.color : undefined,
+            padding: layer.bg.enabled && !clip ? `${layer.bg.padY}px ${layer.bg.padX}px` : undefined,
+            borderRadius: layer.bg.enabled && !clip ? layer.bg.radius : undefined,
+            backgroundImage,
+            WebkitBackgroundClip: clip ? "text" : undefined,
+            backgroundClip: clip ? "text" : undefined,
+            WebkitTextFillColor: clip ? "transparent" : undefined,
           }}
         >
           {layer.text}
         </div>
       );
+    }
 
     case "emoji":
       return <div style={{ fontSize: layer.size, lineHeight: 1 }}>{layer.glyph}</div>;
