@@ -38,7 +38,7 @@ export function NewProjectDialog({ doc, onClose, onCreated, onError }: Props) {
   async function create() {
     setBusy(true);
     try {
-      const fresh = clone ? structuredClone(doc) : TEMPLATES.loud();
+      const fresh = clone ? structuredClone(doc) : TEMPLATES.dacoder();
       await saveConfig(newName, structuredClone(fresh));
       onCreated(fresh);
       onClose();

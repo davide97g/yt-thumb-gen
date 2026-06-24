@@ -18,9 +18,10 @@ import {
   type ThumbDoc,
 } from "./state";
 
-export type TemplateKey = "loud" | "brand" | "dev" | "hype" | "number" | "split" | "minimal";
+export type TemplateKey = "dacoder" | "loud" | "brand" | "dev" | "hype" | "number" | "split" | "minimal";
 
 export const TEMPLATE_LABELS: Record<TemplateKey, string> = {
+  dacoder: "dacoder",
   loud: "Loud",
   brand: "Brand",
   dev: "Dev",
@@ -120,6 +121,19 @@ function doc(background: ThumbDoc["background"], layers: Layer[]): ThumbDoc {
 const SERIF: FontKey = "georgia";
 
 export const TEMPLATES: Record<TemplateKey, () => ThumbDoc> = {
+  // Default seed: the channel's own intro thumbnail. Face slot = "me", the
+  // @dacoder handle + `$ dacoder` terminal prompt brand it. Edit per video.
+  dacoder: () =>
+    doc({ mode: "gradient", from: "#0d1b13", to: "#04070a", image: null, overlay: 0 }, [
+      text({ text: "$ dacoder", x: 64, y: 44, size: 30, font: "mono", color: "#3ddc84" }),
+      text({ text: "CODING", x: 64, y: 150, size: 138, rotation: -2, stroke: true, shadow: true }),
+      text({ text: "DAL VIVO", x: 64, y: 300, size: 138, color: "#3ddc84", rotation: -2, stroke: true, shadow: true }),
+      emoji({ glyph: "👨‍💻", x: 800, y: 70, size: 140, rotation: 10 }),
+      face({ x: 880, y: 260, ring: true, ringColor: "#3ddc84", glow: true, glowColor: "#3ddc84", glowSize: 18 }),
+      pill({ text: "▶ @dacoder · iscriviti", x: 64, y: 632, size: 30, color: "#04130b", bgColor: "#3ddc84" }),
+      bar(64, "#3ddc84"),
+    ]),
+
   loud: () =>
     doc({ mode: "gradient", from: "#3a1d0e", to: "#120a06", image: null, overlay: 0 }, [
       pill({ text: "🔴 LIVE", x: 64, y: 40, bgColor: "#ff0000" }),

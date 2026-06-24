@@ -1,5 +1,5 @@
 import type { Dispatch, ReactNode } from "react";
-import { ChevronDown, ChevronUp, Eye, EyeOff, Image as ImageIcon, Smile, Square, Trash2, Type } from "lucide-react";
+import { ChevronDown, ChevronUp, Copy, Eye, EyeOff, Image as ImageIcon, Smile, Square, Trash2, Type } from "lucide-react";
 import type { Action, Layer, LayerType } from "../state";
 import { Button } from "./ui/button";
 import { Hint } from "./controls";
@@ -49,7 +49,7 @@ export function LayerList({ layers, selectedId, dispatch }: Props) {
                 {layer.visible ? <Eye /> : <EyeOff />}
               </Button>
               <span className={cn("shrink-0", active ? "text-primary" : "text-muted-foreground")}>{TYPE_ICON[layer.type]}</span>
-              <span className="flex-1 truncate px-1 transition-[padding] group-hover/row:pr-[4.75rem] group-focus-within/row:pr-[4.75rem]">{layer.name}</span>
+              <span className="flex-1 truncate px-1 transition-[padding] group-hover/row:pr-[6.25rem] group-focus-within/row:pr-[6.25rem]">{layer.name}</span>
               <div className="absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center rounded-md opacity-0 transition-opacity pointer-events-none group-hover/row:pointer-events-auto group-focus-within/row:pointer-events-auto group-hover/row:opacity-100 group-focus-within/row:opacity-100">
                 <Button
                   variant="ghost"
@@ -70,6 +70,15 @@ export function LayerList({ layers, selectedId, dispatch }: Props) {
                   onClick={(e) => { e.stopPropagation(); dispatch({ type: "reorder", id: layer.id, dir: -1 }); }}
                 >
                   <ChevronDown />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="size-6 text-muted-foreground [&_svg]:size-3.5"
+                  title="Duplica"
+                  onClick={(e) => { e.stopPropagation(); dispatch({ type: "select", id: layer.id }); dispatch({ type: "pasteLayer", layer }); }}
+                >
+                  <Copy />
                 </Button>
                 <Button
                   variant="ghost"

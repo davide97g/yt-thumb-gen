@@ -237,6 +237,7 @@ export type Action =
   | { type: "loadDoc"; doc: ThumbDoc } // template / saved config / imported file
   | { type: "select"; id: string | null }
   | { type: "addLayer"; layer: Layer }
+  | { type: "pasteLayer"; layer: Layer } // clone of `layer`, inserted above the selection
   | { type: "updateLayer"; id: string; patch: LayerPatch }
   | { type: "nudge"; id: string; dx: number; dy: number } // drag delta
   | { type: "removeLayer"; id: string }
@@ -255,6 +256,14 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, selectedId: action.id };
     case "addLayer":
       return { doc: { ...state.doc, layers: [...state.doc.layers, action.layer] }, selectedId: action.layer.id };
+    case "pasteLayer": {
+      // ponytail: +24px offset so the clone is visibly distinct from its source.
+      const clone = { ...action.layer, id: uid(), x: action.layer.x + 24, y: action.layer.y + 24 } as Layer;
+      const layers = [...state.doc.layers];
+      const i = state.selectedId ? layers.findIndex((l) => l.id === state.selectedId) : -1;
+      layers.splice(i >= 0 ? i + 1 : layers.length, 0, clone); // i+1 = directly above the selection
+      return { doc: { ...state.doc, layers }, selectedId: clone.id };
+    }
     case "updateLayer":
       return { ...state, doc: mapLayer(state.doc, action.id, (l) => Object.assign({}, l, action.patch) as Layer) };
     case "nudge":
@@ -275,4 +284,57 @@ export function reducer(state: AppState, action: Action): AppState {
     case "updateBackground":
       return { ...state, doc: { ...state.doc, background: { ...state.doc.background, ...action.patch } } };
   }
+}
+
+// ── Undo / redo ─────────────────────────────────────────────────────────────
+//
+// A history wrapper around `reducer`. Snapshots are whole AppState values; since
+// `reducer` updates immutably, unchanged layers (incl. their big image dataURLs)
+// are shared by reference across snapshots, so 20 entries cost ~deltas, not 20×.
+//
+// Continuous gestures (drag = a burst of `nudge`; slider/colour drag = a burst of
+// `updateLayer`/`updateBackground` on the same keys) coalesce into ONE entry via a
+// `tag`: while the incoming tag matches the last, we replace `present` instead of
+// pushing. So one Cmd+Z undoes a whole drag, not one pixel.
+
+export const HISTORY_LIMIT = 20;
+
+export type History = { past: AppState[]; present: AppState; future: AppState[]; tag: string | null };
+
+export type HistAction = Action | { type: "undo" } | { type: "redo" };
+
+export const initHistory = (present: AppState): History => ({ past: [], present, future: [], tag: null });
+
+/** Identifies a continuous edit gesture; null = discrete action (always its own entry). */
+function gestureTag(action: Action): string | null {
+  switch (action.type) {
+    case "nudge":
+      return `nudge:${action.id}`;
+    case "updateLayer":
+      return `update:${action.id}:${Object.keys(action.patch).sort().join(",")}`;
+    case "updateBackground":
+      return `bg:${Object.keys(action.patch).sort().join(",")}`;
+    default:
+      return null;
+  }
+}
+
+export function historyReducer(h: History, action: HistAction): History {
+  if (action.type === "undo") {
+    if (!h.past.length) return h;
+    return { past: h.past.slice(0, -1), present: h.past[h.past.length - 1], future: [h.present, ...h.future], tag: null };
+  }
+  if (action.type === "redo") {
+    if (!h.future.length) return h;
+    return { past: [...h.past, h.present], present: h.future[0], future: h.future.slice(1), tag: null };
+  }
+
+  const present = reducer(h.present, action);
+  if (present === h.present) return h; // no-op (e.g. reorder at an edge)
+  if (action.type === "loadDoc") return initHistory(present); // template/import = clean slate
+  if (action.type === "select") return { ...h, present, tag: null }; // selection isn't undoable
+
+  const tag = gestureTag(action);
+  if (tag && tag === h.tag) return { ...h, present, future: [] }; // same gesture → coalesce
+  return { past: [...h.past, h.present].slice(-HISTORY_LIMIT), present, future: [], tag };
 }
