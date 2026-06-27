@@ -1,6 +1,8 @@
 import { useState, type Dispatch } from "react";
-import { Camera, ChevronDown, ChevronRight, ImagePlus, RotateCcw, Scissors, Undo2 } from "lucide-react";
+import { Camera, ChevronDown, ChevronRight, ImagePlus, Maximize, RotateCcw, Scissors, Undo2 } from "lucide-react";
 import {
+  CANVAS_H,
+  CANVAS_W,
   FONT_LABELS,
   defaultEffect,
   defaultFx,
@@ -78,7 +80,14 @@ function TextProps({ layer, set }: { layer: TextLayer; set: Setter }) {
       <SelectField label="Allineamento" value={layer.align} options={ALIGN_OPTIONS} onChange={(align) => set({ align })} />
       <SliderRow label="Interlinea" min={0.8} max={2} step={0.05} value={layer.lineHeight} display={layer.lineHeight.toFixed(2)} onChange={(lineHeight) => set({ lineHeight })} />
       <SliderRow label="Rotazione" min={-180} max={180} value={layer.rotation} display={`${layer.rotation}°`} onChange={(rotation) => set({ rotation })} />
+      <SliderRow label="Trasparenza" min={0} max={100} value={layer.opacity ?? 100} display={`${layer.opacity ?? 100}%`} onChange={(opacity) => set({ opacity })} />
       <SwitchRow label="Contorno" checked={layer.stroke} onChange={(stroke) => set({ stroke })} />
+      {layer.stroke && (
+        <>
+          <ColorRow label="Colore contorno" value={layer.strokeColor ?? "#000000"} onChange={(strokeColor) => set({ strokeColor })} />
+          <SliderRow label="Spessore contorno" min={1} max={40} value={layer.strokeWidth ?? 5} onChange={(strokeWidth) => set({ strokeWidth })} />
+        </>
+      )}
       <SwitchRow label="Ombra" checked={layer.shadow} onChange={(shadow) => set({ shadow })} />
       <SwitchRow label="Sfondo pillola" checked={layer.bg.enabled} onChange={(enabled) => set({ bg: { ...layer.bg, enabled } })} />
       {layer.bg.enabled && (
@@ -223,6 +232,7 @@ function ImageProps({ layer, set, onError }: { layer: ImageLayer; set: Setter; o
       )}
       <SliderRow label="Scala" min={0.2} max={3} step={0.05} value={layer.scale} display={layer.scale.toFixed(2)} onChange={(scale) => set({ scale })} />
       <SliderRow label="Rotazione" min={-180} max={180} value={layer.rotation} display={`${layer.rotation}°`} onChange={(rotation) => set({ rotation })} />
+      <SliderRow label="Trasparenza" min={0} max={100} value={layer.opacity ?? 100} display={`${layer.opacity ?? 100}%`} onChange={(opacity) => set({ opacity })} />
       {!layer.brand && (
         <>
           <SliderRow label="Arrotonda" min={0} max={220} value={layer.radius} onChange={(radius) => set({ radius })} />
@@ -395,6 +405,14 @@ function EffectControls({ effect, set }: { effect: BgEffect; set: (patch: { effe
 function EffectProps({ layer, set }: { layer: EffectLayer; set: Setter }) {
   return (
     <Section title="Effetto">
+      <Button
+        variant="secondary"
+        size="sm"
+        className="w-full"
+        onClick={() => set({ x: 0, y: 0, w: CANVAS_W, h: CANVAS_H, rotation: 0, radius: 0 })}
+      >
+        <Maximize /> Schermo intero
+      </Button>
       <EffectControls effect={layer.effect} set={set} />
       <SliderRow label="Arrotonda" min={0} max={400} value={layer.radius} onChange={(radius) => set({ radius })} />
     </Section>

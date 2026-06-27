@@ -156,6 +156,18 @@ docker build -t yt-thumb-bgremove .
 docker run --rm -p 8000:8000 yt-thumb-bgremove
 ```
 
+Or run it without Docker, in a local venv:
+
+```bash
+cd bgremove
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn main:app --port 8000
+```
+
+First request downloads the u2net model to `~/.u2net/` (~170 MB, one-time).
+
 Point the editor elsewhere with `VITE_BGREMOVE_URL` in a root `.env`
 (default `http://localhost:8000`). Full instructions: [`bgremove/README.md`](bgremove/README.md).
 

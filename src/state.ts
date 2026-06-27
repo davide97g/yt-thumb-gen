@@ -17,6 +17,12 @@ export type FontKey =
   | "anton"
   | "oswald"
   | "leagueGothic"
+  | "leagueSpartan"
+  | "montserrat"
+  | "poppins"
+  | "robotoCondensed"
+  | "luckiestGuy"
+  | "bangers"
   | "sfpro"
   | "helvetica"
   | "segoe";
@@ -31,6 +37,12 @@ export const FONTS: Record<FontKey, string> = {
   anton: "'Anton', sans-serif",
   oswald: "'Oswald', sans-serif",
   leagueGothic: "'League Gothic', sans-serif",
+  leagueSpartan: "'League Spartan', sans-serif",
+  montserrat: "'Montserrat', sans-serif",
+  poppins: "'Poppins', sans-serif",
+  robotoCondensed: "'Roboto Condensed', sans-serif",
+  luckiestGuy: "'Luckiest Guy', cursive",
+  bangers: "'Bangers', cursive",
   // System display faces — not bundled (proprietary); render natively per OS.
   sfpro: "'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif",
   helvetica: "'Helvetica Neue', 'Helvetica Now Display', Helvetica, Arial, sans-serif",
@@ -52,6 +64,12 @@ export const FONT_WEIGHT: Record<FontKey, number> = {
   anton: 400,
   oswald: 700,
   leagueGothic: 400,
+  leagueSpartan: 800,
+  montserrat: 800,
+  poppins: 800,
+  robotoCondensed: 700,
+  luckiestGuy: 400,
+  bangers: 400,
   sfpro: 900,
   helvetica: 900,
   segoe: 900,
@@ -66,6 +84,12 @@ export const FONT_LABELS: Record<FontKey, string> = {
   anton: "Anton",
   oswald: "Oswald (Bold)",
   leagueGothic: "League Gothic",
+  leagueSpartan: "League Spartan",
+  montserrat: "Montserrat (ExtraBold)",
+  poppins: "Poppins (ExtraBold)",
+  robotoCondensed: "Roboto Condensed (Bold)",
+  luckiestGuy: "Luckiest Guy",
+  bangers: "Bangers",
   sfpro: "SF Pro Display",
   helvetica: "Helvetica Neue",
   segoe: "Segoe UI Variable",
@@ -106,7 +130,10 @@ export type TextLayer = LayerBase & {
   color: string;
   align: "left" | "center" | "right";
   lineHeight: number;
-  stroke: boolean; // black outline
+  opacity: number; // 0–100
+  stroke: boolean; // outline toggle
+  strokeWidth: number; // outline thickness px (1280×720 space)
+  strokeColor: string;
   shadow: boolean; // hard drop shadow
   /** Optional background pill behind the text — turns a Text layer into a badge/pill. */
   bg: { enabled: boolean; color: string; padX: number; padY: number; radius: number };
@@ -121,6 +148,7 @@ export type ImageLayer = LayerBase & {
   brand: "logo" | "wordmark" | null; // built-in Claude SVG mark; overrides src when set
   brandColor: string; // fill colour for the brand mark
   scale: number; // 1 = base width (see BASE_IMG_W / brand bases in ThumbCanvas)
+  opacity: number; // 0–100
   flip: boolean;
   radius: number; // corner radius px
   ring: boolean; // solid border
@@ -291,7 +319,10 @@ export function newTextLayer(): TextLayer {
     color: "#ffffff",
     align: "left",
     lineHeight: 1.02,
+    opacity: 100,
     stroke: false,
+    strokeWidth: 5,
+    strokeColor: "#000000",
     shadow: false,
     bg: { enabled: false, color: "#ff0000", padX: 22, padY: 8, radius: 12 },
   };
@@ -311,6 +342,7 @@ export function newImageLayer(src: string | null = null): ImageLayer {
     brand: null,
     brandColor: "#D97757",
     scale: 1,
+    opacity: 100,
     flip: false,
     radius: 0,
     ring: false,

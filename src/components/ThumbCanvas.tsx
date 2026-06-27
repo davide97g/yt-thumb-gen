@@ -83,6 +83,7 @@ export function ThumbCanvas({ doc, scale, selectedId, exporting, canvasRef, disp
               position: "absolute",
               left: layer.x,
               top: layer.y,
+              opacity: layer.type === "image" ? (layer.opacity ?? 100) / 100 : undefined,
               transform: layer.rotation ? `rotate(${layer.rotation}deg)` : undefined,
               cursor: "grab",
               touchAction: "none",
@@ -236,6 +237,7 @@ function TextContent({ layer }: { layer: TextLayer }) {
   const clip = fx?.kind === "gradient" || fx?.kind === "shiny";
   const style: CSSProperties = {
     display: "inline-block",
+    opacity: (layer.opacity ?? 100) / 100,
     fontFamily: FONTS[layer.font],
     fontSize: layer.size,
     fontWeight: FONT_WEIGHT[layer.font],
@@ -243,7 +245,7 @@ function TextContent({ layer }: { layer: TextLayer }) {
     color: clip ? "transparent" : layer.color,
     textAlign: layer.align,
     whiteSpace: "pre",
-    WebkitTextStroke: layer.stroke ? "5px #000000" : undefined,
+    WebkitTextStroke: layer.stroke ? `${layer.strokeWidth ?? 5}px ${layer.strokeColor ?? "#000000"}` : undefined,
     paintOrder: "stroke fill",
     textShadow: layer.shadow ? "0 8px 0 rgba(0,0,0,.85)" : undefined,
     background: layer.bg.enabled && !clip ? layer.bg.color : undefined,
