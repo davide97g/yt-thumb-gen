@@ -25,7 +25,10 @@ export type FontKey =
   | "bangers"
   | "sfpro"
   | "helvetica"
-  | "segoe";
+  | "segoe"
+  | "crimsonPro"
+  | "geistMono"
+  | "libreBaskerville";
 
 /** Maps a font key to its CSS font-family stack. */
 export const FONTS: Record<FontKey, string> = {
@@ -47,6 +50,9 @@ export const FONTS: Record<FontKey, string> = {
   sfpro: "'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif",
   helvetica: "'Helvetica Neue', 'Helvetica Now Display', Helvetica, Arial, sans-serif",
   segoe: "'Segoe UI Variable Display', 'Segoe UI Variable', 'Segoe UI', sans-serif",
+  crimsonPro: "'Crimson Pro', Georgia, serif",
+  geistMono: "'Geist Mono', ui-monospace, monospace",
+  libreBaskerville: "'Libre Baskerville', Georgia, serif",
 };
 
 /**
@@ -73,6 +79,9 @@ export const FONT_WEIGHT: Record<FontKey, number> = {
   sfpro: 900,
   helvetica: 900,
   segoe: 900,
+  crimsonPro: 700,
+  geistMono: 500,
+  libreBaskerville: 700,
 };
 
 export const FONT_LABELS: Record<FontKey, string> = {
@@ -93,6 +102,9 @@ export const FONT_LABELS: Record<FontKey, string> = {
   sfpro: "SF Pro Display",
   helvetica: "Helvetica Neue",
   segoe: "Segoe UI Variable",
+  crimsonPro: "Crimson Pro (serif)",
+  geistMono: "Geist Mono",
+  libreBaskerville: "Libre Baskerville (serif)",
 };
 
 export type LayerType = "text" | "image" | "emoji" | "shape" | "effect";
