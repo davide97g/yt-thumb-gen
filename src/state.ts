@@ -28,7 +28,8 @@ export type FontKey =
   | "segoe"
   | "crimsonPro"
   | "geistMono"
-  | "libreBaskerville";
+  | "libreBaskerville"
+  | "lobster";
 
 /** Maps a font key to its CSS font-family stack. */
 export const FONTS: Record<FontKey, string> = {
@@ -53,6 +54,7 @@ export const FONTS: Record<FontKey, string> = {
   crimsonPro: "'Crimson Pro', Georgia, serif",
   geistMono: "'Geist Mono', ui-monospace, monospace",
   libreBaskerville: "'Libre Baskerville', Georgia, serif",
+  lobster: "'Lobster', cursive",
 };
 
 /**
@@ -82,6 +84,7 @@ export const FONT_WEIGHT: Record<FontKey, number> = {
   crimsonPro: 700,
   geistMono: 500,
   libreBaskerville: 700,
+  lobster: 400,
 };
 
 export const FONT_LABELS: Record<FontKey, string> = {
@@ -105,6 +108,7 @@ export const FONT_LABELS: Record<FontKey, string> = {
   crimsonPro: "Crimson Pro (serif)",
   geistMono: "Geist Mono",
   libreBaskerville: "Libre Baskerville (serif)",
+  lobster: "Lobster (script)",
 };
 
 export type LayerType = "text" | "image" | "emoji" | "shape" | "effect";
