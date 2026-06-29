@@ -13,10 +13,19 @@ const BASE_IMG_W = 360; // width at scale 1 for an uploaded photo
 const LOGO_W = 120; // brand logo base width (square)
 const WORDMARK_ASPECT = 426 / 125; // viewBox of the cropped "Claude" wordmark
 
-/** Stacked drop-shadows trace the cut-out's alpha edge → a glow around the silhouette. */
+/** Stacked drop-shadows trace the cut-out's alpha edge → glow or solid outline around the silhouette. */
 function glowFilter(l: ImageLayer): string | undefined {
   if (!l.glow) return undefined;
   const s = l.glowSize;
+  if (l.glowStyle === "line") {
+    // Zero-blur shadows offset around a circle of radius s fatten the silhouette by s px → a solid outline.
+    // ponytail: ~one step per px of circumference keeps the line gap-free; cap passes so thick lines stay cheap.
+    const steps = Math.min(48, Math.max(12, Math.round(s * 2)));
+    return Array.from({ length: steps }, (_, i) => {
+      const a = (i / steps) * Math.PI * 2;
+      return `drop-shadow(${(Math.cos(a) * s).toFixed(1)}px ${(Math.sin(a) * s).toFixed(1)}px 0 ${l.glowColor})`;
+    }).join(" ");
+  }
   return [s, s, Math.round(s / 2)].map((r) => `drop-shadow(0 0 ${r}px ${l.glowColor})`).join(" ");
 }
 

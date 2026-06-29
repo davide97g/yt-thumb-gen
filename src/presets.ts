@@ -89,6 +89,7 @@ function face(o: Partial<ImageLayer> & { x: number; y: number }): ImageLayer {
     ring: false,
     ringColor: "#ffd400",
     glow: false,
+    glowStyle: "glow",
     glowColor: "#ffe600",
     glowSize: 18,
     ...o,

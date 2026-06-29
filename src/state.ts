@@ -170,6 +170,7 @@ export type ImageLayer = LayerBase & {
   ring: boolean; // solid border
   ringColor: string;
   glow: boolean; // glow tracing the cut-out alpha edge
+  glowStyle: "glow" | "line"; // soft glow vs. solid sticker outline
   glowColor: string;
   glowSize: number;
   // Non-destructive crop. `src` is never altered — these just hide parts of it.
@@ -367,6 +368,7 @@ export function newImageLayer(src: string | null = null): ImageLayer {
     ring: false,
     ringColor: "#ffd400",
     glow: false,
+    glowStyle: "glow",
     glowColor: "#ffe600",
     glowSize: 18,
   };

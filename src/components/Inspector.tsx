@@ -277,8 +277,17 @@ function ImageProps({ layer, set, onError, cropMode, setCropMode }: { layer: Ima
           <SwitchRow label="Bagliore" checked={layer.glow} onChange={(glow) => set({ glow })} />
           {layer.glow && (
             <>
+              <SelectField
+                label="Stile bagliore"
+                value={layer.glowStyle}
+                options={[
+                  { value: "glow", label: "Sfumato" },
+                  { value: "line", label: "Linea netta" },
+                ]}
+                onChange={(glowStyle) => set({ glowStyle })}
+              />
               <ColorRow label="Colore bagliore" value={layer.glowColor} onChange={(glowColor) => set({ glowColor })} />
-              <SliderRow label="Intensità" min={4} max={48} value={layer.glowSize} onChange={(glowSize) => set({ glowSize })} />
+              <SliderRow label={layer.glowStyle === "line" ? "Spessore" : "Intensità"} min={4} max={48} value={layer.glowSize} onChange={(glowSize) => set({ glowSize })} />
             </>
           )}
         </>
