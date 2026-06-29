@@ -287,7 +287,7 @@ function ImageProps({ layer, set, onError, cropMode, setCropMode }: { layer: Ima
                 onChange={(glowStyle) => set({ glowStyle })}
               />
               <ColorRow label="Colore bagliore" value={layer.glowColor} onChange={(glowColor) => set({ glowColor })} />
-              <SliderRow label={layer.glowStyle === "line" ? "Spessore" : "Intensità"} min={4} max={48} value={layer.glowSize} onChange={(glowSize) => set({ glowSize })} />
+              <SliderRow label={layer.glowStyle === "line" ? "Spessore" : "Intensità"} min={1} max={48} value={layer.glowSize} onChange={(glowSize) => set({ glowSize })} />
             </>
           )}
         </>

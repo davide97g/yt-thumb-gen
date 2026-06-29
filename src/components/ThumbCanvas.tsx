@@ -13,20 +13,42 @@ const BASE_IMG_W = 360; // width at scale 1 for an uploaded photo
 const LOGO_W = 120; // brand logo base width (square)
 const WORDMARK_ASPECT = 426 / 125; // viewBox of the cropped "Claude" wordmark
 
-/** Stacked drop-shadows trace the cut-out's alpha edge → glow or solid outline around the silhouette. */
+const outlineId = (id: string) => `thumb-outline-${id}`;
+
+/**
+ * Glow: stacked drop-shadows trace the cut-out's alpha edge.
+ * Line: a single SVG feMorphology dilate pass (defined in OutlineDefs) — one GPU pass instead of
+ * dozens of chained shadows, which is what made the line variant choke during drags.
+ */
 function glowFilter(l: ImageLayer): string | undefined {
   if (!l.glow) return undefined;
+  if (l.glowStyle === "line") return `url(#${outlineId(l.id)})`;
   const s = l.glowSize;
-  if (l.glowStyle === "line") {
-    // Zero-blur shadows offset around a circle of radius s fatten the silhouette by s px → a solid outline.
-    // ponytail: ~one step per px of circumference keeps the line gap-free; cap passes so thick lines stay cheap.
-    const steps = Math.min(48, Math.max(12, Math.round(s * 2)));
-    return Array.from({ length: steps }, (_, i) => {
-      const a = (i / steps) * Math.PI * 2;
-      return `drop-shadow(${(Math.cos(a) * s).toFixed(1)}px ${(Math.sin(a) * s).toFixed(1)}px 0 ${l.glowColor})`;
-    }).join(" ");
-  }
   return [s, s, Math.round(s / 2)].map((r) => `drop-shadow(0 0 ${r}px ${l.glowColor})`).join(" ");
+}
+
+/** Solid-outline filters for every line-glow image layer. Lives inside the captured node so export keeps them. */
+function OutlineDefs({ layers }: { layers: Layer[] }) {
+  const lines = layers.filter((l): l is ImageLayer => l.type === "image" && l.glow && l.glowStyle === "line");
+  if (lines.length === 0) return null;
+  return (
+    <svg aria-hidden style={{ position: "absolute", width: 0, height: 0 }}>
+      <defs>
+        {lines.map((l) => (
+          // Dilate the silhouette alpha by glowSize px, flood it with the glow colour, then put the image back on top.
+          <filter key={l.id} id={outlineId(l.id)} x="-50%" y="-50%" width="200%" height="200%">
+            <feMorphology in="SourceAlpha" operator="dilate" radius={l.glowSize} result="d" />
+            <feFlood floodColor={l.glowColor} result="c" />
+            <feComposite in="c" in2="d" operator="in" result="o" />
+            <feMerge>
+              <feMergeNode in="o" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+        ))}
+      </defs>
+    </svg>
+  );
 }
 
 type Props = {
@@ -84,6 +106,7 @@ export function ThumbCanvas({ doc, scale, selectedId, exporting, cropMode, setCr
         userSelect: "none",
       }}
     >
+      <OutlineDefs layers={doc.layers} />
       {bg.mode === "effect" && bg.effect && <EffectBackground effect={bg.effect} />}
       {bg.overlay > 0 && <div style={{ position: "absolute", inset: 0, background: "#000", opacity: bg.overlay / 100 }} />}
 
