@@ -1,5 +1,6 @@
 import { useState, type CSSProperties, type Dispatch, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
-import { CANVAS_H, CANVAS_W, FONTS, FONT_WEIGHT, type Action, type ImageLayer, type Layer, type LayerPatch, type TextLayer, type ThumbDoc } from "../state";
+import { CANVAS_H, CANVAS_W, FONTS, FONT_WEIGHT, newDrawLayer, type Action, type DrawCap, type DrawLayer, type ImageLayer, type Layer, type LayerPatch, type TextLayer, type ThumbDoc } from "../state";
+import { smoothPath, type Pt } from "../lib/smoothPath";
 import { ClaudeLogo, ClaudeWordmark } from "./brand";
 import { EffectBackground } from "./EffectBackground";
 
@@ -25,6 +26,37 @@ function glowFilter(l: ImageLayer): string | undefined {
   if (l.glowStyle === "line") return `url(#${outlineId(l.id)})`;
   const s = l.glowSize;
   return [s, s, Math.round(s / 2)].map((r) => `drop-shadow(0 0 ${r}px ${l.glowColor})`).join(" ");
+}
+
+/** Light/colour adjustments (applied first) chained with the glow filter. */
+function imageFilter(l: ImageLayer): string | undefined {
+  const adj: string[] = [];
+  if ((l.brightness ?? 100) !== 100) adj.push(`brightness(${l.brightness}%)`);
+  if ((l.contrast ?? 100) !== 100) adj.push(`contrast(${l.contrast}%)`);
+  if ((l.saturation ?? 100) !== 100) adj.push(`saturate(${l.saturation}%)`);
+  const glow = glowFilter(l);
+  return [adj.join(" "), glow].filter(Boolean).join(" ") || undefined;
+}
+
+// Tileable film grain, inline so html-to-image captures it (no external asset). %23 = #, %25 = %.
+const GRAIN_URL =
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E";
+
+/** Global colour grade over the whole canvas — unifies disparate layers. pointer-events:none so it never blocks selection. */
+function GlobalGrade({ bg }: { bg: { gradeTint?: string; gradeAmount?: number; gradeBlend?: string; gradeVignette?: number; gradeGrain?: number } }) {
+  const amount = bg.gradeAmount ?? 0,
+    vignette = bg.gradeVignette ?? 0,
+    grain = bg.gradeGrain ?? 0;
+  if (!amount && !vignette && !grain) return null;
+  return (
+    <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+      {amount > 0 && (
+        <div style={{ position: "absolute", inset: 0, background: bg.gradeTint ?? "#d97757", opacity: amount / 100, mixBlendMode: (bg.gradeBlend ?? "soft-light") as CSSProperties["mixBlendMode"] }} />
+      )}
+      {vignette > 0 && <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at center, transparent 55%, #000 135%)", opacity: vignette / 100 }} />}
+      {grain > 0 && <div style={{ position: "absolute", inset: 0, backgroundImage: `url("${GRAIN_URL}")`, opacity: grain / 100, mixBlendMode: "overlay" }} />}
+    </div>
+  );
 }
 
 /** Solid-outline filters for every line-glow image layer. Lives inside the captured node so export keeps them. */
@@ -58,11 +90,13 @@ type Props = {
   exporting: boolean;
   cropMode: CropMode;
   setCropMode: (m: CropMode) => void;
+  drawMode: boolean;
+  setDrawMode: (v: boolean) => void;
   canvasRef: RefObject<HTMLDivElement | null>;
   dispatch: Dispatch<Action>;
 };
 
-export function ThumbCanvas({ doc, scale, selectedId, exporting, cropMode, setCropMode, canvasRef, dispatch }: Props) {
+export function ThumbCanvas({ doc, scale, selectedId, exporting, cropMode, setCropMode, drawMode, setDrawMode, canvasRef, dispatch }: Props) {
   const bg = doc.background;
   const background =
     bg.mode === "image" && bg.image
@@ -144,6 +178,50 @@ export function ThumbCanvas({ doc, scale, selectedId, exporting, cropMode, setCr
           </div>
         );
       })}
+
+      <GlobalGrade bg={bg} />
+
+      {drawMode && (
+        <DrawOverlay
+          scale={scale}
+          canvasRef={canvasRef}
+          onStroke={(points) => { if (points.length >= 2) dispatch({ type: "addLayer", layer: newDrawLayer(points) }); setDrawMode(false); }}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Full-canvas capture surface shown while the draw tool is active: collects pointer
+ *  positions (converted to 1280×720 space), previews a live smoothed stroke, and on
+ *  release hands the raw points back to become a DrawLayer. One press = one stroke. */
+function DrawOverlay({ scale, canvasRef, onStroke }: { scale: number; canvasRef: RefObject<HTMLDivElement | null>; onStroke: (points: Pt[]) => void }) {
+  const [pts, setPts] = useState<Pt[]>([]);
+  function start(e: ReactPointerEvent) {
+    e.stopPropagation();
+    e.preventDefault();
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const toCanvas = (cx: number, cy: number): Pt => ({ x: (cx - rect.left) / scale, y: (cy - rect.top) / scale });
+    const buf: Pt[] = [toCanvas(e.clientX, e.clientY)];
+    setPts([...buf]);
+    const move = (ev: PointerEvent) => { buf.push(toCanvas(ev.clientX, ev.clientY)); setPts([...buf]); };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      onStroke(buf);
+      setPts([]);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  }
+  return (
+    <div onPointerDown={start} style={{ position: "absolute", inset: 0, cursor: "crosshair", touchAction: "none", zIndex: 50 }}>
+      {pts.length > 1 && (
+        <svg width={CANVAS_W} height={CANVAS_H} style={{ position: "absolute", inset: 0, pointerEvents: "none", overflow: "visible" }}>
+          <path d={smoothPath(pts, 40)} fill="none" stroke="#ff3b3b" strokeWidth={8} strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      )}
     </div>
   );
 }
@@ -196,7 +274,7 @@ function SelectionFrame({
     // Inspector slider's range — canvas and slider then never disagree.
     let fMin = 0.05, fMax = 40;
     if (base.type === "image") { fMin = 0.2 / base.scale; fMax = 3 / base.scale; }
-    else if (base.type === "shape" || base.type === "effect") { fMin = Math.max(20 / base.w, 6 / base.h); fMax = Math.min(1280 / base.w, 720 / base.h); }
+    else if (base.type === "shape" || base.type === "effect" || base.type === "draw") { fMin = Math.max(20 / base.w, 6 / base.h); fMax = Math.min(1280 / base.w, 720 / base.h); }
     else { const lo = base.type === "emoji" ? 40 : 24, hi = base.type === "emoji" ? 360 : 220; fMin = lo / base.size; fMax = hi / base.size; }
     drag((ev) => {
       const p = toCanvas(s.rect, ev.clientX, ev.clientY);
@@ -205,7 +283,7 @@ function SelectionFrame({
       const pos = { x: s.cx - nw / 2, y: s.cy - nh / 2 };
       let patch: LayerPatch;
       if (base.type === "image") patch = { ...pos, scale: base.scale * f };
-      else if (base.type === "shape" || base.type === "effect") patch = { ...pos, w: base.w * f, h: base.h * f };
+      else if (base.type === "shape" || base.type === "effect" || base.type === "draw") patch = { ...pos, w: base.w * f, h: base.h * f };
       else patch = { ...pos, size: Math.round((base as TextLayer).size * f) };
       dispatch({ type: "updateLayer", id: layer.id, patch });
     });
@@ -397,7 +475,51 @@ function LayerContent({ layer, cropMode }: { layer: Layer; cropMode: CropMode })
           <EffectBackground effect={layer.effect} />
         </div>
       );
+
+    case "draw":
+      return <DrawContent layer={layer} />;
   }
+}
+
+/** End-cap marker. `markerUnits=strokeWidth` makes caps scale with the stroke; the
+ *  viewBox keeps the shape independent of that scale. `auto-start-reverse` flips the
+ *  start cap so it points back down the line. */
+function capMarker(cap: DrawCap, id: string, color: string, isStart: boolean) {
+  if (cap === "none") return null;
+  const common = { id, markerUnits: "strokeWidth" as const, viewBox: "0 0 10 10", refX: 5, refY: 5, orient: isStart ? "auto-start-reverse" : "auto" };
+  if (cap === "arrow") return <marker {...common} markerWidth={4} markerHeight={4} refX={8.5}><path d="M0,1 L9,5 L0,9 L2.5,5 Z" fill={color} /></marker>;
+  if (cap === "dot") return <marker {...common} markerWidth={3} markerHeight={3}><circle cx={5} cy={5} r={4.2} fill={color} /></marker>;
+  return <marker {...common} markerWidth={3} markerHeight={3}><path d="M4,0 L6,0 L6,10 L4,10 Z" fill={color} /></marker>; // tee
+}
+
+function DrawContent({ layer }: { layer: DrawLayer }) {
+  const t = layer.thickness;
+  const dash = layer.lineStyle === "dashed" ? `${t * 2.5} ${t * 1.8}` : layer.lineStyle === "dotted" ? `0 ${t * 1.8}` : undefined;
+  return (
+    <svg
+      width={layer.w}
+      height={layer.h}
+      viewBox={`0 0 ${layer.vw} ${layer.vh}`}
+      preserveAspectRatio="none"
+      style={{ display: "block", overflow: "visible" }}
+    >
+      <defs>
+        {capMarker(layer.startCap, `cap-s-${layer.id}`, layer.color, true)}
+        {capMarker(layer.endCap, `cap-e-${layer.id}`, layer.color, false)}
+      </defs>
+      <path
+        d={smoothPath(layer.points, layer.smoothing)}
+        fill="none"
+        stroke={layer.color}
+        strokeWidth={t}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeDasharray={dash}
+        markerStart={layer.startCap !== "none" ? `url(#cap-s-${layer.id})` : undefined}
+        markerEnd={layer.endCap !== "none" ? `url(#cap-e-${layer.id})` : undefined}
+      />
+    </svg>
+  );
 }
 
 /** Text layer, including its optional React Bits effect (gradient / shiny / glitch). */
@@ -515,7 +637,7 @@ function ImageContent({ layer, cropMode }: { layer: ImageLayer; cropMode: CropMo
         src={layer.src}
         draggable={false}
         onLoad={(e) => grab(e.currentTarget)}
-        style={{ display: "block", width: Wf, maxWidth: "none", height: "auto", borderRadius: layer.radius, transform: flip, border: ring, boxSizing: "border-box", filter: glowFilter(layer) }}
+        style={{ display: "block", width: Wf, maxWidth: "none", height: "auto", borderRadius: layer.radius, transform: flip, border: ring, boxSizing: "border-box", filter: imageFilter(layer) }}
       />
     );
   }
@@ -532,7 +654,7 @@ function ImageContent({ layer, cropMode }: { layer: ImageLayer; cropMode: CropMo
   // maxWidth:none defeats Tailwind preflight's `img { max-width: 100% }`, which would
   // otherwise clamp the image to the (cropped, smaller) container and wreck the offsets.
   const fullImg: CSSProperties = { display: "block", position: "absolute", left: -Wf * c.l, top: -Hf * c.t, width: Wf, maxWidth: "none", height: "auto" };
-  const container: CSSProperties = { position: "relative", width: keptW, height: keptH, borderRadius: layer.radius, border: ring, boxSizing: "border-box", transform: flip, filter: glowFilter(layer) };
+  const container: CSSProperties = { position: "relative", width: keptW, height: keptH, borderRadius: layer.radius, border: ring, boxSizing: "border-box", transform: flip, filter: imageFilter(layer) };
 
   if (!cropMode) {
     return (

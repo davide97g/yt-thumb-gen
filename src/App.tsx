@@ -30,6 +30,7 @@ export default function App() {
   const [message, setMessage] = useState<string | null>(null);
   const [fileName, setFileName] = useState("thumb.png");
   const [cropMode, setCropMode] = useState<CropMode>(null);
+  const [drawMode, setDrawMode] = useState(false);
 
   // Live project identity for the working canvas: a name, its archive id (null
   // until first save), and when it was last saved. `savedDocRef` holds the doc as
@@ -126,7 +127,7 @@ export default function App() {
       const typing = el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
       if (typing) return; // let inputs keep native undo / copy / paste
 
-      if (e.key === "Escape") { setCropMode(null); return; } // exit crop mode
+      if (e.key === "Escape") { setCropMode(null); setDrawMode(false); return; } // exit crop / draw mode
 
       const mod = e.metaKey || e.ctrlKey;
       if (mod) {
@@ -287,6 +288,8 @@ export default function App() {
               exporting={exporting}
               cropMode={cropMode}
               setCropMode={setCropMode}
+              drawMode={drawMode}
+              setDrawMode={setDrawMode}
               canvasRef={canvasRef}
               dispatch={dispatch}
             />
@@ -298,7 +301,7 @@ export default function App() {
 
           {!chromeHidden && (
             <div className="pointer-events-none absolute bottom-5 left-1/2 -translate-x-1/2">
-              <Toolbar dispatch={dispatch} onError={setMessage} />
+              <Toolbar dispatch={dispatch} onError={setMessage} drawMode={drawMode} setDrawMode={setDrawMode} />
             </div>
           )}
         </main>

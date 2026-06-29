@@ -13,7 +13,10 @@ import {
   newEmojiLayer,
   newShapeLayer,
   newEffectLayer,
+  newDrawLayer,
   type Action,
+  type DrawCap,
+  type DrawLayer,
   type Background,
   type BgEffect,
   type EffectLayer,
@@ -76,6 +79,7 @@ export function Inspector({ selected, dispatch, onError, cropMode, setCropMode }
       {selected.type === "emoji" && <EmojiProps layer={selected} set={set} />}
       {selected.type === "shape" && <ShapeProps layer={selected} set={set} />}
       {selected.type === "effect" && <EffectProps layer={selected} set={set} />}
+      {selected.type === "draw" && <DrawProps layer={selected} set={set} />}
     </Section>
   );
 }
@@ -277,6 +281,13 @@ function ImageProps({ layer, set, onError, cropMode, setCropMode }: { layer: Ima
       <SliderRow label="Scala" min={0.2} max={3} step={0.05} value={layer.scale} defaultValue={D.scale} display={layer.scale.toFixed(2)} onChange={(scale) => set({ scale })} />
       <SliderRow label="Rotazione" min={-180} max={180} value={layer.rotation} defaultValue={D.rotation} display={`${layer.rotation}°`} onChange={(rotation) => set({ rotation })} />
       <SliderRow label="Trasparenza" min={0} max={100} value={layer.opacity ?? 100} defaultValue={D.opacity} display={`${layer.opacity ?? 100}%`} onChange={(opacity) => set({ opacity })} />
+      {!layer.brand && layer.src && (
+        <>
+          <SliderRow label="Luminosità" min={0} max={200} value={layer.brightness ?? 100} defaultValue={100} display={`${layer.brightness ?? 100}%`} onChange={(brightness) => set({ brightness })} />
+          <SliderRow label="Contrasto" min={0} max={200} value={layer.contrast ?? 100} defaultValue={100} display={`${layer.contrast ?? 100}%`} onChange={(contrast) => set({ contrast })} />
+          <SliderRow label="Saturazione" min={0} max={200} value={layer.saturation ?? 100} defaultValue={100} display={`${layer.saturation ?? 100}%`} onChange={(saturation) => set({ saturation })} />
+        </>
+      )}
       {!layer.brand && (
         <>
           <SliderRow label="Arrotonda" min={0} max={220} value={layer.radius} defaultValue={D.radius} onChange={(radius) => set({ radius })} />
@@ -339,6 +350,33 @@ function ShapeProps({ layer, set }: { layer: ShapeLayer; set: Setter }) {
           <ColorRow label="Colore traccia" value={layer.trackColor} defaultValue={D.trackColor} onChange={(trackColor) => set({ trackColor })} />
         </>
       )}
+    </>
+  );
+}
+
+const LINE_STYLE_OPTIONS: { value: DrawLayer["lineStyle"]; label: string }[] = [
+  { value: "solid", label: "Continua" },
+  { value: "dashed", label: "Tratteggiata" },
+  { value: "dotted", label: "Punteggiata" },
+];
+const DRAW_CAP_OPTIONS: { value: DrawCap; label: string }[] = [
+  { value: "none", label: "Nessuna" },
+  { value: "arrow", label: "Freccia" },
+  { value: "dot", label: "Punto" },
+  { value: "tee", label: "Barra" },
+];
+
+function DrawProps({ layer, set }: { layer: DrawLayer; set: Setter }) {
+  const D = newDrawLayer([]); // style defaults; geometry args irrelevant for the reset targets
+  return (
+    <>
+      <ColorRow label="Colore" value={layer.color} defaultValue={D.color} onChange={(color) => set({ color })} />
+      <SliderRow label="Spessore" min={1} max={60} value={layer.thickness} defaultValue={D.thickness} onChange={(thickness) => set({ thickness })} />
+      <SelectField label="Stile linea" value={layer.lineStyle} options={LINE_STYLE_OPTIONS} onChange={(lineStyle) => set({ lineStyle })} />
+      <SliderRow label="Smussatura" min={0} max={100} value={layer.smoothing} defaultValue={D.smoothing} display={`${layer.smoothing}%`} onChange={(smoothing) => set({ smoothing })} />
+      <SelectField label="Punta iniziale" value={layer.startCap} options={DRAW_CAP_OPTIONS} onChange={(startCap) => set({ startCap })} />
+      <SelectField label="Punta finale" value={layer.endCap} options={DRAW_CAP_OPTIONS} onChange={(endCap) => set({ endCap })} />
+      <SliderRow label="Rotazione" min={-180} max={180} value={layer.rotation} defaultValue={D.rotation} display={`${layer.rotation}°`} onChange={(rotation) => set({ rotation })} />
     </>
   );
 }
@@ -496,6 +534,7 @@ export function BackgroundInspector({
   }
 
   return (
+    <>
     <Section title="Sfondo">
       <UploadButton label="Carica sfondo…" icon={<ImagePlus />} className="w-full" onFile={(f) => void onUploadBg(f)} />
       {background.mode === "image" && background.image ? (
@@ -529,6 +568,29 @@ export function BackgroundInspector({
           )}
         </>
       )}
+    </Section>
+    <GradeSection background={background} set={set} />
+    </>
+  );
+}
+
+const GRADE_BLEND_OPTIONS: { value: NonNullable<Background["gradeBlend"]>; label: string }[] = [
+  { value: "soft-light", label: "Soft light" },
+  { value: "overlay", label: "Overlay" },
+  { value: "multiply", label: "Multiply" },
+  { value: "screen", label: "Screen" },
+  { value: "color", label: "Colore" },
+];
+
+/** Global colour grade over the whole composite (sits on top of every layer). */
+function GradeSection({ background, set }: { background: Background; set: (p: Partial<Background>) => void }) {
+  return (
+    <Section title="Coesione (tutta l'immagine)">
+      <ColorRow label="Tinta" value={background.gradeTint ?? "#d97757"} defaultValue="#d97757" onChange={(gradeTint) => set({ gradeTint })} />
+      <SliderRow label="Intensità tinta" min={0} max={100} value={background.gradeAmount ?? 0} defaultValue={0} display={`${background.gradeAmount ?? 0}%`} onChange={(gradeAmount) => set({ gradeAmount })} />
+      <SelectField label="Fusione" value={background.gradeBlend ?? "soft-light"} options={GRADE_BLEND_OPTIONS} onChange={(gradeBlend) => set({ gradeBlend })} />
+      <SliderRow label="Vignetta" min={0} max={100} value={background.gradeVignette ?? 0} defaultValue={0} display={`${background.gradeVignette ?? 0}%`} onChange={(gradeVignette) => set({ gradeVignette })} />
+      <SliderRow label="Grana" min={0} max={100} value={background.gradeGrain ?? 0} defaultValue={0} display={`${background.gradeGrain ?? 0}%`} onChange={(gradeGrain) => set({ gradeGrain })} />
     </Section>
   );
 }

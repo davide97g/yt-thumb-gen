@@ -111,7 +111,7 @@ export const FONT_LABELS: Record<FontKey, string> = {
   lobster: "Lobster (script)",
 };
 
-export type LayerType = "text" | "image" | "emoji" | "shape" | "effect";
+export type LayerType = "text" | "image" | "emoji" | "shape" | "effect" | "draw";
 
 /** Fields shared by every layer. */
 type LayerBase = {
@@ -173,6 +173,10 @@ export type ImageLayer = LayerBase & {
   glowStyle: "glow" | "line"; // soft glow vs. solid sticker outline
   glowColor: string;
   glowSize: number;
+  // Light/colour tweaks via CSS filter, in % (100 = neutral). Optional → old docs read as 100.
+  brightness?: number;
+  contrast?: number;
+  saturation?: number;
   // Non-destructive crop. `src` is never altered — these just hide parts of it.
   crop?: { l: number; t: number; r: number; b: number }; // edge insets, fractions 0–1 of the full image; absent = uncropped
   mask?: { points: { x: number; y: number }[] }; // lasso polygon in full-image fractions; absent = no lasso. `crop` holds its bbox.
@@ -206,7 +210,26 @@ export type EffectLayer = LayerBase & {
   effect: BgEffect; // preset + params — same shape as a Background effect
 };
 
-export type Layer = TextLayer | ImageLayer | EmojiLayer | ShapeLayer | EffectLayer;
+export type DrawCap = "none" | "arrow" | "dot" | "tee";
+
+/** A freehand stroke. Points live in a fixed viewBox (vw×vh, bbox-relative); the SVG
+ *  scales them into the current w×h, so resize is just a w/h change like a shape. */
+export type DrawLayer = LayerBase & {
+  type: "draw";
+  points: { x: number; y: number }[]; // viewBox units, bbox-relative
+  vw: number; // viewBox width (capture bbox + padding) — constant
+  vh: number; // viewBox height — constant
+  w: number; // rendered width (resizable)
+  h: number; // rendered height (resizable)
+  color: string;
+  thickness: number; // stroke width in viewBox units
+  lineStyle: "solid" | "dashed" | "dotted";
+  smoothing: number; // 0–100: how aggressively the captured polyline is simplified before splining
+  startCap: DrawCap;
+  endCap: DrawCap;
+};
+
+export type Layer = TextLayer | ImageLayer | EmojiLayer | ShapeLayer | EffectLayer | DrawLayer;
 
 /** A partial patch for any single layer type (used by inspectors → updateLayer). */
 export type LayerPatch =
@@ -214,7 +237,8 @@ export type LayerPatch =
   | Partial<ImageLayer>
   | Partial<EmojiLayer>
   | Partial<ShapeLayer>
-  | Partial<EffectLayer>;
+  | Partial<EffectLayer>
+  | Partial<DrawLayer>;
 
 /**
  * Animated background presets ported from React Bits. `grainient`/`aurora` are WebGL
@@ -259,6 +283,12 @@ export type Background = {
   image: string | null; // dataURL for a custom background image
   overlay: number; // 0–100 darkness of the scrim over the background
   effect?: BgEffect; // present when mode === "effect"
+  // Global colour grade painted ON TOP of every layer, to make the whole composite cohesive. All optional.
+  gradeTint?: string; // tint colour
+  gradeAmount?: number; // 0–100 tint strength
+  gradeBlend?: "soft-light" | "overlay" | "multiply" | "screen" | "color";
+  gradeVignette?: number; // 0–100 darkened edges
+  gradeGrain?: number; // 0–100 film grain
 };
 
 /** Fresh, sane defaults for an effect preset — the React Bits component defaults. */
@@ -411,6 +441,36 @@ export function newShapeLayer(kind: ShapeLayer["kind"]): ShapeLayer {
   if (kind === "bar") return { ...base, name: "Barra progresso", kind, fill: "#ff0000", x: 0, y: CANVAS_H - 14, w: CANVAS_W, h: 14 };
   if (kind === "pill") return { ...base, name: "Pillola", kind, fill: "#e8633a", x: 120, y: 120, w: 280, h: 70, radius: 999 };
   return { ...base, name: "Rettangolo", kind, fill: "#e8633a", x: 120, y: 120, w: 320, h: 200 };
+}
+
+const DRAW_PAD = 16; // viewBox margin around the stroke so thick strokes / caps aren't clipped
+
+/** Build a freehand layer from raw points captured in 1280×720 canvas space. */
+export function newDrawLayer(points: { x: number; y: number }[]): DrawLayer {
+  const pts = points.length ? points : [{ x: 0, y: 0 }, { x: 1, y: 1 }]; // guard: factory used for inspector defaults too
+  const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
+  const minX = Math.min(...xs), minY = Math.min(...ys), maxX = Math.max(...xs), maxY = Math.max(...ys);
+  const vw = maxX - minX + DRAW_PAD * 2, vh = maxY - minY + DRAW_PAD * 2;
+  return {
+    id: uid(),
+    type: "draw",
+    name: "Disegno",
+    x: minX - DRAW_PAD,
+    y: minY - DRAW_PAD,
+    rotation: 0,
+    visible: true,
+    points: pts.map((p) => ({ x: p.x - minX + DRAW_PAD, y: p.y - minY + DRAW_PAD })),
+    vw,
+    vh,
+    w: vw,
+    h: vh,
+    color: "#ff3b3b",
+    thickness: 8,
+    lineStyle: "solid",
+    smoothing: 40,
+    startCap: "none",
+    endCap: "arrow",
+  };
 }
 
 // ── Reducer ───────────────────────────────────────────────────────────────────

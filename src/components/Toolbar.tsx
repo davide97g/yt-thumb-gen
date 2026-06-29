@@ -1,5 +1,6 @@
 import { useState, type Dispatch, type ReactNode } from "react";
-import { Camera, ImagePlus, Minus, Smile, Sparkles, Square, Type } from "lucide-react";
+import { Camera, ImagePlus, Minus, Pencil, Smile, Sparkles, Square, Type } from "lucide-react";
+import { cn } from "@/lib/utils";
 import {
   newBrandLayer,
   newEffectLayer,
@@ -18,7 +19,7 @@ const MAX_UPLOAD = 8 * 1024 * 1024;
 
 /** Floating, bottom-centred creation dock (Excalidraw-style): every "add a layer"
     action lives here so the side panels stay focused on editing what exists. */
-export function Toolbar({ dispatch, onError }: { dispatch: Dispatch<Action>; onError: (msg: string) => void }) {
+export function Toolbar({ dispatch, onError, drawMode, setDrawMode }: { dispatch: Dispatch<Action>; onError: (msg: string) => void; drawMode: boolean; setDrawMode: (v: boolean) => void }) {
   const [showCam, setShowCam] = useState(false);
   const add = (layer: Layer) => dispatch({ type: "addLayer", layer });
 
@@ -47,6 +48,9 @@ export function Toolbar({ dispatch, onError }: { dispatch: Dispatch<Action>; onE
         </DockButton>
         <DockButton label="Emoji" onClick={() => add(newEmojiLayer())}>
           <Smile />
+        </DockButton>
+        <DockButton label={drawMode ? "Disegno (attivo)" : "Disegno"} active={drawMode} onClick={() => setDrawMode(!drawMode)}>
+          <Pencil />
         </DockButton>
 
         <span className="dock-sep" />
@@ -78,9 +82,9 @@ export function Toolbar({ dispatch, onError }: { dispatch: Dispatch<Action>; onE
   );
 }
 
-function DockButton({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
+function DockButton({ label, onClick, children, active }: { label: string; onClick: () => void; children: ReactNode; active?: boolean }) {
   return (
-    <button type="button" className="dock-btn" onClick={onClick} aria-label={label}>
+    <button type="button" className={cn("dock-btn", active && "bg-primary/20 text-primary ring-1 ring-primary/40")} onClick={onClick} aria-label={label} aria-pressed={active}>
       {children}
       <span className="dock-tip">{label}</span>
     </button>
