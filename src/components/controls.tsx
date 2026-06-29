@@ -1,5 +1,5 @@
 import type { CSSProperties, ReactNode } from "react";
-import { Pipette } from "lucide-react";
+import { Pipette, RotateCcw } from "lucide-react";
 import { Slider as SliderBase } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -69,22 +69,42 @@ export function Field({ label, children }: { label: string; children: ReactNode 
   );
 }
 
-export function SwitchRow({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
+/** Small "reset to default" button — rendered only when the current value differs from its default. */
+function ResetButton({ onReset }: { onReset: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onReset}
+      title="Ripristina valore predefinito"
+      className={cn(buttonVariants({ variant: "ghost", size: "icon-sm" }), "size-6 text-muted-foreground")}
+    >
+      <RotateCcw className="size-3" />
+    </button>
+  );
+}
+
+export function SwitchRow({ label, checked, onChange, defaultValue }: { label: string; checked: boolean; onChange: (v: boolean) => void; defaultValue?: boolean }) {
   return (
     <Row label={label}>
-      <Switch checked={checked} onCheckedChange={onChange} />
+      <div className="flex items-center gap-1.5">
+        {defaultValue !== undefined && checked !== defaultValue && <ResetButton onReset={() => onChange(defaultValue)} />}
+        <Switch checked={checked} onCheckedChange={onChange} />
+      </div>
     </Row>
   );
 }
 
 export function SliderRow({
-  label, min, max, value, onChange, step = 1, display,
-}: { label: string; min: number; max: number; value: number; onChange: (v: number) => void; step?: number; display?: string }) {
+  label, min, max, value, onChange, step = 1, display, defaultValue,
+}: { label: string; min: number; max: number; value: number; onChange: (v: number) => void; step?: number; display?: string; defaultValue?: number }) {
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between">
         <span className="text-sm text-muted-foreground">{label}</span>
-        <span className="text-xs tabular-nums text-foreground/70">{display ?? value}</span>
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs tabular-nums text-foreground/70">{display ?? value}</span>
+          {defaultValue !== undefined && value !== defaultValue && <ResetButton onReset={() => onChange(defaultValue)} />}
+        </div>
       </div>
       <SliderBase min={min} max={max} step={step} value={[value]} onValueChange={(v) => onChange(v[0])} />
     </div>
@@ -102,11 +122,12 @@ async function eyedrop(onChange: (v: string) => void) {
   }
 }
 
-export function ColorRow({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+export function ColorRow({ label, value, onChange, defaultValue }: { label: string; value: string; onChange: (v: string) => void; defaultValue?: string }) {
   const hasEyeDropper = typeof window !== "undefined" && "EyeDropper" in window;
   return (
     <Row label={label}>
       <div className="flex items-center gap-1.5">
+        {defaultValue !== undefined && value.toLowerCase() !== defaultValue.toLowerCase() && <ResetButton onReset={() => onChange(defaultValue)} />}
         <input type="color" value={value} onChange={(e) => onChange(e.target.value)} className="h-7 w-10" />
         {hasEyeDropper && (
           <button

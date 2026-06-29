@@ -7,6 +7,12 @@ import {
   FONTS,
   defaultEffect,
   defaultFx,
+  newTextLayer,
+  newImageLayer,
+  newBrandLayer,
+  newEmojiLayer,
+  newShapeLayer,
+  newEffectLayer,
   type Action,
   type Background,
   type BgEffect,
@@ -77,33 +83,34 @@ export function Inspector({ selected, dispatch, onError, cropMode, setCropMode }
 type Setter = (patch: LayerPatch) => void;
 
 function TextProps({ layer, set }: { layer: TextLayer; set: Setter }) {
+  const D = newTextLayer(); // factory defaults = the "reset" targets
   return (
     <>
       <Field label="Testo">
         <Textarea rows={2} value={layer.text} onChange={(e) => set({ text: e.target.value })} />
       </Field>
       <SelectField label="Font" value={layer.font} options={FONT_OPTIONS} onChange={(font) => set({ font })} />
-      <SliderRow label="Dimensione" min={24} max={220} value={layer.size} onChange={(size) => set({ size })} />
-      <ColorRow label="Colore" value={layer.color} onChange={(color) => set({ color })} />
+      <SliderRow label="Dimensione" min={24} max={220} value={layer.size} defaultValue={D.size} onChange={(size) => set({ size })} />
+      <ColorRow label="Colore" value={layer.color} defaultValue={D.color} onChange={(color) => set({ color })} />
       <SelectField label="Allineamento" value={layer.align} options={ALIGN_OPTIONS} onChange={(align) => set({ align })} />
-      <SliderRow label="Interlinea" min={0.8} max={2} step={0.05} value={layer.lineHeight} display={layer.lineHeight.toFixed(2)} onChange={(lineHeight) => set({ lineHeight })} />
-      <SliderRow label="Rotazione" min={-180} max={180} value={layer.rotation} display={`${layer.rotation}°`} onChange={(rotation) => set({ rotation })} />
-      <SliderRow label="Trasparenza" min={0} max={100} value={layer.opacity ?? 100} display={`${layer.opacity ?? 100}%`} onChange={(opacity) => set({ opacity })} />
-      <SwitchRow label="Contorno" checked={layer.stroke} onChange={(stroke) => set({ stroke })} />
+      <SliderRow label="Interlinea" min={0.8} max={2} step={0.05} value={layer.lineHeight} defaultValue={D.lineHeight} display={layer.lineHeight.toFixed(2)} onChange={(lineHeight) => set({ lineHeight })} />
+      <SliderRow label="Rotazione" min={-180} max={180} value={layer.rotation} defaultValue={D.rotation} display={`${layer.rotation}°`} onChange={(rotation) => set({ rotation })} />
+      <SliderRow label="Trasparenza" min={0} max={100} value={layer.opacity ?? 100} defaultValue={D.opacity} display={`${layer.opacity ?? 100}%`} onChange={(opacity) => set({ opacity })} />
+      <SwitchRow label="Contorno" checked={layer.stroke} defaultValue={D.stroke} onChange={(stroke) => set({ stroke })} />
       {layer.stroke && (
         <>
-          <ColorRow label="Colore contorno" value={layer.strokeColor ?? "#000000"} onChange={(strokeColor) => set({ strokeColor })} />
-          <SliderRow label="Spessore contorno" min={1} max={40} value={layer.strokeWidth ?? 5} onChange={(strokeWidth) => set({ strokeWidth })} />
+          <ColorRow label="Colore contorno" value={layer.strokeColor ?? "#000000"} defaultValue={D.strokeColor} onChange={(strokeColor) => set({ strokeColor })} />
+          <SliderRow label="Spessore contorno" min={1} max={40} value={layer.strokeWidth ?? 5} defaultValue={D.strokeWidth} onChange={(strokeWidth) => set({ strokeWidth })} />
         </>
       )}
-      <SwitchRow label="Ombra" checked={layer.shadow} onChange={(shadow) => set({ shadow })} />
-      <SwitchRow label="Sfondo pillola" checked={layer.bg.enabled} onChange={(enabled) => set({ bg: { ...layer.bg, enabled } })} />
+      <SwitchRow label="Ombra" checked={layer.shadow} defaultValue={D.shadow} onChange={(shadow) => set({ shadow })} />
+      <SwitchRow label="Sfondo pillola" checked={layer.bg.enabled} defaultValue={D.bg.enabled} onChange={(enabled) => set({ bg: { ...layer.bg, enabled } })} />
       {layer.bg.enabled && (
         <>
-          <ColorRow label="Colore pillola" value={layer.bg.color} onChange={(color) => set({ bg: { ...layer.bg, color } })} />
-          <SliderRow label="Spazio oriz." min={0} max={80} value={layer.bg.padX} onChange={(padX) => set({ bg: { ...layer.bg, padX } })} />
-          <SliderRow label="Spazio vert." min={0} max={60} value={layer.bg.padY} onChange={(padY) => set({ bg: { ...layer.bg, padY } })} />
-          <SliderRow label="Arrotonda" min={0} max={999} value={layer.bg.radius} onChange={(radius) => set({ bg: { ...layer.bg, radius } })} />
+          <ColorRow label="Colore pillola" value={layer.bg.color} defaultValue={D.bg.color} onChange={(color) => set({ bg: { ...layer.bg, color } })} />
+          <SliderRow label="Spazio oriz." min={0} max={80} value={layer.bg.padX} defaultValue={D.bg.padX} onChange={(padX) => set({ bg: { ...layer.bg, padX } })} />
+          <SliderRow label="Spazio vert." min={0} max={60} value={layer.bg.padY} defaultValue={D.bg.padY} onChange={(padY) => set({ bg: { ...layer.bg, padY } })} />
+          <SliderRow label="Arrotonda" min={0} max={999} value={layer.bg.radius} defaultValue={D.bg.radius} onChange={(radius) => set({ bg: { ...layer.bg, radius } })} />
         </>
       )}
       <SelectField
@@ -139,6 +146,7 @@ function TextFxControls({ fx, set }: { fx: TextFx; set: Setter }) {
   const upd = (patch: Record<string, unknown>) => set({ fx: { ...fx, ...patch } as TextFx });
   switch (fx.kind) {
     case "gradient": {
+      const D = defaultFx("gradient") as typeof fx;
       const setColor = (i: number, v: string) => {
         const colors = [...fx.colors] as [string, string, string];
         colors[i] = v;
@@ -146,33 +154,37 @@ function TextFxControls({ fx, set }: { fx: TextFx; set: Setter }) {
       };
       return (
         <>
-          <ColorRow label="Colore 1" value={fx.colors[0]} onChange={(v) => setColor(0, v)} />
-          <ColorRow label="Colore 2" value={fx.colors[1]} onChange={(v) => setColor(1, v)} />
-          <ColorRow label="Colore 3" value={fx.colors[2]} onChange={(v) => setColor(2, v)} />
+          <ColorRow label="Colore 1" value={fx.colors[0]} defaultValue={D.colors[0]} onChange={(v) => setColor(0, v)} />
+          <ColorRow label="Colore 2" value={fx.colors[1]} defaultValue={D.colors[1]} onChange={(v) => setColor(1, v)} />
+          <ColorRow label="Colore 3" value={fx.colors[2]} defaultValue={D.colors[2]} onChange={(v) => setColor(2, v)} />
           <SelectField label="Direzione" value={fx.direction} options={GRAD_DIR_OPTIONS} onChange={(direction) => upd({ direction })} />
-          <SliderRow label="Velocità" min={1} max={20} value={fx.speed} display={`${fx.speed}s`} onChange={(speed) => upd({ speed })} />
+          <SliderRow label="Velocità" min={1} max={20} value={fx.speed} defaultValue={D.speed} display={`${fx.speed}s`} onChange={(speed) => upd({ speed })} />
         </>
       );
     }
-    case "shiny":
+    case "shiny": {
+      const D = defaultFx("shiny") as typeof fx;
       return (
         <>
-          <ColorRow label="Colore" value={fx.color} onChange={(color) => upd({ color })} />
-          <ColorRow label="Riflesso" value={fx.shineColor} onChange={(shineColor) => upd({ shineColor })} />
-          <SliderRow label="Ampiezza" min={0} max={360} value={fx.spread} display={`${fx.spread}°`} onChange={(spread) => upd({ spread })} />
+          <ColorRow label="Colore" value={fx.color} defaultValue={D.color} onChange={(color) => upd({ color })} />
+          <ColorRow label="Riflesso" value={fx.shineColor} defaultValue={D.shineColor} onChange={(shineColor) => upd({ shineColor })} />
+          <SliderRow label="Ampiezza" min={0} max={360} value={fx.spread} defaultValue={D.spread} display={`${fx.spread}°`} onChange={(spread) => upd({ spread })} />
           <SelectField label="Direzione" value={fx.direction} options={SHINY_DIR_OPTIONS} onChange={(direction) => upd({ direction })} />
-          <SliderRow label="Velocità" min={0.5} max={8} step={0.5} value={fx.speed} display={`${fx.speed}s`} onChange={(speed) => upd({ speed })} />
+          <SliderRow label="Velocità" min={0.5} max={8} step={0.5} value={fx.speed} defaultValue={D.speed} display={`${fx.speed}s`} onChange={(speed) => upd({ speed })} />
         </>
       );
-    case "glitch":
+    }
+    case "glitch": {
+      const D = defaultFx("glitch") as typeof fx;
       return (
         <>
-          <ColorRow label="Colore 1" value={fx.color1} onChange={(color1) => upd({ color1 })} />
-          <ColorRow label="Colore 2" value={fx.color2} onChange={(color2) => upd({ color2 })} />
-          <SliderRow label="Velocità" min={0.2} max={5} step={0.1} value={fx.speed} display={`${fx.speed.toFixed(1)}×`} onChange={(speed) => upd({ speed })} />
-          <SwitchRow label="Ombre" checked={fx.enableShadows} onChange={(enableShadows) => upd({ enableShadows })} />
+          <ColorRow label="Colore 1" value={fx.color1} defaultValue={D.color1} onChange={(color1) => upd({ color1 })} />
+          <ColorRow label="Colore 2" value={fx.color2} defaultValue={D.color2} onChange={(color2) => upd({ color2 })} />
+          <SliderRow label="Velocità" min={0.2} max={5} step={0.1} value={fx.speed} defaultValue={D.speed} display={`${fx.speed.toFixed(1)}×`} onChange={(speed) => upd({ speed })} />
+          <SwitchRow label="Ombre" checked={fx.enableShadows} defaultValue={D.enableShadows} onChange={(enableShadows) => upd({ enableShadows })} />
         </>
       );
+    }
     default:
       return null;
   }
@@ -223,10 +235,11 @@ function ImageProps({ layer, set, onError, cropMode, setCropMode }: { layer: Ima
     }
   }
 
+  const D = layer.brand ? newBrandLayer(layer.brand) : newImageLayer();
   return (
     <>
       {layer.brand ? (
-        <ColorRow label="Colore mark" value={layer.brandColor} onChange={(brandColor) => set({ brandColor })} />
+        <ColorRow label="Colore mark" value={layer.brandColor} defaultValue={D.brandColor} onChange={(brandColor) => set({ brandColor })} />
       ) : (
         <div className="grid grid-cols-2 gap-2">
           <UploadButton label={layer.src ? "Sostituisci" : "Da file"} icon={<ImagePlus />} onFile={(f) => void onUpload(f)} />
@@ -261,20 +274,20 @@ function ImageProps({ layer, set, onError, cropMode, setCropMode }: { layer: Ima
           )}
         </div>
       )}
-      <SliderRow label="Scala" min={0.2} max={3} step={0.05} value={layer.scale} display={layer.scale.toFixed(2)} onChange={(scale) => set({ scale })} />
-      <SliderRow label="Rotazione" min={-180} max={180} value={layer.rotation} display={`${layer.rotation}°`} onChange={(rotation) => set({ rotation })} />
-      <SliderRow label="Trasparenza" min={0} max={100} value={layer.opacity ?? 100} display={`${layer.opacity ?? 100}%`} onChange={(opacity) => set({ opacity })} />
+      <SliderRow label="Scala" min={0.2} max={3} step={0.05} value={layer.scale} defaultValue={D.scale} display={layer.scale.toFixed(2)} onChange={(scale) => set({ scale })} />
+      <SliderRow label="Rotazione" min={-180} max={180} value={layer.rotation} defaultValue={D.rotation} display={`${layer.rotation}°`} onChange={(rotation) => set({ rotation })} />
+      <SliderRow label="Trasparenza" min={0} max={100} value={layer.opacity ?? 100} defaultValue={D.opacity} display={`${layer.opacity ?? 100}%`} onChange={(opacity) => set({ opacity })} />
       {!layer.brand && (
         <>
-          <SliderRow label="Arrotonda" min={0} max={220} value={layer.radius} onChange={(radius) => set({ radius })} />
-          <SwitchRow label="Bordo" checked={layer.ring} onChange={(ring) => set({ ring })} />
-          {layer.ring && <ColorRow label="Colore bordo" value={layer.ringColor} onChange={(ringColor) => set({ ringColor })} />}
+          <SliderRow label="Arrotonda" min={0} max={220} value={layer.radius} defaultValue={D.radius} onChange={(radius) => set({ radius })} />
+          <SwitchRow label="Bordo" checked={layer.ring} defaultValue={D.ring} onChange={(ring) => set({ ring })} />
+          {layer.ring && <ColorRow label="Colore bordo" value={layer.ringColor} defaultValue={D.ringColor} onChange={(ringColor) => set({ ringColor })} />}
         </>
       )}
-      <SwitchRow label="Specchia" checked={layer.flip} onChange={(flip) => set({ flip })} />
+      <SwitchRow label="Specchia" checked={layer.flip} defaultValue={D.flip} onChange={(flip) => set({ flip })} />
       {!layer.brand && (
         <>
-          <SwitchRow label="Bagliore" checked={layer.glow} onChange={(glow) => set({ glow })} />
+          <SwitchRow label="Bagliore" checked={layer.glow} defaultValue={D.glow} onChange={(glow) => set({ glow })} />
           {layer.glow && (
             <>
               <SelectField
@@ -286,8 +299,8 @@ function ImageProps({ layer, set, onError, cropMode, setCropMode }: { layer: Ima
                 ]}
                 onChange={(glowStyle) => set({ glowStyle })}
               />
-              <ColorRow label="Colore bagliore" value={layer.glowColor} onChange={(glowColor) => set({ glowColor })} />
-              <SliderRow label={layer.glowStyle === "line" ? "Spessore" : "Intensità"} min={1} max={48} value={layer.glowSize} onChange={(glowSize) => set({ glowSize })} />
+              <ColorRow label="Colore bagliore" value={layer.glowColor} defaultValue={D.glowColor} onChange={(glowColor) => set({ glowColor })} />
+              <SliderRow label={layer.glowStyle === "line" ? "Spessore" : "Intensità"} min={1} max={48} value={layer.glowSize} defaultValue={D.glowSize} onChange={(glowSize) => set({ glowSize })} />
             </>
           )}
         </>
@@ -298,30 +311,32 @@ function ImageProps({ layer, set, onError, cropMode, setCropMode }: { layer: Ima
 }
 
 function EmojiProps({ layer, set }: { layer: EmojiLayer; set: Setter }) {
+  const D = newEmojiLayer();
   return (
     <>
       <Field label="Emoji">
         <Input value={layer.glyph} onChange={(e) => set({ glyph: e.target.value })} />
       </Field>
-      <SliderRow label="Dimensione" min={40} max={360} value={layer.size} onChange={(size) => set({ size })} />
-      <SliderRow label="Rotazione" min={-180} max={180} value={layer.rotation} display={`${layer.rotation}°`} onChange={(rotation) => set({ rotation })} />
+      <SliderRow label="Dimensione" min={40} max={360} value={layer.size} defaultValue={D.size} onChange={(size) => set({ size })} />
+      <SliderRow label="Rotazione" min={-180} max={180} value={layer.rotation} defaultValue={D.rotation} display={`${layer.rotation}°`} onChange={(rotation) => set({ rotation })} />
     </>
   );
 }
 
 function ShapeProps({ layer, set }: { layer: ShapeLayer; set: Setter }) {
+  const D = newShapeLayer(layer.kind);
   return (
     <>
       <SelectField label="Tipo" value={layer.kind} options={SHAPE_OPTIONS} onChange={(kind) => set({ kind })} />
-      <ColorRow label="Colore" value={layer.fill} onChange={(fill) => set({ fill })} />
-      <SliderRow label="Larghezza" min={20} max={1280} value={layer.w} onChange={(w) => set({ w })} />
-      <SliderRow label="Altezza" min={6} max={720} value={layer.h} onChange={(h) => set({ h })} />
-      {layer.kind === "rect" && <SliderRow label="Arrotonda" min={0} max={220} value={layer.radius} onChange={(radius) => set({ radius })} />}
-      <SliderRow label="Rotazione" min={-180} max={180} value={layer.rotation} display={`${layer.rotation}°`} onChange={(rotation) => set({ rotation })} />
+      <ColorRow label="Colore" value={layer.fill} defaultValue={D.fill} onChange={(fill) => set({ fill })} />
+      <SliderRow label="Larghezza" min={20} max={1280} value={layer.w} defaultValue={D.w} onChange={(w) => set({ w })} />
+      <SliderRow label="Altezza" min={6} max={720} value={layer.h} defaultValue={D.h} onChange={(h) => set({ h })} />
+      {layer.kind === "rect" && <SliderRow label="Arrotonda" min={0} max={220} value={layer.radius} defaultValue={D.radius} onChange={(radius) => set({ radius })} />}
+      <SliderRow label="Rotazione" min={-180} max={180} value={layer.rotation} defaultValue={D.rotation} display={`${layer.rotation}°`} onChange={(rotation) => set({ rotation })} />
       {layer.kind === "bar" && (
         <>
-          <SliderRow label="Guardato" min={0} max={100} value={layer.pct} display={`${layer.pct}%`} onChange={(pct) => set({ pct })} />
-          <ColorRow label="Colore traccia" value={layer.trackColor} onChange={(trackColor) => set({ trackColor })} />
+          <SliderRow label="Guardato" min={0} max={100} value={layer.pct} defaultValue={D.pct} display={`${layer.pct}%`} onChange={(pct) => set({ pct })} />
+          <ColorRow label="Colore traccia" value={layer.trackColor} defaultValue={D.trackColor} onChange={(trackColor) => set({ trackColor })} />
         </>
       )}
     </>
@@ -360,33 +375,34 @@ function DisclosureRow({ open, onToggle, label }: { open: boolean; onToggle: () 
 
 function GrainientControls({ e, upd }: { e: Extract<BgEffect, { preset: "grainient" }>; upd: Upd }) {
   const [adv, setAdv] = useState(false);
+  const D = defaultEffect("grainient") as typeof e;
   return (
     <>
-      <ColorRow label="Colore 1" value={e.color1} onChange={(color1) => upd({ color1 })} />
-      <ColorRow label="Colore 2" value={e.color2} onChange={(color2) => upd({ color2 })} />
-      <ColorRow label="Colore 3" value={e.color3} onChange={(color3) => upd({ color3 })} />
-      <SliderRow label="Velocità" min={0} max={2} step={0.05} value={e.timeSpeed} display={e.timeSpeed.toFixed(2)} onChange={(timeSpeed) => upd({ timeSpeed })} />
-      <SliderRow label="Bilanc. colore" min={-1} max={1} step={0.01} value={e.colorBalance} display={e.colorBalance.toFixed(2)} onChange={(colorBalance) => upd({ colorBalance })} />
-      <SliderRow label="Warp forza" min={0} max={3} step={0.05} value={e.warpStrength} display={e.warpStrength.toFixed(2)} onChange={(warpStrength) => upd({ warpStrength })} />
-      <SliderRow label="Warp frequenza" min={0} max={20} step={0.1} value={e.warpFrequency} display={e.warpFrequency.toFixed(1)} onChange={(warpFrequency) => upd({ warpFrequency })} />
-      <SliderRow label="Warp velocità" min={0} max={10} step={0.1} value={e.warpSpeed} display={e.warpSpeed.toFixed(1)} onChange={(warpSpeed) => upd({ warpSpeed })} />
-      <SliderRow label="Warp ampiezza" min={1} max={200} value={e.warpAmplitude} onChange={(warpAmplitude) => upd({ warpAmplitude })} />
-      <SliderRow label="Angolo blend" min={-180} max={180} value={e.blendAngle} display={`${e.blendAngle}°`} onChange={(blendAngle) => upd({ blendAngle })} />
-      <SliderRow label="Morbidezza blend" min={0} max={1} step={0.01} value={e.blendSoftness} display={e.blendSoftness.toFixed(2)} onChange={(blendSoftness) => upd({ blendSoftness })} />
-      <SliderRow label="Grana quantità" min={0} max={1} step={0.01} value={e.grainAmount} display={e.grainAmount.toFixed(2)} onChange={(grainAmount) => upd({ grainAmount })} />
-      <SliderRow label="Grana scala" min={0} max={10} step={0.1} value={e.grainScale} display={e.grainScale.toFixed(1)} onChange={(grainScale) => upd({ grainScale })} />
-      <SwitchRow label="Grana animata" checked={e.grainAnimated} onChange={(grainAnimated) => upd({ grainAnimated })} />
-      <SliderRow label="Contrasto" min={0} max={3} step={0.05} value={e.contrast} display={e.contrast.toFixed(2)} onChange={(contrast) => upd({ contrast })} />
-      <SliderRow label="Saturazione" min={0} max={2} step={0.05} value={e.saturation} display={e.saturation.toFixed(2)} onChange={(saturation) => upd({ saturation })} />
+      <ColorRow label="Colore 1" value={e.color1} defaultValue={D.color1} onChange={(color1) => upd({ color1 })} />
+      <ColorRow label="Colore 2" value={e.color2} defaultValue={D.color2} onChange={(color2) => upd({ color2 })} />
+      <ColorRow label="Colore 3" value={e.color3} defaultValue={D.color3} onChange={(color3) => upd({ color3 })} />
+      <SliderRow label="Velocità" min={0} max={2} step={0.05} value={e.timeSpeed} defaultValue={D.timeSpeed} display={e.timeSpeed.toFixed(2)} onChange={(timeSpeed) => upd({ timeSpeed })} />
+      <SliderRow label="Bilanc. colore" min={-1} max={1} step={0.01} value={e.colorBalance} defaultValue={D.colorBalance} display={e.colorBalance.toFixed(2)} onChange={(colorBalance) => upd({ colorBalance })} />
+      <SliderRow label="Warp forza" min={0} max={3} step={0.05} value={e.warpStrength} defaultValue={D.warpStrength} display={e.warpStrength.toFixed(2)} onChange={(warpStrength) => upd({ warpStrength })} />
+      <SliderRow label="Warp frequenza" min={0} max={20} step={0.1} value={e.warpFrequency} defaultValue={D.warpFrequency} display={e.warpFrequency.toFixed(1)} onChange={(warpFrequency) => upd({ warpFrequency })} />
+      <SliderRow label="Warp velocità" min={0} max={10} step={0.1} value={e.warpSpeed} defaultValue={D.warpSpeed} display={e.warpSpeed.toFixed(1)} onChange={(warpSpeed) => upd({ warpSpeed })} />
+      <SliderRow label="Warp ampiezza" min={1} max={200} value={e.warpAmplitude} defaultValue={D.warpAmplitude} onChange={(warpAmplitude) => upd({ warpAmplitude })} />
+      <SliderRow label="Angolo blend" min={-180} max={180} value={e.blendAngle} defaultValue={D.blendAngle} display={`${e.blendAngle}°`} onChange={(blendAngle) => upd({ blendAngle })} />
+      <SliderRow label="Morbidezza blend" min={0} max={1} step={0.01} value={e.blendSoftness} defaultValue={D.blendSoftness} display={e.blendSoftness.toFixed(2)} onChange={(blendSoftness) => upd({ blendSoftness })} />
+      <SliderRow label="Grana quantità" min={0} max={1} step={0.01} value={e.grainAmount} defaultValue={D.grainAmount} display={e.grainAmount.toFixed(2)} onChange={(grainAmount) => upd({ grainAmount })} />
+      <SliderRow label="Grana scala" min={0} max={10} step={0.1} value={e.grainScale} defaultValue={D.grainScale} display={e.grainScale.toFixed(1)} onChange={(grainScale) => upd({ grainScale })} />
+      <SwitchRow label="Grana animata" checked={e.grainAnimated} defaultValue={D.grainAnimated} onChange={(grainAnimated) => upd({ grainAnimated })} />
+      <SliderRow label="Contrasto" min={0} max={3} step={0.05} value={e.contrast} defaultValue={D.contrast} display={e.contrast.toFixed(2)} onChange={(contrast) => upd({ contrast })} />
+      <SliderRow label="Saturazione" min={0} max={2} step={0.05} value={e.saturation} defaultValue={D.saturation} display={e.saturation.toFixed(2)} onChange={(saturation) => upd({ saturation })} />
       <DisclosureRow open={adv} onToggle={() => setAdv((v) => !v)} label="Avanzate" />
       {adv && (
         <>
-          <SliderRow label="Rotazione" min={0} max={1000} step={10} value={e.rotationAmount} onChange={(rotationAmount) => upd({ rotationAmount })} />
-          <SliderRow label="Scala rumore" min={0} max={10} step={0.1} value={e.noiseScale} display={e.noiseScale.toFixed(1)} onChange={(noiseScale) => upd({ noiseScale })} />
-          <SliderRow label="Gamma" min={0.1} max={3} step={0.05} value={e.gamma} display={e.gamma.toFixed(2)} onChange={(gamma) => upd({ gamma })} />
-          <SliderRow label="Centro X" min={-1} max={1} step={0.01} value={e.centerX} display={e.centerX.toFixed(2)} onChange={(centerX) => upd({ centerX })} />
-          <SliderRow label="Centro Y" min={-1} max={1} step={0.01} value={e.centerY} display={e.centerY.toFixed(2)} onChange={(centerY) => upd({ centerY })} />
-          <SliderRow label="Zoom" min={0.1} max={3} step={0.05} value={e.zoom} display={e.zoom.toFixed(2)} onChange={(zoom) => upd({ zoom })} />
+          <SliderRow label="Rotazione" min={0} max={1000} step={10} value={e.rotationAmount} defaultValue={D.rotationAmount} onChange={(rotationAmount) => upd({ rotationAmount })} />
+          <SliderRow label="Scala rumore" min={0} max={10} step={0.1} value={e.noiseScale} defaultValue={D.noiseScale} display={e.noiseScale.toFixed(1)} onChange={(noiseScale) => upd({ noiseScale })} />
+          <SliderRow label="Gamma" min={0.1} max={3} step={0.05} value={e.gamma} defaultValue={D.gamma} display={e.gamma.toFixed(2)} onChange={(gamma) => upd({ gamma })} />
+          <SliderRow label="Centro X" min={-1} max={1} step={0.01} value={e.centerX} defaultValue={D.centerX} display={e.centerX.toFixed(2)} onChange={(centerX) => upd({ centerX })} />
+          <SliderRow label="Centro Y" min={-1} max={1} step={0.01} value={e.centerY} defaultValue={D.centerY} display={e.centerY.toFixed(2)} onChange={(centerY) => upd({ centerY })} />
+          <SliderRow label="Zoom" min={0.1} max={3} step={0.05} value={e.zoom} defaultValue={D.zoom} display={e.zoom.toFixed(2)} onChange={(zoom) => upd({ zoom })} />
         </>
       )}
     </>
@@ -394,37 +410,40 @@ function GrainientControls({ e, upd }: { e: Extract<BgEffect, { preset: "grainie
 }
 
 function AuroraControls({ e, upd }: { e: Extract<BgEffect, { preset: "aurora" }>; upd: Upd }) {
+  const D = defaultEffect("aurora") as typeof e;
   return (
     <>
-      <ColorRow label="Colore 1" value={e.color1} onChange={(color1) => upd({ color1 })} />
-      <ColorRow label="Colore 2" value={e.color2} onChange={(color2) => upd({ color2 })} />
-      <ColorRow label="Colore 3" value={e.color3} onChange={(color3) => upd({ color3 })} />
-      <SliderRow label="Velocità" min={0} max={3} step={0.05} value={e.speed} display={e.speed.toFixed(2)} onChange={(speed) => upd({ speed })} />
-      <SliderRow label="Sfumatura" min={0} max={1} step={0.01} value={e.blend} display={e.blend.toFixed(2)} onChange={(blend) => upd({ blend })} />
-      <SliderRow label="Ampiezza" min={0} max={3} step={0.05} value={e.amplitude} display={e.amplitude.toFixed(2)} onChange={(amplitude) => upd({ amplitude })} />
+      <ColorRow label="Colore 1" value={e.color1} defaultValue={D.color1} onChange={(color1) => upd({ color1 })} />
+      <ColorRow label="Colore 2" value={e.color2} defaultValue={D.color2} onChange={(color2) => upd({ color2 })} />
+      <ColorRow label="Colore 3" value={e.color3} defaultValue={D.color3} onChange={(color3) => upd({ color3 })} />
+      <SliderRow label="Velocità" min={0} max={3} step={0.05} value={e.speed} defaultValue={D.speed} display={e.speed.toFixed(2)} onChange={(speed) => upd({ speed })} />
+      <SliderRow label="Sfumatura" min={0} max={1} step={0.01} value={e.blend} defaultValue={D.blend} display={e.blend.toFixed(2)} onChange={(blend) => upd({ blend })} />
+      <SliderRow label="Ampiezza" min={0} max={3} step={0.05} value={e.amplitude} defaultValue={D.amplitude} display={e.amplitude.toFixed(2)} onChange={(amplitude) => upd({ amplitude })} />
     </>
   );
 }
 
 function MeshControls({ e, upd }: { e: Extract<BgEffect, { preset: "mesh" }>; upd: Upd }) {
+  const D = defaultEffect("mesh") as typeof e;
   return (
     <>
-      <ColorRow label="Colore 1" value={e.color1} onChange={(color1) => upd({ color1 })} />
-      <ColorRow label="Colore 2" value={e.color2} onChange={(color2) => upd({ color2 })} />
-      <ColorRow label="Colore 3" value={e.color3} onChange={(color3) => upd({ color3 })} />
-      <ColorRow label="Sfondo" value={e.bgColor} onChange={(bgColor) => upd({ bgColor })} />
-      <SliderRow label="Morbidezza" min={0} max={1} step={0.01} value={e.softness} display={e.softness.toFixed(2)} onChange={(softness) => upd({ softness })} />
+      <ColorRow label="Colore 1" value={e.color1} defaultValue={D.color1} onChange={(color1) => upd({ color1 })} />
+      <ColorRow label="Colore 2" value={e.color2} defaultValue={D.color2} onChange={(color2) => upd({ color2 })} />
+      <ColorRow label="Colore 3" value={e.color3} defaultValue={D.color3} onChange={(color3) => upd({ color3 })} />
+      <ColorRow label="Sfondo" value={e.bgColor} defaultValue={D.bgColor} onChange={(bgColor) => upd({ bgColor })} />
+      <SliderRow label="Morbidezza" min={0} max={1} step={0.01} value={e.softness} defaultValue={D.softness} display={e.softness.toFixed(2)} onChange={(softness) => upd({ softness })} />
     </>
   );
 }
 
 function DotsControls({ e, upd }: { e: Extract<BgEffect, { preset: "dots" }>; upd: Upd }) {
+  const D = defaultEffect("dots") as typeof e;
   return (
     <>
-      <ColorRow label="Punti" value={e.dotColor} onChange={(dotColor) => upd({ dotColor })} />
-      <ColorRow label="Sfondo" value={e.bgColor} onChange={(bgColor) => upd({ bgColor })} />
-      <SliderRow label="Dimensione" min={1} max={10} step={0.5} value={e.size} display={e.size.toFixed(1)} onChange={(size) => upd({ size })} />
-      <SliderRow label="Distanza" min={6} max={80} value={e.gap} onChange={(gap) => upd({ gap })} />
+      <ColorRow label="Punti" value={e.dotColor} defaultValue={D.dotColor} onChange={(dotColor) => upd({ dotColor })} />
+      <ColorRow label="Sfondo" value={e.bgColor} defaultValue={D.bgColor} onChange={(bgColor) => upd({ bgColor })} />
+      <SliderRow label="Dimensione" min={1} max={10} step={0.5} value={e.size} defaultValue={D.size} display={e.size.toFixed(1)} onChange={(size) => upd({ size })} />
+      <SliderRow label="Distanza" min={6} max={80} value={e.gap} defaultValue={D.gap} onChange={(gap) => upd({ gap })} />
     </>
   );
 }
@@ -443,6 +462,7 @@ function EffectControls({ effect, set }: { effect: BgEffect; set: (patch: { effe
 }
 
 function EffectProps({ layer, set }: { layer: EffectLayer; set: Setter }) {
+  const D = newEffectLayer();
   return (
     <Section title="Effetto">
       <Button
@@ -454,7 +474,7 @@ function EffectProps({ layer, set }: { layer: EffectLayer; set: Setter }) {
         <Maximize /> Schermo intero
       </Button>
       <EffectControls effect={layer.effect} set={set} />
-      <SliderRow label="Arrotonda" min={0} max={400} value={layer.radius} onChange={(radius) => set({ radius })} />
+      <SliderRow label="Arrotonda" min={0} max={400} value={layer.radius} defaultValue={D.radius} onChange={(radius) => set({ radius })} />
     </Section>
   );
 }
