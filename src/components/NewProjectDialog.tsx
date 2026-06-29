@@ -9,16 +9,18 @@ import { Input } from "./ui/input";
 
 type Props = {
   doc: ThumbDoc; // the current working canvas
+  projectName: string; // its live name (default for the "save current" step)
+  projectId: string | null; // its archive id, so saving updates instead of duplicating
   onClose: () => void;
-  onCreated: (doc: ThumbDoc) => void; // App loads it + refreshes the saves list
+  onCreated: (doc: ThumbDoc, name: string, id: string, savedAt: number) => void; // App adopts it
   onError: (msg: string) => void;
 };
 
-/** "Nuovo progetto" flow: offer to save the current canvas, then create a new
- *  project (blank template or a clone of the current one) and save it. */
-export function NewProjectDialog({ doc, onClose, onCreated, onError }: Props) {
+/** "Nuovo progetto" flow: offer to save the current project, then create a new
+ *  one (blank template or a clone of the current) and archive it. */
+export function NewProjectDialog({ doc, projectName, projectId, onClose, onCreated, onError }: Props) {
   const [step, setStep] = useState<1 | 2>(1);
-  const [prevName, setPrevName] = useState("Senza nome");
+  const [prevName, setPrevName] = useState(projectName);
   const [newName, setNewName] = useState("Nuovo progetto");
   const [clone, setClone] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -26,7 +28,8 @@ export function NewProjectDialog({ doc, onClose, onCreated, onError }: Props) {
   async function savePrevious() {
     setBusy(true);
     try {
-      await saveConfig(prevName, structuredClone(doc));
+      // Upsert by the live id so saving-before-new updates the project in place.
+      await saveConfig(prevName, structuredClone(doc), projectId ?? undefined);
       setStep(2);
     } catch {
       onError("Salvataggio non riuscito.");
@@ -39,8 +42,8 @@ export function NewProjectDialog({ doc, onClose, onCreated, onError }: Props) {
     setBusy(true);
     try {
       const fresh = clone ? structuredClone(doc) : TEMPLATES.dacoder();
-      await saveConfig(newName, structuredClone(fresh));
-      onCreated(fresh);
+      const saved = await saveConfig(newName, structuredClone(fresh));
+      onCreated(fresh, saved.name, saved.id, saved.updatedAt);
       onClose();
     } catch {
       onError("Creazione non riuscita.");

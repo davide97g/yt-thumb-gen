@@ -2,9 +2,10 @@
 //
 // Configs embed images as base64 dataURLs, so a single doc can be several MB —
 // well past the ~5MB localStorage cap. Everything therefore lives in IndexedDB:
-//   • store "meta"    — the working canvas, autosaved under key "working"
-//   • store "configs" — named saves the user can reload later (keyPath "id")
-// Plus JSON file export/import so configs survive a cache clear and move between
+//   • store "meta"    — the working canvas (key "working") + its project identity
+//                       (key "project"), both autosaved
+//   • store "configs" — named projects the user can reload later (keyPath "id")
+// Plus JSON file export/import so projects survive a cache clear and move between
 // machines.
 
 import type { ThumbDoc } from "../state";
@@ -14,8 +15,12 @@ const VERSION = 1;
 const META = "meta";
 const CONFIGS = "configs";
 const WORKING_KEY = "working";
+const PROJECT_KEY = "project";
 
 export type SavedConfig = { id: string; name: string; updatedAt: number; doc: ThumbDoc };
+
+/** Identity of the live working canvas. `id` is null until it's archived. */
+export type Project = { name: string; id: string | null };
 
 const EXPORT_VERSION = 1;
 type ExportFile = { app: "grocerai-thumb"; version: number; name?: string; doc: ThumbDoc };
@@ -56,15 +61,32 @@ export function setWorking(doc: ThumbDoc): Promise<void> {
   return run<IDBValidKey>(META, "readwrite", (s) => s.put(doc, WORKING_KEY)).then(() => undefined);
 }
 
+export async function getProject(): Promise<Project | null> {
+  return (await run<Project | undefined>(META, "readonly", (s) => s.get(PROJECT_KEY))) ?? null;
+}
+
+export function setProject(project: Project): Promise<void> {
+  return run<IDBValidKey>(META, "readwrite", (s) => s.put(project, PROJECT_KEY)).then(() => undefined);
+}
+
 export async function listConfigs(): Promise<SavedConfig[]> {
   const all = await run<SavedConfig[]>(CONFIGS, "readonly", (s) => s.getAll());
   return all.sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
-/** Saves a config under a fresh id and returns it. */
-export function saveConfig(name: string, doc: ThumbDoc): Promise<SavedConfig> {
-  const config: SavedConfig = { id: crypto.randomUUID(), name: name.trim() || "Senza nome", updatedAt: Date.now(), doc };
+/** Upserts a config: pass the existing `id` to overwrite it (re-saving the same
+ *  project), or omit it to archive a new one under a fresh id. Returns the record. */
+export function saveConfig(name: string, doc: ThumbDoc, id: string = crypto.randomUUID()): Promise<SavedConfig> {
+  const config: SavedConfig = { id, name: name.trim() || "Senza nome", updatedAt: Date.now(), doc };
   return run<IDBValidKey>(CONFIGS, "readwrite", (s) => s.put(config)).then(() => config);
+}
+
+/** Renames an archived project in place, leaving its doc untouched. */
+// ponytail: read-then-write, no transaction — fine for a single local user.
+export async function renameConfig(id: string, name: string): Promise<void> {
+  const c = await run<SavedConfig | undefined>(CONFIGS, "readonly", (s) => s.get(id));
+  if (!c) return;
+  await run<IDBValidKey>(CONFIGS, "readwrite", (s) => s.put({ ...c, name: name.trim() || "Senza nome", updatedAt: Date.now() }));
 }
 
 export function deleteConfig(id: string): Promise<void> {

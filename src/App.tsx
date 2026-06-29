@@ -1,17 +1,18 @@
 import { useEffect, useReducer, useRef, useState } from "react";
-import { Download, FilePlus, Maximize2, PanelsTopLeft, Redo2, Undo2 } from "lucide-react";
+import { Download, Maximize2, PanelsTopLeft, Redo2, Undo2 } from "lucide-react";
 import { CANVAS_H, CANVAS_W, ThumbCanvas, type CropMode } from "./components/ThumbCanvas";
 import { Inspector, BackgroundInspector } from "./components/Inspector";
 import { LayerList } from "./components/LayerList";
 import { SavesPanel } from "./components/SavesPanel";
+import { ProjectHeader } from "./components/ProjectHeader";
 import { NewProjectDialog } from "./components/NewProjectDialog";
 import { Toolbar } from "./components/Toolbar";
 import { Section } from "./components/controls";
 import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
 import { exportThumb } from "./lib/export";
-import { getWorking, setWorking } from "./lib/storage";
-import { historyReducer, initHistory, type AppState, type Layer } from "./state";
+import { getProject, getWorking, renameConfig, saveConfig, setProject, setWorking } from "./lib/storage";
+import { historyReducer, initHistory, type AppState, type Layer, type ThumbDoc } from "./state";
 import { TEMPLATES } from "./presets";
 
 const initial: AppState = { doc: TEMPLATES.dacoder(), selectedId: null };
@@ -30,7 +31,17 @@ export default function App() {
   const [fileName, setFileName] = useState("thumb.png");
   const [cropMode, setCropMode] = useState<CropMode>(null);
 
+  // Live project identity for the working canvas: a name, its archive id (null
+  // until first save), and when it was last saved. `savedDocRef` holds the doc as
+  // of the last save/load — since the reducer makes a new doc on every edit, a
+  // reference mismatch is a free "unsaved changes" check.
+  const [projectName, setProjectName] = useState("Senza titolo");
+  const [projectId, setProjectId] = useState<string | null>(null);
+  const [savedAt, setSavedAt] = useState<number | null>(null);
+  const savedDocRef = useRef<ThumbDoc>(initial.doc);
+
   const { doc, selectedId } = hist.present;
+  const dirty = hydrated && doc !== savedDocRef.current;
 
   // Crop tooling is per-selection; drop it whenever the selected layer changes.
   useEffect(() => setCropMode(null), [selectedId]);
@@ -45,10 +56,14 @@ export default function App() {
   docRef.current = doc;
   const clipboardRef = useRef<Layer | null>(null);
 
-  // Hydrate working canvas from IndexedDB once on mount (falls back to seeded template).
+  // Hydrate working canvas + its project identity once on mount (falls back to
+  // the seeded template). The hydrated doc becomes the clean baseline.
   useEffect(() => {
-    getWorking()
-      .then((d) => { if (d) dispatch({ type: "loadDoc", doc: d }); })
+    Promise.all([getWorking(), getProject()])
+      .then(([d, p]) => {
+        if (d) { savedDocRef.current = d; dispatch({ type: "loadDoc", doc: d }); }
+        if (p) { setProjectName(p.name); setProjectId(p.id); }
+      })
       .catch(() => {})
       .finally(() => setHydrated(true));
   }, []);
@@ -60,9 +75,53 @@ export default function App() {
     return () => clearTimeout(t);
   }, [doc, hydrated]);
 
+  // Persist project identity (name + archive id) whenever it changes.
+  useEffect(() => {
+    if (!hydrated) return;
+    void setProject({ name: projectName, id: projectId });
+  }, [projectName, projectId, hydrated]);
+
+  // ── Project actions ─────────────────────────────────────────────────────────
+  // Load/import/create all funnel through `adoptProject`: clone the doc, make it
+  // the clean baseline, set identity, and swap it into the editor.
+  function adoptProject(d: ThumbDoc, name: string, id: string | null, at: number | null) {
+    const fresh = structuredClone(d);
+    savedDocRef.current = fresh;
+    setProjectName(name);
+    setProjectId(id);
+    setSavedAt(at);
+    setMessage(null);
+    dispatch({ type: "loadDoc", doc: fresh });
+  }
+
+  async function saveProject() {
+    try {
+      const saved = await saveConfig(projectName, doc, projectId ?? undefined);
+      savedDocRef.current = doc; // current edits are now the clean baseline
+      setProjectId(saved.id);
+      setSavedAt(saved.updatedAt);
+      setSavesKey((k) => k + 1);
+    } catch {
+      setMessage("Salvataggio non riuscito.");
+    }
+  }
+
+  function renameProject(name: string) {
+    setProjectName(name);
+    if (projectId) void renameConfig(projectId, name).then(() => setSavesKey((k) => k + 1));
+  }
+
+  // Latest save closure for the ⌘S handler, refreshed each render (see key handler).
+  const saveRef = useRef<() => void>(() => {});
+  saveRef.current = () => { if (dirty || !projectId) void saveProject(); };
+
   // Backspace / Delete removes the selected layer, unless focus is in a text field.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      // ⌘S / Ctrl+S saves the project — wins over the browser's "save page", even
+      // while a field (e.g. the project name) is focused.
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") { e.preventDefault(); saveRef.current(); return; }
+
       const el = document.activeElement as HTMLElement | null;
       const typing = el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
       if (typing) return; // let inputs keep native undo / copy / paste
@@ -191,22 +250,28 @@ export default function App() {
       <div className="flex min-h-0 flex-1">
         {!chromeHidden && (
           <aside className="anim-panel-l panel panel-scroll flex w-64 shrink-0 flex-col gap-5 overflow-y-auto border-r border-border p-4">
-            <Section title="Progetto">
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full justify-start"
-                onClick={() => setNewOpen(true)}
-              >
-                <FilePlus /> Nuovo progetto
-              </Button>
-            </Section>
+            <ProjectHeader
+              name={projectName}
+              dirty={dirty}
+              savedAt={savedAt}
+              archived={projectId !== null}
+              onRename={renameProject}
+              onSave={() => void saveProject()}
+              onNew={() => setNewOpen(true)}
+            />
 
             <Section title="Livelli">
               <LayerList layers={doc.layers} selectedId={selectedId} dispatch={dispatch} />
             </Section>
 
-            <SavesPanel doc={doc} dispatch={dispatch} onError={setMessage} refreshKey={savesKey} />
+            <SavesPanel
+              doc={doc}
+              projectId={projectId}
+              projectName={projectName}
+              onLoad={adoptProject}
+              onError={setMessage}
+              refreshKey={savesKey}
+            />
           </aside>
         )}
 
@@ -249,8 +314,10 @@ export default function App() {
       {newOpen && (
         <NewProjectDialog
           doc={doc}
+          projectName={projectName}
+          projectId={projectId}
           onClose={() => setNewOpen(false)}
-          onCreated={(d) => { dispatch({ type: "loadDoc", doc: d }); setSavesKey((k) => k + 1); }}
+          onCreated={(d, name, id, at) => { adoptProject(d, name, id, at); setSavesKey((k) => k + 1); }}
           onError={setMessage}
         />
       )}
