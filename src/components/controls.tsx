@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { Slider as SliderBase } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -93,7 +93,7 @@ export function ColorRow({ label, value, onChange }: { label: string; value: str
 
 export function SelectField<T extends string>({
   label, value, options, onChange,
-}: { label: string; value: T; options: { value: T; label: string }[]; onChange: (v: T) => void }) {
+}: { label: string; value: T; options: { value: T; label: string; style?: CSSProperties }[]; onChange: (v: T) => void }) {
   return (
     <Field label={label}>
       <Select value={value} onValueChange={(v) => onChange(v as T)}>
@@ -102,7 +102,7 @@ export function SelectField<T extends string>({
         </SelectTrigger>
         <SelectContent>
           {options.map((o) => (
-            <SelectItem key={o.value} value={o.value}>
+            <SelectItem key={o.value} value={o.value} style={o.style}>
               {o.label}
             </SelectItem>
           ))}

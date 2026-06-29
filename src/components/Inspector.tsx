@@ -4,6 +4,7 @@ import {
   CANVAS_H,
   CANVAS_W,
   FONT_LABELS,
+  FONTS,
   defaultEffect,
   defaultFx,
   type Action,
@@ -30,7 +31,7 @@ import { WebcamCapture } from "./WebcamCapture";
 
 const MAX_UPLOAD = 8 * 1024 * 1024;
 
-const FONT_OPTIONS = (Object.keys(FONT_LABELS) as FontKey[]).map((value) => ({ value, label: FONT_LABELS[value] }));
+const FONT_OPTIONS = (Object.keys(FONT_LABELS) as FontKey[]).map((value) => ({ value, label: FONT_LABELS[value], style: { fontFamily: FONTS[value] } }));
 const ALIGN_OPTIONS: { value: TextLayer["align"]; label: string }[] = [
   { value: "left", label: "Sinistra" },
   { value: "center", label: "Centro" },
