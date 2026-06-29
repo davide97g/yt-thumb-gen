@@ -212,22 +212,30 @@ export type EffectLayer = LayerBase & {
 
 export type DrawCap = "none" | "arrow" | "dot" | "tee";
 
-/** A freehand stroke. Points live in a fixed viewBox (vw×vh, bbox-relative); the SVG
- *  scales them into the current w×h, so resize is just a w/h change like a shape. */
+/** A freehand stroke. Points are bbox-relative (0..rawW, 0..rawH) in 1280×720 units.
+ *  The rendered box pads the raw bbox by an amount derived from thickness + caps so the
+ *  selection frame always hugs the *visible* ink (stroke + arrowheads), and `scale`
+ *  resizes the whole thing like an image. x/y is the padded box's top-left. */
 export type DrawLayer = LayerBase & {
   type: "draw";
-  points: { x: number; y: number }[]; // viewBox units, bbox-relative
-  vw: number; // viewBox width (capture bbox + padding) — constant
-  vh: number; // viewBox height — constant
-  w: number; // rendered width (resizable)
-  h: number; // rendered height (resizable)
+  points: { x: number; y: number }[]; // bbox-relative, 1280×720 units
+  rawW: number; // raw stroke bbox width (no padding) — constant
+  rawH: number; // raw stroke bbox height — constant
+  scale: number; // resize factor (1 = drawn size)
   color: string;
-  thickness: number; // stroke width in viewBox units
+  thickness: number; // stroke width in 1280×720 units
   lineStyle: "solid" | "dashed" | "dotted";
   smoothing: number; // 0–100: how aggressively the captured polyline is simplified before splining
   startCap: DrawCap;
   endCap: DrawCap;
 };
+
+/** Symmetric padding (1280-space units) around a stroke's raw bbox so its caps/arrowheads
+ *  fit inside the rendered box. Caps flare ~2× the stroke width past the endpoint. */
+export function drawPad(thickness: number, startCap: DrawCap, endCap: DrawCap): number {
+  const capped = startCap !== "none" || endCap !== "none";
+  return thickness * (capped ? 2.5 : 0.7);
+}
 
 export type Layer = TextLayer | ImageLayer | EmojiLayer | ShapeLayer | EffectLayer | DrawLayer;
 
@@ -443,34 +451,46 @@ export function newShapeLayer(kind: ShapeLayer["kind"]): ShapeLayer {
   return { ...base, name: "Rettangolo", kind, fill: "#e8633a", x: 120, y: 120, w: 320, h: 200 };
 }
 
-const DRAW_PAD = 16; // viewBox margin around the stroke so thick strokes / caps aren't clipped
+const DRAW_DEFAULTS = { color: "#ff3b3b", thickness: 8, lineStyle: "solid" as const, smoothing: 40, startCap: "none" as const, endCap: "arrow" as const };
 
 /** Build a freehand layer from raw points captured in 1280×720 canvas space. */
 export function newDrawLayer(points: { x: number; y: number }[]): DrawLayer {
   const pts = points.length ? points : [{ x: 0, y: 0 }, { x: 1, y: 1 }]; // guard: factory used for inspector defaults too
   const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
   const minX = Math.min(...xs), minY = Math.min(...ys), maxX = Math.max(...xs), maxY = Math.max(...ys);
-  const vw = maxX - minX + DRAW_PAD * 2, vh = maxY - minY + DRAW_PAD * 2;
+  const pad = drawPad(DRAW_DEFAULTS.thickness, DRAW_DEFAULTS.startCap, DRAW_DEFAULTS.endCap);
   return {
     id: uid(),
     type: "draw",
     name: "Disegno",
-    x: minX - DRAW_PAD,
-    y: minY - DRAW_PAD,
+    x: minX - pad, // padded box top-left = where the div sits
+    y: minY - pad,
     rotation: 0,
     visible: true,
-    points: pts.map((p) => ({ x: p.x - minX + DRAW_PAD, y: p.y - minY + DRAW_PAD })),
-    vw,
-    vh,
-    w: vw,
-    h: vh,
-    color: "#ff3b3b",
-    thickness: 8,
-    lineStyle: "solid",
-    smoothing: 40,
-    startCap: "none",
-    endCap: "arrow",
+    points: pts.map((p) => ({ x: p.x - minX, y: p.y - minY })), // bbox-relative, 0-based
+    rawW: maxX - minX,
+    rawH: maxY - minY,
+    scale: 1,
+    ...DRAW_DEFAULTS,
   };
+}
+
+/** Upgrade a loaded doc in place: convert draw layers saved before the rawW/scale schema
+ *  (they stored vw/vh/w/h with a 16px pad baked into points) to the current shape. */
+export function migrateDoc(doc: ThumbDoc): ThumbDoc {
+  const OLD_PAD = 16;
+  const layers = doc.layers.map((l) => {
+    if (l.type !== "draw" || "rawW" in l) return l;
+    const old = l as unknown as { vw: number; vh: number; w: number; points: { x: number; y: number }[] } & DrawLayer;
+    return {
+      ...old,
+      points: old.points.map((p) => ({ x: p.x - OLD_PAD, y: p.y - OLD_PAD })),
+      rawW: old.vw - OLD_PAD * 2,
+      rawH: old.vh - OLD_PAD * 2,
+      scale: old.w / old.vw,
+    } as DrawLayer;
+  });
+  return { ...doc, layers };
 }
 
 // ── Reducer ───────────────────────────────────────────────────────────────────
@@ -493,7 +513,7 @@ function mapLayer(doc: ThumbDoc, id: string, fn: (l: Layer) => Layer): ThumbDoc 
 export function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case "loadDoc":
-      return { doc: action.doc, selectedId: null };
+      return { doc: migrateDoc(action.doc), selectedId: null };
     case "select":
       return { ...state, selectedId: action.id };
     case "addLayer":

@@ -1,5 +1,5 @@
 import { useState, type CSSProperties, type Dispatch, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
-import { CANVAS_H, CANVAS_W, FONTS, FONT_WEIGHT, newDrawLayer, type Action, type DrawCap, type DrawLayer, type ImageLayer, type Layer, type LayerPatch, type TextLayer, type ThumbDoc } from "../state";
+import { CANVAS_H, CANVAS_W, FONTS, FONT_WEIGHT, drawPad, newDrawLayer, type Action, type DrawCap, type DrawLayer, type ImageLayer, type Layer, type LayerPatch, type TextLayer, type ThumbDoc } from "../state";
 import { smoothPath, type Pt } from "../lib/smoothPath";
 import { ClaudeLogo, ClaudeWordmark } from "./brand";
 import { EffectBackground } from "./EffectBackground";
@@ -274,7 +274,8 @@ function SelectionFrame({
     // Inspector slider's range — canvas and slider then never disagree.
     let fMin = 0.05, fMax = 40;
     if (base.type === "image") { fMin = 0.2 / base.scale; fMax = 3 / base.scale; }
-    else if (base.type === "shape" || base.type === "effect" || base.type === "draw") { fMin = Math.max(20 / base.w, 6 / base.h); fMax = Math.min(1280 / base.w, 720 / base.h); }
+    else if (base.type === "draw") { fMin = 0.2 / base.scale; fMax = 6 / base.scale; }
+    else if (base.type === "shape" || base.type === "effect") { fMin = Math.max(20 / base.w, 6 / base.h); fMax = Math.min(1280 / base.w, 720 / base.h); }
     else { const lo = base.type === "emoji" ? 40 : 24, hi = base.type === "emoji" ? 360 : 220; fMin = lo / base.size; fMax = hi / base.size; }
     drag((ev) => {
       const p = toCanvas(s.rect, ev.clientX, ev.clientY);
@@ -282,8 +283,8 @@ function SelectionFrame({
       const nw = s.w * f, nh = s.h * f;
       const pos = { x: s.cx - nw / 2, y: s.cy - nh / 2 };
       let patch: LayerPatch;
-      if (base.type === "image") patch = { ...pos, scale: base.scale * f };
-      else if (base.type === "shape" || base.type === "effect" || base.type === "draw") patch = { ...pos, w: base.w * f, h: base.h * f };
+      if (base.type === "image" || base.type === "draw") patch = { ...pos, scale: base.scale * f };
+      else if (base.type === "shape" || base.type === "effect") patch = { ...pos, w: base.w * f, h: base.h * f };
       else patch = { ...pos, size: Math.round((base as TextLayer).size * f) };
       dispatch({ type: "updateLayer", id: layer.id, patch });
     });
@@ -494,12 +495,15 @@ function capMarker(cap: DrawCap, id: string, color: string, isStart: boolean) {
 
 function DrawContent({ layer }: { layer: DrawLayer }) {
   const t = layer.thickness;
+  const pad = drawPad(t, layer.startCap, layer.endCap);
+  // viewBox is the raw bbox grown by `pad` on every side; the svg renders it at `scale`.
+  const vw = layer.rawW + pad * 2, vh = layer.rawH + pad * 2;
   const dash = layer.lineStyle === "dashed" ? `${t * 2.5} ${t * 1.8}` : layer.lineStyle === "dotted" ? `0 ${t * 1.8}` : undefined;
   return (
     <svg
-      width={layer.w}
-      height={layer.h}
-      viewBox={`0 0 ${layer.vw} ${layer.vh}`}
+      width={vw * layer.scale}
+      height={vh * layer.scale}
+      viewBox={`${-pad} ${-pad} ${vw} ${vh}`}
       preserveAspectRatio="none"
       style={{ display: "block", overflow: "visible" }}
     >
