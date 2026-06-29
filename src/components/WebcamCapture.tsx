@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Camera } from "lucide-react";
 import { Button } from "./ui/button";
 
@@ -49,17 +50,17 @@ export function WebcamCapture({ onCapture, onClose }: Props) {
     onClose();
   }
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onPointerDown={onClose}>
       <div
-        className="flex w-[min(560px,90vw)] flex-col gap-3 rounded-xl border border-border bg-card p-4 shadow-xl"
+        className="flex max-h-[90vh] w-[min(560px,90vw)] flex-col gap-3 rounded-xl border border-border bg-card p-4 shadow-xl"
         onPointerDown={(e) => e.stopPropagation()}
       >
         <h3 className="text-sm font-semibold">📷 Scatta una foto</h3>
         {error ? (
           <p className="text-sm text-destructive">{error}</p>
         ) : (
-          <video ref={videoRef} playsInline muted className="w-full rounded-lg bg-black" style={{ transform: "scaleX(-1)" }} />
+          <video ref={videoRef} playsInline muted className="max-h-[70vh] w-full rounded-lg bg-black object-contain" style={{ transform: "scaleX(-1)" }} />
         )}
         <div className="flex justify-end gap-2">
           <Button variant="secondary" size="sm" onClick={onClose}>Annulla</Button>
@@ -70,6 +71,7 @@ export function WebcamCapture({ onCapture, onClose }: Props) {
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
