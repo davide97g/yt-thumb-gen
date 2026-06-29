@@ -1,9 +1,12 @@
-import type { CSSProperties, Dispatch, PointerEvent as ReactPointerEvent, RefObject } from "react";
+import { useState, type CSSProperties, type Dispatch, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
 import { CANVAS_H, CANVAS_W, FONTS, FONT_WEIGHT, type Action, type ImageLayer, type Layer, type LayerPatch, type TextLayer, type ThumbDoc } from "../state";
 import { ClaudeLogo, ClaudeWordmark } from "./brand";
 import { EffectBackground } from "./EffectBackground";
 
 export { CANVAS_H, CANVAS_W };
+
+/** Which crop tool is armed for the selected image (ephemeral UI state, never in the doc). */
+export type CropMode = null | "rect" | "lasso";
 
 const SELECT_COLOR = "#4aa3ff";
 const BASE_IMG_W = 360; // width at scale 1 for an uploaded photo
@@ -22,11 +25,13 @@ type Props = {
   scale: number;
   selectedId: string | null;
   exporting: boolean;
+  cropMode: CropMode;
+  setCropMode: (m: CropMode) => void;
   canvasRef: RefObject<HTMLDivElement | null>;
   dispatch: Dispatch<Action>;
 };
 
-export function ThumbCanvas({ doc, scale, selectedId, exporting, canvasRef, dispatch }: Props) {
+export function ThumbCanvas({ doc, scale, selectedId, exporting, cropMode, setCropMode, canvasRef, dispatch }: Props) {
   const bg = doc.background;
   const background =
     bg.mode === "image" && bg.image
@@ -58,7 +63,7 @@ export function ThumbCanvas({ doc, scale, selectedId, exporting, canvasRef, disp
   return (
     <div
       ref={canvasRef}
-      onPointerDown={() => dispatch({ type: "select", id: null })}
+      onPointerDown={() => { dispatch({ type: "select", id: null }); setCropMode(null); }}
       style={{
         width: CANVAS_W,
         height: CANVAS_H,
@@ -73,11 +78,15 @@ export function ThumbCanvas({ doc, scale, selectedId, exporting, canvasRef, disp
       {bg.mode === "effect" && bg.effect && <EffectBackground effect={bg.effect} />}
       {bg.overlay > 0 && <div style={{ position: "absolute", inset: 0, background: "#000", opacity: bg.overlay / 100 }} />}
 
-      {doc.layers.map((layer) =>
-        layer.visible ? (
+      {doc.layers.map((layer) => {
+        if (!layer.visible) return null;
+        // Crop only applies to the selected image, and never during PNG capture.
+        const layerCrop = !exporting && layer.id === selectedId ? cropMode : null;
+        return (
           <div
             key={layer.id}
             data-lbox
+            data-layer-id={layer.id}
             onPointerDown={(e) => startDrag(e, layer.id)}
             style={{
               position: "absolute",
@@ -89,13 +98,20 @@ export function ThumbCanvas({ doc, scale, selectedId, exporting, canvasRef, disp
               touchAction: "none",
             }}
           >
-            <LayerContent layer={layer} />
+            <LayerContent layer={layer} cropMode={layerCrop} />
             {!exporting && layer.id === selectedId && (
-              <SelectionFrame layer={layer} scale={scale} canvasRef={canvasRef} dispatch={dispatch} />
+              <SelectionFrame
+                layer={layer}
+                scale={scale}
+                cropMode={layerCrop}
+                onCropDone={() => setCropMode(null)}
+                canvasRef={canvasRef}
+                dispatch={dispatch}
+              />
             )}
           </div>
-        ) : null
-      )}
+        );
+      })}
     </div>
   );
 }
@@ -105,8 +121,16 @@ export function ThumbCanvas({ doc, scale, selectedId, exporting, canvasRef, disp
  *  invariant) centre; the top knob rotates it. Handles counter-scale by `scale` so
  *  they stay a constant on-screen size regardless of canvas zoom. */
 function SelectionFrame({
-  layer, scale, canvasRef, dispatch,
-}: { layer: Layer; scale: number; canvasRef: RefObject<HTMLDivElement | null>; dispatch: Dispatch<Action> }) {
+  layer, scale, cropMode, onCropDone, canvasRef, dispatch,
+}: {
+  layer: Layer; scale: number; cropMode: CropMode; onCropDone: () => void;
+  canvasRef: RefObject<HTMLDivElement | null>; dispatch: Dispatch<Action>;
+}) {
+  // In crop mode the normal scale/rotate handles are replaced by crop tooling.
+  if (cropMode && layer.type === "image" && layer.src && !layer.brand) {
+    return <CropFrame layer={layer} scale={scale} mode={cropMode} onDone={onCropDone} canvasRef={canvasRef} dispatch={dispatch} />;
+  }
+
   const h = 11 / scale; // handle size in canvas units → ~11px on screen
   const bw = 1.5 / scale; // frame/handle border width
   const pad = 3 / scale; // breathing room outside the content box
@@ -189,7 +213,122 @@ function SelectionFrame({
   );
 }
 
-function LayerContent({ layer }: { layer: Layer }) {
+const MIN_CROP = 0.06; // keep at least this fraction of each dimension visible
+const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+type Edges = { l?: boolean; t?: boolean; r?: boolean; b?: boolean };
+
+/** Crop tooling for an image layer, shown in place of the scale/rotate frame.
+ *  `rect` drags edge/corner handles to set crop insets; `lasso` draws a freehand
+ *  polygon. Both write `crop`/`mask` (non-destructive — `src` is untouched).
+ *  ponytail: crop math assumes rotation ≈ 0; rotate the layer after cropping. */
+function CropFrame({
+  layer, scale, mode, onDone, canvasRef, dispatch,
+}: {
+  layer: ImageLayer; scale: number; mode: "rect" | "lasso"; onDone: () => void;
+  canvasRef: RefObject<HTMLDivElement | null>; dispatch: Dispatch<Action>;
+}) {
+  const crop = layer.crop ?? { l: 0, t: 0, r: 0, b: 0 };
+  const hsz = 12 / scale, bw = 1.5 / scale;
+  const [path, setPath] = useState<{ x: number; y: number }[] | null>(null);
+
+  function drag(move: (e: PointerEvent) => void, end?: () => void) {
+    const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); end?.(); };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  }
+
+  // Rect: drag a handle, recomputing crop against a fixed image anchor so the image stays put.
+  function startResize(e: ReactPointerEvent, edges: Edges) {
+    e.stopPropagation();
+    e.preventDefault();
+    const box = (e.currentTarget as HTMLElement).closest<HTMLElement>("[data-lbox]");
+    const canvas = canvasRef.current;
+    const img = box?.querySelector("img");
+    if (!box || !canvas || !img) return;
+    const Wf = img.offsetWidth, Hf = img.offsetHeight; // full displayed image size, canvas units
+    const rect = canvas.getBoundingClientRect();
+    const start = { ...crop };
+    const ax = layer.x - Wf * start.l, ay = layer.y - Hf * start.t; // image top-left on canvas — held constant
+    drag((ev) => {
+      const fx = ((ev.clientX - rect.left) / scale - ax) / Wf;
+      const fy = ((ev.clientY - rect.top) / scale - ay) / Hf;
+      const next = { ...start };
+      if (edges.l) next.l = clamp(fx, 0, 1 - start.r - MIN_CROP);
+      if (edges.r) next.r = clamp(1 - fx, 0, 1 - start.l - MIN_CROP);
+      if (edges.t) next.t = clamp(fy, 0, 1 - start.b - MIN_CROP);
+      if (edges.b) next.b = clamp(1 - fy, 0, 1 - start.t - MIN_CROP);
+      dispatch({ type: "updateLayer", id: layer.id, patch: { x: ax + Wf * next.l, y: ay + Hf * next.t, crop: next } });
+    });
+  }
+
+  // Lasso: sample a freehand path in kept-box fractions, then store the polygon + its bbox.
+  function startLasso(e: ReactPointerEvent) {
+    e.stopPropagation();
+    e.preventDefault();
+    const box = (e.currentTarget as HTMLElement).closest<HTMLElement>("[data-lbox]");
+    const img = box?.querySelector("img");
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect(); // overlay == kept box
+    const pts: { x: number; y: number }[] = [];
+    const sample = (cx: number, cy: number) => pts.push({ x: clamp((cx - rect.left) / rect.width, 0, 1), y: clamp((cy - rect.top) / rect.height, 0, 1) });
+    sample(e.clientX, e.clientY);
+    setPath([...pts]);
+    drag(
+      (ev) => { sample(ev.clientX, ev.clientY); setPath([...pts]); },
+      () => {
+        setPath(null);
+        if (pts.length < 3 || !img) return onDone();
+        const Wf = img.offsetWidth, Hf = img.offsetHeight;
+        const ax = layer.x - Wf * crop.l, ay = layer.y - Hf * crop.t; // image top-left on canvas
+        const fw = 1 - crop.l - crop.r, fh = 1 - crop.t - crop.b; // map kept-box → full-image fractions
+        const full = pts.map((p) => ({ x: crop.l + p.x * fw, y: crop.t + p.y * fh }));
+        const xs = full.map((p) => p.x), ys = full.map((p) => p.y);
+        const next = { l: Math.min(...xs), t: Math.min(...ys), r: 1 - Math.max(...xs), b: 1 - Math.max(...ys) };
+        // Re-anchor x/y so the kept region stays put instead of snapping to the image's top-left.
+        dispatch({ type: "updateLayer", id: layer.id, patch: { x: ax + Wf * next.l, y: ay + Hf * next.t, crop: next, mask: { points: full } } });
+        onDone();
+      },
+    );
+  }
+
+  if (mode === "lasso") {
+    return (
+      <div onPointerDown={startLasso} style={{ position: "absolute", inset: 0, cursor: "crosshair", touchAction: "none" }}>
+        {path && path.length > 1 && (
+          <svg viewBox="0 0 100 100" preserveAspectRatio="none" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}>
+            <polygon points={path.map((p) => `${p.x * 100},${p.y * 100}`).join(" ")} fill={`${SELECT_COLOR}33`} stroke={SELECT_COLOR} strokeWidth={1} />
+          </svg>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ position: "absolute", inset: 0, border: `${bw}px solid ${SELECT_COLOR}`, boxSizing: "border-box", pointerEvents: "none" }}>
+      {([
+        { x: 0, y: 0, e: { l: true, t: true }, c: "nwse-resize" },
+        { x: 0.5, y: 0, e: { t: true }, c: "ns-resize" },
+        { x: 1, y: 0, e: { r: true, t: true }, c: "nesw-resize" },
+        { x: 1, y: 0.5, e: { r: true }, c: "ew-resize" },
+        { x: 1, y: 1, e: { r: true, b: true }, c: "nwse-resize" },
+        { x: 0.5, y: 1, e: { b: true }, c: "ns-resize" },
+        { x: 0, y: 1, e: { l: true, b: true }, c: "nesw-resize" },
+        { x: 0, y: 0.5, e: { l: true }, c: "ew-resize" },
+      ] as const).map((k, i) => (
+        <div
+          key={i}
+          onPointerDown={(e) => startResize(e, k.e)}
+          style={{
+            position: "absolute", left: `${k.x * 100}%`, top: `${k.y * 100}%`, width: hsz, height: hsz,
+            transform: "translate(-50%,-50%)", background: "#fff", border: `${bw}px solid ${SELECT_COLOR}`,
+            boxSizing: "border-box", cursor: k.c, pointerEvents: "auto", touchAction: "none",
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+function LayerContent({ layer, cropMode }: { layer: Layer; cropMode: CropMode }) {
   switch (layer.type) {
     case "text":
       return <TextContent layer={layer} />;
@@ -198,7 +337,7 @@ function LayerContent({ layer }: { layer: Layer }) {
       return <div style={{ fontSize: layer.size, lineHeight: 1 }}>{layer.glyph}</div>;
 
     case "image":
-      return <ImageContent layer={layer} />;
+      return <ImageContent layer={layer} cropMode={cropMode} />;
 
     case "shape": {
       if (layer.kind === "bar") {
@@ -293,7 +432,10 @@ function TextContent({ layer }: { layer: TextLayer }) {
   return <div style={style}>{layer.text}</div>;
 }
 
-function ImageContent({ layer }: { layer: ImageLayer }) {
+function ImageContent({ layer, cropMode }: { layer: ImageLayer; cropMode: CropMode }) {
+  // Natural aspect ratio (w/h), measured on load — kept out of the doc since it's derived.
+  const [aspect, setAspect] = useState<number | null>(null);
+  const grab = (img: HTMLImageElement) => setAspect(img.naturalWidth / img.naturalHeight);
   const flip = layer.flip ? "scaleX(-1)" : undefined;
 
   if (layer.brand) {
@@ -306,15 +448,15 @@ function ImageContent({ layer }: { layer: ImageLayer }) {
     );
   }
 
-  const w = BASE_IMG_W * layer.scale;
+  const Wf = BASE_IMG_W * layer.scale; // full displayed image width
   const ring = layer.ring ? `10px solid ${layer.ringColor}` : undefined;
 
   if (!layer.src) {
     return (
       <div
         style={{
-          width: w,
-          height: w * 1.2,
+          width: Wf,
+          height: Wf * 1.2,
           background: "#666666",
           borderRadius: layer.radius,
           border: ring,
@@ -333,20 +475,48 @@ function ImageContent({ layer }: { layer: ImageLayer }) {
     );
   }
 
+  // Before the aspect is known we can't size the crop box → render plain (also the
+  // common uncropped path; data URLs load synchronously so this lasts one frame).
+  if (!aspect) {
+    return (
+      <img
+        src={layer.src}
+        draggable={false}
+        onLoad={(e) => grab(e.currentTarget)}
+        style={{ display: "block", width: Wf, maxWidth: "none", height: "auto", borderRadius: layer.radius, transform: flip, border: ring, boxSizing: "border-box", filter: glowFilter(layer) }}
+      />
+    );
+  }
+
+  const Hf = Wf / aspect; // full displayed image height
+  const c = layer.crop ?? { l: 0, t: 0, r: 0, b: 0 };
+  const keptW = Wf * (1 - c.l - c.r), keptH = Hf * (1 - c.t - c.b);
+  const maskCss =
+    layer.mask && layer.mask.points.length >= 3
+      ? `polygon(${layer.mask.points.map((p) => `${(p.x * 100).toFixed(2)}% ${(p.y * 100).toFixed(2)}%`).join(", ")})`
+      : undefined;
+
+  // The full image, positioned so the kept region sits at the box's top-left.
+  // maxWidth:none defeats Tailwind preflight's `img { max-width: 100% }`, which would
+  // otherwise clamp the image to the (cropped, smaller) container and wreck the offsets.
+  const fullImg: CSSProperties = { display: "block", position: "absolute", left: -Wf * c.l, top: -Hf * c.t, width: Wf, maxWidth: "none", height: "auto" };
+  const container: CSSProperties = { position: "relative", width: keptW, height: keptH, borderRadius: layer.radius, border: ring, boxSizing: "border-box", transform: flip, filter: glowFilter(layer) };
+
+  if (!cropMode) {
+    return (
+      <div style={{ ...container, overflow: "hidden" }}>
+        <img src={layer.src} draggable={false} onLoad={(e) => grab(e.currentTarget)} style={{ ...fullImg, clipPath: maskCss }} />
+      </div>
+    );
+  }
+
+  // Crop mode: full image shown faded (what's being cut away) with the kept region clipped bright on top.
   return (
-    <img
-      src={layer.src}
-      draggable={false}
-      style={{
-        display: "block",
-        width: w,
-        height: "auto",
-        borderRadius: layer.radius,
-        transform: flip,
-        border: ring,
-        boxSizing: "border-box",
-        filter: glowFilter(layer),
-      }}
-    />
+    <div style={{ ...container, overflow: "visible" }}>
+      <img src={layer.src} draggable={false} style={{ ...fullImg, opacity: 0.35, pointerEvents: "none" }} />
+      <div style={{ position: "absolute", left: 0, top: 0, width: keptW, height: keptH, overflow: "hidden" }}>
+        <img src={layer.src} draggable={false} onLoad={(e) => grab(e.currentTarget)} style={{ ...fullImg, clipPath: maskCss }} />
+      </div>
+    </div>
   );
 }

@@ -1,5 +1,5 @@
 import { useState, type Dispatch } from "react";
-import { Camera, ChevronDown, ChevronRight, ImagePlus, Maximize, RotateCcw, Scissors, Undo2 } from "lucide-react";
+import { Camera, ChevronDown, ChevronRight, Crop, ImagePlus, Lasso, Maximize, RotateCcw, Scissors, Undo2 } from "lucide-react";
 import {
   CANVAS_H,
   CANVAS_W,
@@ -19,6 +19,7 @@ import {
   type TextFx,
   type TextLayer,
 } from "../state";
+import type { CropMode } from "./ThumbCanvas";
 import { removeBackground } from "../lib/bgremove";
 import { loadImageFile } from "../lib/loadImageFile";
 import { ColorRow, Field, Hint, Section, SelectField, SliderRow, SwitchRow, UploadButton } from "./controls";
@@ -41,9 +42,15 @@ const SHAPE_OPTIONS: { value: ShapeLayer["kind"]; label: string }[] = [
   { value: "bar", label: "Barra progresso" },
 ];
 
-type InspectorProps = { selected: Layer | null; dispatch: Dispatch<Action>; onError: (msg: string) => void };
+type InspectorProps = {
+  selected: Layer | null;
+  dispatch: Dispatch<Action>;
+  onError: (msg: string) => void;
+  cropMode: CropMode;
+  setCropMode: (m: CropMode) => void;
+};
 
-export function Inspector({ selected, dispatch, onError }: InspectorProps) {
+export function Inspector({ selected, dispatch, onError, cropMode, setCropMode }: InspectorProps) {
   if (!selected) {
     return (
       <Section title="Proprietà">
@@ -58,7 +65,7 @@ export function Inspector({ selected, dispatch, onError }: InspectorProps) {
         <Input value={selected.name} onChange={(e) => set({ name: e.target.value })} />
       </Field>
       {selected.type === "text" && <TextProps layer={selected} set={set} />}
-      {selected.type === "image" && <ImageProps layer={selected} set={set} onError={onError} />}
+      {selected.type === "image" && <ImageProps layer={selected} set={set} onError={onError} cropMode={cropMode} setCropMode={setCropMode} />}
       {selected.type === "emoji" && <EmojiProps layer={selected} set={set} />}
       {selected.type === "shape" && <ShapeProps layer={selected} set={set} />}
       {selected.type === "effect" && <EffectProps layer={selected} set={set} />}
@@ -170,7 +177,19 @@ function TextFxControls({ fx, set }: { fx: TextFx; set: Setter }) {
   }
 }
 
-function ImageProps({ layer, set, onError }: { layer: ImageLayer; set: Setter; onError: (msg: string) => void }) {
+/** Clear the crop, putting the full image back where it sat before cropping (the visible
+ *  region stays put, the rest grows back around it) by reading the rendered image size. */
+function restoreCrop(layer: ImageLayer, set: Setter) {
+  const img = document.querySelector<HTMLImageElement>(`[data-layer-id="${layer.id}"] img`);
+  const c = layer.crop;
+  if (img && c) {
+    set({ x: layer.x - img.offsetWidth * c.l, y: layer.y - img.offsetHeight * c.t, crop: undefined, mask: undefined });
+  } else {
+    set({ crop: undefined, mask: undefined });
+  }
+}
+
+function ImageProps({ layer, set, onError, cropMode, setCropMode }: { layer: ImageLayer; set: Setter; onError: (msg: string) => void; cropMode: CropMode; setCropMode: (m: CropMode) => void }) {
   const [busy, setBusy] = useState(false);
   const [showCam, setShowCam] = useState(false);
 
@@ -221,6 +240,17 @@ function ImageProps({ layer, set, onError }: { layer: ImageLayer; set: Setter; o
               {layer.origSrc && (
                 <Button variant="secondary" size="sm" onClick={() => set({ src: layer.origSrc, origSrc: null })}>
                   <Undo2 /> Ripristina
+                </Button>
+              )}
+              <Button variant={cropMode === "rect" ? "default" : "secondary"} size="sm" onClick={() => setCropMode(cropMode === "rect" ? null : "rect")}>
+                <Crop /> Ritaglia
+              </Button>
+              <Button variant={cropMode === "lasso" ? "default" : "secondary"} size="sm" onClick={() => setCropMode(cropMode === "lasso" ? null : "lasso")}>
+                <Lasso /> Lazo
+              </Button>
+              {(layer.crop || layer.mask) && (
+                <Button variant="secondary" size="sm" className="col-span-2" onClick={() => { restoreCrop(layer, set); setCropMode(null); }}>
+                  <Undo2 /> Ripristina ritaglio
                 </Button>
               )}
               <Button variant="ghost" size="sm" className="col-span-2 text-muted-foreground" onClick={() => set({ src: null, origSrc: null })}>

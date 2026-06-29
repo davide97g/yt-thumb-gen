@@ -172,6 +172,9 @@ export type ImageLayer = LayerBase & {
   glow: boolean; // glow tracing the cut-out alpha edge
   glowColor: string;
   glowSize: number;
+  // Non-destructive crop. `src` is never altered — these just hide parts of it.
+  crop?: { l: number; t: number; r: number; b: number }; // edge insets, fractions 0–1 of the full image; absent = uncropped
+  mask?: { points: { x: number; y: number }[] }; // lasso polygon in full-image fractions; absent = no lasso. `crop` holds its bbox.
 };
 
 /** A single emoji / glyph. */

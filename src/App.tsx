@@ -1,6 +1,6 @@
 import { useEffect, useReducer, useRef, useState } from "react";
 import { Download, FilePlus, Maximize2, PanelsTopLeft, Redo2, Undo2 } from "lucide-react";
-import { CANVAS_H, CANVAS_W, ThumbCanvas } from "./components/ThumbCanvas";
+import { CANVAS_H, CANVAS_W, ThumbCanvas, type CropMode } from "./components/ThumbCanvas";
 import { Inspector, BackgroundInspector } from "./components/Inspector";
 import { LayerList } from "./components/LayerList";
 import { SavesPanel } from "./components/SavesPanel";
@@ -28,8 +28,12 @@ export default function App() {
   const [exporting, setExporting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [fileName, setFileName] = useState("thumb.png");
+  const [cropMode, setCropMode] = useState<CropMode>(null);
 
   const { doc, selectedId } = hist.present;
+
+  // Crop tooling is per-selection; drop it whenever the selected layer changes.
+  useEffect(() => setCropMode(null), [selectedId]);
   const selected = doc.layers.find((l) => l.id === selectedId) ?? null;
 
   // Latest doc/selection + a copy/paste clipboard, read by the global key handler
@@ -62,6 +66,8 @@ export default function App() {
       const el = document.activeElement as HTMLElement | null;
       const typing = el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
       if (typing) return; // let inputs keep native undo / copy / paste
+
+      if (e.key === "Escape") { setCropMode(null); return; } // exit crop mode
 
       const mod = e.metaKey || e.ctrlKey;
       if (mod) {
@@ -214,6 +220,8 @@ export default function App() {
               scale={scale}
               selectedId={selectedId}
               exporting={exporting}
+              cropMode={cropMode}
+              setCropMode={setCropMode}
               canvasRef={canvasRef}
               dispatch={dispatch}
             />
@@ -232,7 +240,7 @@ export default function App() {
 
         {!chromeHidden && (
           <aside className="anim-panel-r panel panel-scroll flex w-80 shrink-0 flex-col gap-5 overflow-y-auto border-l border-border p-4">
-            <Inspector selected={selected} dispatch={dispatch} onError={setMessage} />
+            <Inspector selected={selected} dispatch={dispatch} onError={setMessage} cropMode={cropMode} setCropMode={setCropMode} />
             <BackgroundInspector background={doc.background} dispatch={dispatch} onError={setMessage} />
           </aside>
         )}
