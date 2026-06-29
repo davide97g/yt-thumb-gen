@@ -90,7 +90,7 @@ function TextProps({ layer, set }: { layer: TextLayer; set: Setter }) {
         <Textarea rows={2} value={layer.text} onChange={(e) => set({ text: e.target.value })} />
       </Field>
       <SelectField label="Font" value={layer.font} options={FONT_OPTIONS} onChange={(font) => set({ font })} />
-      <SliderRow label="Dimensione" min={24} max={220} value={layer.size} defaultValue={D.size} onChange={(size) => set({ size })} />
+      <SliderRow label="Dimensione" min={6} max={220} value={layer.size} defaultValue={D.size} onChange={(size) => set({ size })} />
       <ColorRow label="Colore" value={layer.color} defaultValue={D.color} onChange={(color) => set({ color })} />
       <SelectField label="Allineamento" value={layer.align} options={ALIGN_OPTIONS} onChange={(align) => set({ align })} />
       <SliderRow label="Interlinea" min={0.8} max={2} step={0.05} value={layer.lineHeight} defaultValue={D.lineHeight} display={layer.lineHeight.toFixed(2)} onChange={(lineHeight) => set({ lineHeight })} />
