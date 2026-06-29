@@ -1,9 +1,17 @@
 import type { CSSProperties, ReactNode } from "react";
+import { Pipette } from "lucide-react";
 import { Slider as SliderBase } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+
+// Native screen eyedropper (Chromium): its own magnified zoom-preview follows the cursor, click to pick.
+declare global {
+  interface Window {
+    EyeDropper?: new () => { open: (opts?: { signal?: AbortSignal }) => Promise<{ sRGBHex: string }> };
+  }
+}
 
 /** A file picker styled as a shadcn button (label wrapping a hidden input). */
 export function UploadButton({
@@ -83,10 +91,34 @@ export function SliderRow({
   );
 }
 
+async function eyedrop(onChange: (v: string) => void) {
+  if (!window.EyeDropper) return;
+  try {
+    const { sRGBHex } = await new window.EyeDropper().open();
+    onChange(sRGBHex);
+    navigator.clipboard?.writeText(sRGBHex).catch(() => {}); // best-effort copy
+  } catch {
+    // user pressed Esc — ignore
+  }
+}
+
 export function ColorRow({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  const hasEyeDropper = typeof window !== "undefined" && "EyeDropper" in window;
   return (
     <Row label={label}>
-      <input type="color" value={value} onChange={(e) => onChange(e.target.value)} className="h-7 w-10" />
+      <div className="flex items-center gap-1.5">
+        <input type="color" value={value} onChange={(e) => onChange(e.target.value)} className="h-7 w-10" />
+        {hasEyeDropper && (
+          <button
+            type="button"
+            onClick={() => eyedrop(onChange)}
+            title="Contagocce — preleva un colore dallo schermo (copia l'hex)"
+            className={cn(buttonVariants({ variant: "ghost", size: "icon-sm" }))}
+          >
+            <Pipette className="size-3.5" />
+          </button>
+        )}
+      </div>
     </Row>
   );
 }
