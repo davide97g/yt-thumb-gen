@@ -11,8 +11,9 @@ import { Section } from "./components/controls";
 import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
 import { exportThumb } from "./lib/export";
+import { loadImageFile } from "./lib/loadImageFile";
 import { getProject, getWorking, renameConfig, saveConfig, setProject, setWorking } from "./lib/storage";
-import { historyReducer, initHistory, type AppState, type Layer, type ThumbDoc } from "./state";
+import { historyReducer, initHistory, newImageLayer, type AppState, type Layer, type ThumbDoc } from "./state";
 import { TEMPLATES } from "./presets";
 
 const initial: AppState = { doc: TEMPLATES.dacoder(), selectedId: null };
@@ -145,6 +146,27 @@ export default function App() {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  // Paste an image from the clipboard as a new image layer. Skipped while a field
+  // is focused so text paste into inputs stays native (same guard as the keydown handler).
+  useEffect(() => {
+    async function onPaste(e: ClipboardEvent) {
+      const el = document.activeElement as HTMLElement | null;
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable)) return;
+      const file = [...(e.clipboardData?.items ?? [])].find((i) => i.type.startsWith("image/"))?.getAsFile();
+      if (!file) return;
+      e.preventDefault();
+      if (file.size > 8 * 1024 * 1024) { setMessage("Foto troppo grande (max 8 MB)"); return; }
+      try {
+        setMessage(null);
+        dispatch({ type: "addLayer", layer: newImageLayer(await loadImageFile(file)) });
+      } catch {
+        setMessage("Impossibile incollare l'immagine.");
+      }
+    }
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
   }, []);
 
   // Fit the canvas to the stage, leaving room for the floating dock + readout.
