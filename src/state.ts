@@ -293,6 +293,8 @@ export type Background = {
   from: string;
   to: string;
   image: string | null; // dataURL for a custom background image
+  imageZoom?: number; // 100–200 zoom % for image mode (default 100 = cover)
+  imageY?: number; // -25…25 vertical nudge % for image mode (default 0), to crop out e.g. a top status bar
   overlay: number; // 0–100 darkness of the scrim over the background
   effect?: BgEffect; // present when mode === "effect"
   // Global colour grade painted ON TOP of every layer, to make the whole composite cohesive. All optional.

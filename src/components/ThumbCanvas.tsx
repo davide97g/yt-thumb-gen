@@ -100,7 +100,7 @@ export function ThumbCanvas({ doc, scale, selectedId, exporting, cropMode, setCr
   const bg = doc.background;
   const background =
     bg.mode === "image" && bg.image
-      ? `#000 url(${bg.image}) center / cover no-repeat`
+      ? "#000" // image rendered as an <img> below so zoom/offset can transform it
       : bg.mode === "gradient"
         ? `radial-gradient(circle at 68% 32%, ${bg.from}, ${bg.to} 72%)`
         : bg.mode === "effect"
@@ -141,6 +141,23 @@ export function ThumbCanvas({ doc, scale, selectedId, exporting, cropMode, setCr
       }}
     >
       <OutlineDefs layers={doc.layers} />
+      {bg.mode === "image" && bg.image && (
+        <img
+          src={bg.image}
+          alt=""
+          draggable={false}
+          style={{
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            transform: `translateY(${bg.imageY ?? 0}%) scale(${(bg.imageZoom ?? 100) / 100})`,
+            transformOrigin: "center",
+            pointerEvents: "none",
+          }}
+        />
+      )}
       {bg.mode === "effect" && bg.effect && <EffectBackground effect={bg.effect} />}
       {bg.overlay > 0 && <div style={{ position: "absolute", inset: 0, background: "#000", opacity: bg.overlay / 100 }} />}
 
