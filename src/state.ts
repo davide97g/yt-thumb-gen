@@ -308,7 +308,31 @@ export type Background = {
   gradeBlend?: "soft-light" | "overlay" | "multiply" | "screen" | "color";
   gradeVignette?: number; // 0–100 darkened edges
   gradeGrain?: number; // 0–100 film grain
+  /** Full-canvas frame border painted on top of every layer. All optional — absent = off. */
+  border?: BgBorder;
 };
+
+export type BgBorderStyle = "solid" | "dashed" | "dotted" | "double";
+
+export type BgBorder = {
+  enabled: boolean;
+  color: string;
+  width: number; // px, thickness of the stroke
+  radius: number; // px, corner roundness of the inner edge
+  style: BgBorderStyle;
+  inset: number; // px, gap between the canvas edge and the border box
+  opacity: number; // 0–100
+};
+
+/** Fresh defaults for the full-canvas border — thick black frame with rounded inner corners. */
+export function defaultBgBorder(): BgBorder {
+  return { enabled: false, color: "#000000", width: 24, radius: 32, style: "solid", inset: 0, opacity: 100 };
+}
+
+/** Merge stored border with defaults so callers never need to null-check every field. */
+export function resolveBgBorder(border?: BgBorder): BgBorder {
+  return { ...defaultBgBorder(), ...border };
+}
 
 /** Fresh, sane defaults for an effect preset — the React Bits component defaults. */
 export function defaultEffect(preset: BgEffect["preset"]): BgEffect {

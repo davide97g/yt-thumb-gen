@@ -6,6 +6,7 @@ import {
   FONT_LABELS,
   FONTS,
   defaultEffect,
+  defaultBgBorder,
   defaultFx,
   newTextLayer,
   newImageLayer,
@@ -18,6 +19,8 @@ import {
   type DrawCap,
   type DrawLayer,
   type Background,
+  type BgBorder,
+  type BgBorderStyle,
   type BgEffect,
   type EffectLayer,
   type EmojiLayer,
@@ -573,8 +576,38 @@ export function BackgroundInspector({
         </>
       )}
     </Section>
+    <BorderSection background={background} set={set} />
     <GradeSection background={background} set={set} />
     </>
+  );
+}
+
+const BORDER_STYLE_OPTIONS: { value: BgBorderStyle; label: string }[] = [
+  { value: "solid", label: "Pieno" },
+  { value: "dashed", label: "Tratteggiato" },
+  { value: "dotted", label: "Puntini" },
+  { value: "double", label: "Doppio" },
+];
+
+function BorderSection({ background, set }: { background: Background; set: (p: Partial<Background>) => void }) {
+  const D = defaultBgBorder();
+  const border = { ...D, ...background.border };
+  const setBorder = (patch: Partial<BgBorder>) => set({ border: { ...border, ...patch } });
+
+  return (
+    <Section title="Bordo (tutto schermo)">
+      <SwitchRow label="Attivo" checked={border.enabled} defaultValue={D.enabled} onChange={(enabled) => setBorder({ enabled })} />
+      {border.enabled && (
+        <>
+          <ColorRow label="Colore" value={border.color} defaultValue={D.color} onChange={(color) => setBorder({ color })} />
+          <SelectField label="Stile" value={border.style} options={BORDER_STYLE_OPTIONS} onChange={(style) => setBorder({ style })} />
+          <SliderRow label="Spessore" min={1} max={80} value={border.width} defaultValue={D.width} display={`${border.width}px`} onChange={(width) => setBorder({ width })} />
+          <SliderRow label="Arrotonda" min={0} max={120} value={border.radius} defaultValue={D.radius} display={`${border.radius}px`} onChange={(radius) => setBorder({ radius })} />
+          <SliderRow label="Margine" min={0} max={60} value={border.inset} defaultValue={D.inset} display={`${border.inset}px`} onChange={(inset) => setBorder({ inset })} />
+          <SliderRow label="Opacità" min={0} max={100} value={border.opacity} defaultValue={D.opacity} display={`${border.opacity}%`} onChange={(opacity) => setBorder({ opacity })} />
+        </>
+      )}
+    </Section>
   );
 }
 

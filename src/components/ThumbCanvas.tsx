@@ -1,5 +1,5 @@
 import { useState, type CSSProperties, type Dispatch, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
-import { CANVAS_H, CANVAS_W, FONTS, FONT_WEIGHT, drawPad, newDrawLayer, type Action, type DrawCap, type DrawLayer, type ImageLayer, type Layer, type LayerPatch, type TextLayer, type ThumbDoc } from "../state";
+import { CANVAS_H, CANVAS_W, FONTS, FONT_WEIGHT, drawPad, newDrawLayer, resolveBgBorder, type Action, type DrawCap, type DrawLayer, type ImageLayer, type Layer, type LayerPatch, type TextLayer, type ThumbDoc } from "../state";
 import { smoothPath, type Pt } from "../lib/smoothPath";
 import { ClaudeLogo, ClaudeWordmark } from "./brand";
 import { EffectBackground } from "./EffectBackground";
@@ -56,6 +56,24 @@ function GlobalGrade({ bg }: { bg: { gradeTint?: string; gradeAmount?: number; g
       {vignette > 0 && <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at center, transparent 55%, #000 135%)", opacity: vignette / 100 }} />}
       {grain > 0 && <div style={{ position: "absolute", inset: 0, backgroundImage: `url("${GRAIN_URL}")`, opacity: grain / 100, mixBlendMode: "overlay" }} />}
     </div>
+  );
+}
+
+/** Full-canvas frame border — sits above layers & grade, captured on export. */
+function BackgroundBorder({ border }: { border: ReturnType<typeof resolveBgBorder> }) {
+  if (!border.enabled) return null;
+  return (
+    <div
+      style={{
+        position: "absolute",
+        inset: border.inset,
+        border: `${border.width}px ${border.style} ${border.color}`,
+        borderRadius: border.radius,
+        opacity: border.opacity / 100,
+        pointerEvents: "none",
+        boxSizing: "border-box",
+      }}
+    />
   );
 }
 
@@ -197,6 +215,7 @@ export function ThumbCanvas({ doc, scale, selectedId, exporting, cropMode, setCr
       })}
 
       <GlobalGrade bg={bg} />
+      <BackgroundBorder border={resolveBgBorder(bg.border)} />
 
       {drawMode && (
         <DrawOverlay
