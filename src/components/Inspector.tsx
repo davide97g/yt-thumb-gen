@@ -545,6 +545,7 @@ export function BackgroundInspector({
           </Button>
           <SliderRow label="Ombra" min={0} max={100} value={background.overlay} display={`${background.overlay}%`} onChange={(overlay) => set({ overlay })} />
           <SliderRow label="Zoom" min={100} max={200} value={background.imageZoom ?? 100} defaultValue={100} display={`${background.imageZoom ?? 100}%`} onChange={(imageZoom) => set({ imageZoom })} />
+          <SliderRow label="Posizione X" min={-25} max={25} value={background.imageX ?? 0} defaultValue={0} display={`${background.imageX ?? 0}%`} onChange={(imageX) => set({ imageX })} />
           <SliderRow label="Posizione Y" min={-25} max={25} value={background.imageY ?? 0} defaultValue={0} display={`${background.imageY ?? 0}%`} onChange={(imageY) => set({ imageY })} />
         </>
       ) : (

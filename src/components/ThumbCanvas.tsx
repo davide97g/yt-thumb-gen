@@ -152,7 +152,7 @@ export function ThumbCanvas({ doc, scale, selectedId, exporting, cropMode, setCr
             width: "100%",
             height: "100%",
             objectFit: "cover",
-            transform: `translateY(${bg.imageY ?? 0}%) scale(${(bg.imageZoom ?? 100) / 100})`,
+            transform: `translate(${bg.imageX ?? 0}%, ${bg.imageY ?? 0}%) scale(${(bg.imageZoom ?? 100) / 100})`,
             transformOrigin: "center",
             pointerEvents: "none",
           }}
