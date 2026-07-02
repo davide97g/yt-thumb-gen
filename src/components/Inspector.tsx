@@ -58,9 +58,10 @@ type InspectorProps = {
   onError: (msg: string) => void;
   cropMode: CropMode;
   setCropMode: (m: CropMode) => void;
+  onFontPreview: (f: FontKey | null) => void;
 };
 
-export function Inspector({ selected, dispatch, onError, cropMode, setCropMode }: InspectorProps) {
+export function Inspector({ selected, dispatch, onError, cropMode, setCropMode, onFontPreview }: InspectorProps) {
   if (!selected) {
     return (
       <Section title="Proprietà">
@@ -74,7 +75,7 @@ export function Inspector({ selected, dispatch, onError, cropMode, setCropMode }
       <Field label="Nome">
         <Input value={selected.name} onChange={(e) => set({ name: e.target.value })} />
       </Field>
-      {selected.type === "text" && <TextProps layer={selected} set={set} />}
+      {selected.type === "text" && <TextProps layer={selected} set={set} onFontPreview={onFontPreview} />}
       {selected.type === "image" && <ImageProps layer={selected} set={set} onError={onError} cropMode={cropMode} setCropMode={setCropMode} />}
       {selected.type === "emoji" && <EmojiProps layer={selected} set={set} />}
       {selected.type === "shape" && <ShapeProps layer={selected} set={set} />}
@@ -86,14 +87,14 @@ export function Inspector({ selected, dispatch, onError, cropMode, setCropMode }
 
 type Setter = (patch: LayerPatch) => void;
 
-function TextProps({ layer, set }: { layer: TextLayer; set: Setter }) {
+function TextProps({ layer, set, onFontPreview }: { layer: TextLayer; set: Setter; onFontPreview: (f: FontKey | null) => void }) {
   const D = newTextLayer(); // factory defaults = the "reset" targets
   return (
     <>
       <Field label="Testo">
         <Textarea rows={2} value={layer.text} onChange={(e) => set({ text: e.target.value })} />
       </Field>
-      <SelectField label="Font" value={layer.font} options={FONT_OPTIONS} onChange={(font) => set({ font })} />
+      <SelectField label="Font" value={layer.font} options={FONT_OPTIONS} onChange={(font) => set({ font })} onPreview={onFontPreview} />
       <SliderRow label="Dimensione" min={6} max={220} value={layer.size} defaultValue={D.size} onChange={(size) => set({ size })} />
       <ColorRow label="Colore" value={layer.color} defaultValue={D.color} onChange={(color) => set({ color })} />
       <SelectField label="Allineamento" value={layer.align} options={ALIGN_OPTIONS} onChange={(align) => set({ align })} />

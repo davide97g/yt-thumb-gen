@@ -1,0 +1,15 @@
+/* Self-hosted Anthropic Sans (Display). Static OTFs — Vite hashes + copies the assets. */
+@font-face {
+  font-family: "Anthropic Sans";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("./AnthropicSans-Display-Bold-Static.otf") format("opentype");
+}
+@font-face {
+  font-family: "Anthropic Sans";
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url("./AnthropicSans-Display-Extrabold-Static.otf") format("opentype");
+}

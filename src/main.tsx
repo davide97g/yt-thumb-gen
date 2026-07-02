@@ -18,6 +18,7 @@ import "@fontsource/geist-mono/500.css";
 import "@fontsource/libre-baskerville/700.css";
 import "@fontsource/lobster/400.css";
 import "@fontsource/space-grotesk/700.css";
+import "./fonts/anthropic-sans.css";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";

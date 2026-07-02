@@ -145,17 +145,25 @@ export function ColorRow({ label, value, onChange, defaultValue }: { label: stri
 }
 
 export function SelectField<T extends string>({
-  label, value, options, onChange,
-}: { label: string; value: T; options: { value: T; label: string; style?: CSSProperties }[]; onChange: (v: T) => void }) {
+  label, value, options, onChange, onPreview,
+}: {
+  label: string;
+  value: T;
+  options: { value: T; label: string; style?: CSSProperties }[];
+  onChange: (v: T) => void;
+  // Fired while hovering/keyboard-navigating options (Radix focuses the highlighted item);
+  // called with null when the menu closes. Lets a caller live-preview the highlighted value.
+  onPreview?: (v: T | null) => void;
+}) {
   return (
     <Field label={label}>
-      <Select value={value} onValueChange={(v) => onChange(v as T)}>
+      <Select value={value} onValueChange={(v) => onChange(v as T)} onOpenChange={(open) => { if (!open) onPreview?.(null); }}>
         <SelectTrigger>
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
           {options.map((o) => (
-            <SelectItem key={o.value} value={o.value} style={o.style}>
+            <SelectItem key={o.value} value={o.value} style={o.style} onFocus={onPreview ? () => onPreview(o.value) : undefined}>
               {o.label}
             </SelectItem>
           ))}

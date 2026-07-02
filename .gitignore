@@ -12,3 +12,6 @@ bgremove/.venv/
 
 .DS_Store
 .vercel
+
+# source font archives (extracted into src/fonts)
+Anthropic Sans-fontiko.zip

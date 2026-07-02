@@ -13,7 +13,7 @@ import { Input } from "./components/ui/input";
 import { exportThumb } from "./lib/export";
 import { loadImageFile } from "./lib/loadImageFile";
 import { getProject, getWorking, renameConfig, saveConfig, setProject, setWorking } from "./lib/storage";
-import { historyReducer, initHistory, newImageLayer, type AppState, type Layer, type ThumbDoc } from "./state";
+import { historyReducer, initHistory, newImageLayer, type AppState, type FontKey, type Layer, type ThumbDoc } from "./state";
 import { TEMPLATES } from "./presets";
 
 const initial: AppState = { doc: TEMPLATES.dacoder(), selectedId: null };
@@ -32,6 +32,9 @@ export default function App() {
   const [fileName, setFileName] = useState("thumb.png");
   const [cropMode, setCropMode] = useState<CropMode>(null);
   const [drawMode, setDrawMode] = useState(false);
+  // Ephemeral font being hovered in the Font select — previewed on the selected text
+  // layer without touching the doc/history until the user actually commits a choice.
+  const [fontPreview, setFontPreview] = useState<FontKey | null>(null);
 
   // Live project identity for the working canvas: a name, its archive id (null
   // until first save), and when it was last saved. `savedDocRef` holds the doc as
@@ -48,6 +51,13 @@ export default function App() {
   // Crop tooling is per-selection; drop it whenever the selected layer changes.
   useEffect(() => setCropMode(null), [selectedId]);
   const selected = doc.layers.find((l) => l.id === selectedId) ?? null;
+
+  // Canvas gets the doc with the hovered font swapped onto the selected text layer,
+  // so the preview shows live without ever hitting the reducer/history.
+  const viewDoc =
+    fontPreview && selected?.type === "text"
+      ? { ...doc, layers: doc.layers.map((l) => (l.id === selected.id ? { ...l, font: fontPreview } : l)) }
+      : doc;
 
   // Latest doc/selection + a copy/paste clipboard, read by the global key handler
   // without rebinding it each render. Clipboard is a layer snapshot (immutable), so
@@ -304,7 +314,7 @@ export default function App() {
             style={{ width: CANVAS_W * scale, height: CANVAS_H * scale }}
           >
             <ThumbCanvas
-              doc={doc}
+              doc={viewDoc}
               scale={scale}
               selectedId={selectedId}
               exporting={exporting}
@@ -330,7 +340,7 @@ export default function App() {
 
         {!chromeHidden && (
           <aside className="anim-panel-r panel panel-scroll flex w-80 shrink-0 flex-col gap-5 overflow-y-auto border-l border-border p-4">
-            <Inspector selected={selected} dispatch={dispatch} onError={setMessage} cropMode={cropMode} setCropMode={setCropMode} />
+            <Inspector selected={selected} dispatch={dispatch} onError={setMessage} cropMode={cropMode} setCropMode={setCropMode} onFontPreview={setFontPreview} />
             <BackgroundInspector background={doc.background} dispatch={dispatch} onError={setMessage} />
           </aside>
         )}
