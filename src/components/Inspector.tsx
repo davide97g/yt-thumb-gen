@@ -419,7 +419,7 @@ function EmojiFxProps({ layer, set, layers }: { layer: EmojiFxLayer; set: Setter
       </Field>
       <div className="flex flex-wrap gap-1">
         {EMOJIFX_PRESETS.map((p) => (
-          <Button key={p.label} variant="outline" size="sm" onClick={() => set({ glyphs: p.glyphs })}>
+          <Button key={p.label} variant="outline" size="sm" onClick={() => set({ glyphs: [...p.glyphs] })}>
             {p.label}
           </Button>
         ))}
