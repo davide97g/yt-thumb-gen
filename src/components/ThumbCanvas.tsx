@@ -1,7 +1,7 @@
 import { useState, type CSSProperties, type Dispatch, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
 import { CANVAS_H, CANVAS_W, FONTS, FONT_WEIGHT, drawPad, newDrawLayer, resolveBgBorder, type Action, type DrawCap, type DrawLayer, type ImageLayer, type Layer, type LayerPatch, type TextLayer, type ThumbDoc } from "../state";
 import { smoothPath, type Pt } from "../lib/smoothPath";
-import { resolveSnap, type Box } from "../lib/layout";
+import { boxesIntersect, resolveSnap, type Box } from "../lib/layout";
 import { ClaudeLogo, ClaudeWordmark } from "./brand";
 import { EffectBackground } from "./EffectBackground";
 
@@ -130,6 +130,22 @@ export function ThumbCanvas({ doc, scale, selectedIds, exporting, cropMode, setC
     return { x: l.x, y: l.y, w: el.offsetWidth, h: el.offsetHeight };
   };
 
+  const [marquee, setMarquee] = useState<Box | null>(null);
+
+  // All ids in a layer's group (or just itself if ungrouped).
+  const groupMates = (layer: Layer): string[] =>
+    layer.groupId ? doc.layers.filter((l) => l.groupId === layer.groupId).map((l) => l.id) : [layer.id];
+
+  // Expand a set of ids to include every group-mate, deduped.
+  const expandGroups = (ids: string[]): string[] => {
+    const out = new Set<string>();
+    for (const id of ids) {
+      const l = doc.layers.find((x) => x.id === id);
+      if (l) for (const m of groupMates(l)) out.add(m);
+    }
+    return [...out];
+  };
+
   const SNAP = 6 / scale;   // grab distance
   const BREAK = 12 / scale; // effort to leave a snapped line
 
@@ -149,10 +165,27 @@ export function ThumbCanvas({ doc, scale, selectedIds, exporting, cropMode, setC
     e.stopPropagation();
     e.preventDefault();
 
-    // Drag set: keep the current selection if this layer is in it, else select just it.
-    const dragIds = selectedIds.includes(id) ? selectedIds : [id];
-    // select is the only action that resets history.tag; dispatch it every drag (even when the
-    // selection is unchanged) so consecutive drags of the same layer stay separate undo entries.
+    const layer = doc.layers.find((l) => l.id === id);
+    if (!layer) return;
+    const mates = groupMates(layer);
+
+    // Shift-click toggles this layer (or its whole group) in/out of the selection — no drag.
+    if (e.shiftKey) {
+      const has = mates.every((m) => selectedIds.includes(m));
+      const next = has
+        ? selectedIds.filter((s) => !mates.includes(s))
+        : [...selectedIds, ...mates.filter((m) => !selectedIds.includes(m))];
+      dispatch({ type: "select", ids: next });
+      return;
+    }
+
+    // Plain click on a layer already in the selection keeps it (so a group drags together);
+    // otherwise select the group (or the single layer). Dispatch select UNCONDITIONALLY —
+    // even when the selection is unchanged — because `select` is the only action that resets
+    // history.tag to null, which is what makes each drag its own undo entry. Skipping it when
+    // already-selected merges consecutive drags of the same layer into one undo step.
+    const alreadyIn = selectedIds.includes(id);
+    const dragIds = alreadyIn ? selectedIds : mates;
     dispatch({ type: "select", ids: dragIds });
 
     // Union bbox of the drag set, and candidate snap lines from every other layer + canvas.
@@ -195,10 +228,40 @@ export function ThumbCanvas({ doc, scale, selectedIds, exporting, cropMode, setC
     window.addEventListener("pointerup", up);
   }
 
+  /** pointerdown on empty canvas: a drag draws a marquee (box-select); a click clears. */
+  function startMarquee(e: ReactPointerEvent) {
+    setCropMode(null);
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const additive = e.shiftKey;
+    const base = additive ? selectedIds : [];
+    const toCanvas = (cx: number, cy: number) => ({ x: (cx - rect.left) / scale, y: (cy - rect.top) / scale });
+    const p0 = toCanvas(e.clientX, e.clientY);
+    let moved = false;
+    const move = (ev: PointerEvent) => {
+      const p = toCanvas(ev.clientX, ev.clientY);
+      const box = { x: Math.min(p0.x, p.x), y: Math.min(p0.y, p.y), w: Math.abs(p.x - p0.x), h: Math.abs(p.y - p0.y) };
+      if (box.w > 3 || box.h > 3) moved = true;
+      setMarquee(box);
+      if (moved) {
+        const hit = doc.layers.filter((l) => l.visible).filter((l) => { const b = layerBox(l.id); return b && boxesIntersect(b, box); }).map((l) => l.id);
+        dispatch({ type: "select", ids: expandGroups([...base, ...hit]) });
+      }
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      setMarquee(null);
+      if (!moved && !additive) dispatch({ type: "select", ids: [] }); // plain click clears
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  }
+
   return (
     <div
       ref={canvasRef}
-      onPointerDown={() => { dispatch({ type: "select", ids: [] }); setCropMode(null); }}
+      onPointerDown={startMarquee}
       style={{
         width: CANVAS_W,
         height: CANVAS_H,
@@ -241,6 +304,7 @@ export function ThumbCanvas({ doc, scale, selectedIds, exporting, cropMode, setC
             data-lbox
             data-layer-id={layer.id}
             onPointerDown={(e) => startDrag(e, layer.id)}
+            onDoubleClick={(e) => { e.stopPropagation(); dispatch({ type: "select", ids: [layer.id] }); }}
             style={{
               position: "absolute",
               left: layer.x,
@@ -252,15 +316,20 @@ export function ThumbCanvas({ doc, scale, selectedIds, exporting, cropMode, setC
             }}
           >
             <LayerContent layer={layer} cropMode={layerCrop} />
-            {!exporting && layer.id === primary && (
-              <SelectionFrame
-                layer={layer}
-                scale={scale}
-                cropMode={layerCrop}
-                onCropDone={() => setCropMode(null)}
-                canvasRef={canvasRef}
-                dispatch={dispatch}
-              />
+            {!exporting && selectedIds.includes(layer.id) && (
+              selectedIds.length === 1 ? (
+                <SelectionFrame
+                  layer={layer}
+                  scale={scale}
+                  cropMode={layerCrop}
+                  onCropDone={() => setCropMode(null)}
+                  canvasRef={canvasRef}
+                  dispatch={dispatch}
+                />
+              ) : (
+                // ponytail: multi-select shows a per-layer outline only; multi-resize/rotate handles are a later add.
+                <div style={{ position: "absolute", inset: -3 / scale, border: `${1.5 / scale}px solid ${SELECT_COLOR}`, pointerEvents: "none", boxSizing: "border-box" }} />
+              )
             )}
           </div>
         );
@@ -282,6 +351,9 @@ export function ThumbCanvas({ doc, scale, selectedIds, exporting, cropMode, setC
       )}
       {!exporting && guides.hy != null && (
         <div style={{ position: "absolute", top: guides.hy, left: 0, height: 1.5 / scale, width: CANVAS_W, background: SELECT_COLOR, pointerEvents: "none", zIndex: 60 }} />
+      )}
+      {marquee && (
+        <div style={{ position: "absolute", left: marquee.x, top: marquee.y, width: marquee.w, height: marquee.h, border: `${1 / scale}px solid ${SELECT_COLOR}`, background: `${SELECT_COLOR}22`, pointerEvents: "none", zIndex: 60 }} />
       )}
     </div>
   );

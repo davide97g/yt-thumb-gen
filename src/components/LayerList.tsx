@@ -20,6 +20,9 @@ type Props = { layers: Layer[]; selectedIds: string[]; dispatch: Dispatch<Action
 export function LayerList({ layers, selectedIds, dispatch }: Props) {
   if (layers.length === 0) return <Hint>Nessun livello. Aggiungine uno qui sopra o carica un modello.</Hint>;
 
+  const groupMates = (layer: Layer): string[] =>
+    layer.groupId ? layers.filter((l) => l.groupId === layer.groupId).map((l) => l.id) : [layer.id];
+
   return (
     <div className="space-y-1">
       {layers
@@ -32,7 +35,15 @@ export function LayerList({ layers, selectedIds, dispatch }: Props) {
           return (
             <div
               key={layer.id}
-              onClick={() => dispatch({ type: "select", ids: [layer.id] })}
+              onClick={(e) => {
+                const mates = groupMates(layer);
+                if (e.shiftKey) {
+                  const has = mates.every((m) => selectedIds.includes(m));
+                  dispatch({ type: "select", ids: has ? selectedIds.filter((s) => !mates.includes(s)) : [...selectedIds, ...mates.filter((m) => !selectedIds.includes(m))] });
+                } else {
+                  dispatch({ type: "select", ids: mates });
+                }
+              }}
               className={cn(
                 "group/row relative flex cursor-pointer items-center gap-1 rounded-lg border px-1.5 py-1.5 text-sm transition-colors",
                 active
