@@ -75,6 +75,22 @@ test(`history is capped at ${HISTORY_LIMIT} entries`, () => {
   expect(h.past.length).toBe(HISTORY_LIMIT);
 });
 
+test("re-selecting an already-selected layer still resets the gesture tag, so a following drag starts a new history entry", () => {
+  let h = initHistory(start());
+  const a = newTextLayer();
+  h = historyReducer(h, { type: "addLayer", layer: a }); // entry 1
+  h = historyReducer(h, { type: "select", ids: [a.id] });
+  h = historyReducer(h, { type: "nudge", ids: [a.id], dx: 1, dy: 0 }); // drag 1 → entry 2
+  const afterDrag1 = h.past.length;
+
+  // Same layer is already selected, but startDrag re-dispatches select unconditionally
+  // (the fix under test) so the tag resets between drags of the same layer.
+  h = historyReducer(h, { type: "select", ids: [a.id] });
+  h = historyReducer(h, { type: "nudge", ids: [a.id], dx: 1, dy: 0 }); // drag 2 → should be a NEW entry
+
+  expect(h.past.length).toBe(afterDrag1 + 1); // drag 2 did not coalesce into drag 1
+});
+
 test("loadDoc resets history (no undo across a project switch)", () => {
   let h = initHistory(start());
   h = historyReducer(h, { type: "addLayer", layer: newTextLayer() });

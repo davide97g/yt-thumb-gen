@@ -151,7 +151,9 @@ export function ThumbCanvas({ doc, scale, selectedIds, exporting, cropMode, setC
 
     // Drag set: keep the current selection if this layer is in it, else select just it.
     const dragIds = selectedIds.includes(id) ? selectedIds : [id];
-    if (!selectedIds.includes(id)) dispatch({ type: "select", ids: [id] });
+    // select is the only action that resets history.tag; dispatch it every drag (even when the
+    // selection is unchanged) so consecutive drags of the same layer stay separate undo entries.
+    dispatch({ type: "select", ids: dragIds });
 
     // Union bbox of the drag set, and candidate snap lines from every other layer + canvas.
     const boxes = dragIds.map(layerBox).filter((b): b is Box => b !== null);
@@ -275,10 +277,10 @@ export function ThumbCanvas({ doc, scale, selectedIds, exporting, cropMode, setC
         />
       )}
 
-      {guides.vx != null && (
+      {!exporting && guides.vx != null && (
         <div style={{ position: "absolute", left: guides.vx, top: 0, width: 1.5 / scale, height: CANVAS_H, background: SELECT_COLOR, pointerEvents: "none", zIndex: 60 }} />
       )}
-      {guides.hy != null && (
+      {!exporting && guides.hy != null && (
         <div style={{ position: "absolute", top: guides.hy, left: 0, height: 1.5 / scale, width: CANVAS_W, background: SELECT_COLOR, pointerEvents: "none", zIndex: 60 }} />
       )}
     </div>
