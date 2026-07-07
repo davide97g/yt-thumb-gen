@@ -1,5 +1,5 @@
 import type { Dispatch, ReactNode } from "react";
-import { ChevronDown, ChevronUp, Copy, Eye, EyeOff, Image as ImageIcon, Pencil, Smile, Sparkles, Square, Trash2, Type } from "lucide-react";
+import { ChevronDown, ChevronUp, Copy, Eye, EyeOff, Image as ImageIcon, Link2, Pencil, Smile, Sparkles, Square, Trash2, Type } from "lucide-react";
 import type { Action, Layer, LayerType } from "../state";
 import { Button } from "./ui/button";
 import { Hint } from "./controls";
@@ -14,11 +14,14 @@ const TYPE_ICON: Record<LayerType, ReactNode> = {
   draw: <Pencil className="size-3.5" />,
 };
 
-type Props = { layers: Layer[]; selectedId: string | null; dispatch: Dispatch<Action> };
+type Props = { layers: Layer[]; selectedIds: string[]; dispatch: Dispatch<Action> };
 
 /** Layer stack, shown front-first (top of the list = frontmost on the canvas). */
-export function LayerList({ layers, selectedId, dispatch }: Props) {
+export function LayerList({ layers, selectedIds, dispatch }: Props) {
   if (layers.length === 0) return <Hint>Nessun livello. Aggiungine uno qui sopra o carica un modello.</Hint>;
+
+  const groupMates = (layer: Layer): string[] =>
+    layer.groupId ? layers.filter((l) => l.groupId === layer.groupId).map((l) => l.id) : [layer.id];
 
   return (
     <div className="space-y-1">
@@ -28,11 +31,19 @@ export function LayerList({ layers, selectedId, dispatch }: Props) {
         .map(({ layer, index }) => {
           const front = index === layers.length - 1;
           const back = index === 0;
-          const active = layer.id === selectedId;
+          const active = selectedIds.includes(layer.id);
           return (
             <div
               key={layer.id}
-              onClick={() => dispatch({ type: "select", id: layer.id })}
+              onClick={(e) => {
+                const mates = groupMates(layer);
+                if (e.shiftKey) {
+                  const has = mates.every((m) => selectedIds.includes(m));
+                  dispatch({ type: "select", ids: has ? selectedIds.filter((s) => !mates.includes(s)) : [...selectedIds, ...mates.filter((m) => !selectedIds.includes(m))] });
+                } else {
+                  dispatch({ type: "select", ids: mates });
+                }
+              }}
               className={cn(
                 "group/row relative flex cursor-pointer items-center gap-1 rounded-lg border px-1.5 py-1.5 text-sm transition-colors",
                 active
@@ -51,6 +62,7 @@ export function LayerList({ layers, selectedId, dispatch }: Props) {
                 {layer.visible ? <Eye /> : <EyeOff />}
               </Button>
               <span className={cn("shrink-0", active ? "text-primary" : "text-muted-foreground")}>{TYPE_ICON[layer.type]}</span>
+              {layer.groupId && <Link2 className="size-3 shrink-0 text-muted-foreground" aria-label="Raggruppato" />}
               <span className="flex-1 truncate px-1 transition-[padding] group-hover/row:pr-[6.25rem] group-focus-within/row:pr-[6.25rem]">{layer.name}</span>
               <div className="absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center rounded-md opacity-0 transition-opacity pointer-events-none group-hover/row:pointer-events-auto group-focus-within/row:pointer-events-auto group-hover/row:opacity-100 group-focus-within/row:opacity-100">
                 <Button
@@ -78,7 +90,7 @@ export function LayerList({ layers, selectedId, dispatch }: Props) {
                   size="icon-sm"
                   className="size-6 text-muted-foreground [&_svg]:size-3.5"
                   title="Duplica"
-                  onClick={(e) => { e.stopPropagation(); dispatch({ type: "select", id: layer.id }); dispatch({ type: "pasteLayer", layer }); }}
+                  onClick={(e) => { e.stopPropagation(); dispatch({ type: "select", ids: [layer.id] }); dispatch({ type: "pasteLayer", layer }); }}
                 >
                   <Copy />
                 </Button>
