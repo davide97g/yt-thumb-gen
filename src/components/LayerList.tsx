@@ -14,10 +14,10 @@ const TYPE_ICON: Record<LayerType, ReactNode> = {
   draw: <Pencil className="size-3.5" />,
 };
 
-type Props = { layers: Layer[]; selectedId: string | null; dispatch: Dispatch<Action> };
+type Props = { layers: Layer[]; selectedIds: string[]; dispatch: Dispatch<Action> };
 
 /** Layer stack, shown front-first (top of the list = frontmost on the canvas). */
-export function LayerList({ layers, selectedId, dispatch }: Props) {
+export function LayerList({ layers, selectedIds, dispatch }: Props) {
   if (layers.length === 0) return <Hint>Nessun livello. Aggiungine uno qui sopra o carica un modello.</Hint>;
 
   return (
@@ -28,11 +28,11 @@ export function LayerList({ layers, selectedId, dispatch }: Props) {
         .map(({ layer, index }) => {
           const front = index === layers.length - 1;
           const back = index === 0;
-          const active = layer.id === selectedId;
+          const active = selectedIds.includes(layer.id);
           return (
             <div
               key={layer.id}
-              onClick={() => dispatch({ type: "select", id: layer.id })}
+              onClick={() => dispatch({ type: "select", ids: [layer.id] })}
               className={cn(
                 "group/row relative flex cursor-pointer items-center gap-1 rounded-lg border px-1.5 py-1.5 text-sm transition-colors",
                 active
@@ -78,7 +78,7 @@ export function LayerList({ layers, selectedId, dispatch }: Props) {
                   size="icon-sm"
                   className="size-6 text-muted-foreground [&_svg]:size-3.5"
                   title="Duplica"
-                  onClick={(e) => { e.stopPropagation(); dispatch({ type: "select", id: layer.id }); dispatch({ type: "pasteLayer", layer }); }}
+                  onClick={(e) => { e.stopPropagation(); dispatch({ type: "select", ids: [layer.id] }); dispatch({ type: "pasteLayer", layer }); }}
                 >
                   <Copy />
                 </Button>

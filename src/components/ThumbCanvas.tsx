@@ -104,7 +104,7 @@ function OutlineDefs({ layers }: { layers: Layer[] }) {
 type Props = {
   doc: ThumbDoc;
   scale: number;
-  selectedId: string | null;
+  selectedIds: string[];
   exporting: boolean;
   cropMode: CropMode;
   setCropMode: (m: CropMode) => void;
@@ -114,7 +114,8 @@ type Props = {
   dispatch: Dispatch<Action>;
 };
 
-export function ThumbCanvas({ doc, scale, selectedId, exporting, cropMode, setCropMode, drawMode, setDrawMode, canvasRef, dispatch }: Props) {
+export function ThumbCanvas({ doc, scale, selectedIds, exporting, cropMode, setCropMode, drawMode, setDrawMode, canvasRef, dispatch }: Props) {
+  const primary = selectedIds[selectedIds.length - 1] ?? null;
   const bg = doc.background;
   const background =
     bg.mode === "image" && bg.image
@@ -129,10 +130,10 @@ export function ThumbCanvas({ doc, scale, selectedId, exporting, cropMode, setCr
   function startDrag(e: ReactPointerEvent, id: string) {
     e.stopPropagation();
     e.preventDefault();
-    dispatch({ type: "select", id });
+    dispatch({ type: "select", ids: [id] });
     let last = { x: e.clientX, y: e.clientY };
     const move = (ev: PointerEvent) => {
-      dispatch({ type: "nudge", id, dx: (ev.clientX - last.x) / scale, dy: (ev.clientY - last.y) / scale });
+      dispatch({ type: "nudge", ids: [id], dx: (ev.clientX - last.x) / scale, dy: (ev.clientY - last.y) / scale });
       last = { x: ev.clientX, y: ev.clientY };
     };
     const up = () => {
@@ -146,7 +147,7 @@ export function ThumbCanvas({ doc, scale, selectedId, exporting, cropMode, setCr
   return (
     <div
       ref={canvasRef}
-      onPointerDown={() => { dispatch({ type: "select", id: null }); setCropMode(null); }}
+      onPointerDown={() => { dispatch({ type: "select", ids: [] }); setCropMode(null); }}
       style={{
         width: CANVAS_W,
         height: CANVAS_H,
@@ -182,7 +183,7 @@ export function ThumbCanvas({ doc, scale, selectedId, exporting, cropMode, setCr
       {doc.layers.map((layer) => {
         if (!layer.visible) return null;
         // Crop only applies to the selected image, and never during PNG capture.
-        const layerCrop = !exporting && layer.id === selectedId ? cropMode : null;
+        const layerCrop = !exporting && layer.id === primary ? cropMode : null;
         return (
           <div
             key={layer.id}
@@ -200,7 +201,7 @@ export function ThumbCanvas({ doc, scale, selectedId, exporting, cropMode, setCr
             }}
           >
             <LayerContent layer={layer} cropMode={layerCrop} />
-            {!exporting && layer.id === selectedId && (
+            {!exporting && layer.id === primary && (
               <SelectionFrame
                 layer={layer}
                 scale={scale}

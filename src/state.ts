@@ -130,6 +130,7 @@ type LayerBase = {
   y: number;
   rotation: number; // degrees
   visible: boolean;
+  groupId?: string; // shared across grouped layers; absent = ungrouped. ponytail: logical-only, no z-order reflow, no nesting.
 };
 
 /**
@@ -391,7 +392,10 @@ export type ThumbDoc = {
   layers: Layer[]; // back → front
 };
 
-export type AppState = { doc: ThumbDoc; selectedId: string | null };
+export type AppState = { doc: ThumbDoc; selectedIds: string[] };
+
+/** The layer that drives the single-layer Inspector — the last one selected. */
+export const primaryId = (s: AppState): string | null => s.selectedIds[s.selectedIds.length - 1] ?? null;
 
 // ── Layer factories ─────────────────────────────────────────────────────────
 
@@ -532,13 +536,17 @@ export function migrateDoc(doc: ThumbDoc): ThumbDoc {
 
 export type Action =
   | { type: "loadDoc"; doc: ThumbDoc } // template / saved config / imported file
-  | { type: "select"; id: string | null }
+  | { type: "select"; ids: string[] }
   | { type: "addLayer"; layer: Layer }
   | { type: "pasteLayer"; layer: Layer } // clone of `layer`, inserted above the selection
   | { type: "updateLayer"; id: string; patch: LayerPatch }
-  | { type: "nudge"; id: string; dx: number; dy: number } // drag delta
+  | { type: "nudge"; ids: string[]; dx: number; dy: number } // drag delta for a set
+  | { type: "setPositions"; positions: { id: string; x: number; y: number }[] } // absolute batch move (align/distribute)
   | { type: "removeLayer"; id: string }
+  | { type: "removeLayers"; ids: string[] }
   | { type: "reorder"; id: string; dir: -1 | 1 } // move one step in z-order
+  | { type: "group"; ids: string[] }
+  | { type: "ungroup"; ids: string[] }
   | { type: "updateBackground"; patch: Partial<Background> };
 
 function mapLayer(doc: ThumbDoc, id: string, fn: (l: Layer) => Layer): ThumbDoc {
@@ -548,28 +556,42 @@ function mapLayer(doc: ThumbDoc, id: string, fn: (l: Layer) => Layer): ThumbDoc 
 export function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case "loadDoc":
-      return { doc: migrateDoc(action.doc), selectedId: null };
+      return { doc: migrateDoc(action.doc), selectedIds: [] };
     case "select":
-      return { ...state, selectedId: action.id };
+      return { ...state, selectedIds: action.ids };
     case "addLayer":
-      return { doc: { ...state.doc, layers: [...state.doc.layers, action.layer] }, selectedId: action.layer.id };
+      return { doc: { ...state.doc, layers: [...state.doc.layers, action.layer] }, selectedIds: [action.layer.id] };
     case "pasteLayer": {
       // ponytail: +24px offset so the clone is visibly distinct from its source.
       const clone = { ...action.layer, id: uid(), x: action.layer.x + 24, y: action.layer.y + 24 } as Layer;
       const layers = [...state.doc.layers];
-      const i = state.selectedId ? layers.findIndex((l) => l.id === state.selectedId) : -1;
+      const anchor = primaryId(state);
+      const i = anchor ? layers.findIndex((l) => l.id === anchor) : -1;
       layers.splice(i >= 0 ? i + 1 : layers.length, 0, clone); // i+1 = directly above the selection
-      return { doc: { ...state.doc, layers }, selectedId: clone.id };
+      return { doc: { ...state.doc, layers }, selectedIds: [clone.id] };
     }
     case "updateLayer":
       return { ...state, doc: mapLayer(state.doc, action.id, (l) => Object.assign({}, l, action.patch) as Layer) };
-    case "nudge":
-      return { ...state, doc: mapLayer(state.doc, action.id, (l) => ({ ...l, x: l.x + action.dx, y: l.y + action.dy })) };
+    case "nudge": {
+      const set = new Set(action.ids);
+      return { ...state, doc: { ...state.doc, layers: state.doc.layers.map((l) => (set.has(l.id) ? { ...l, x: l.x + action.dx, y: l.y + action.dy } : l)) } };
+    }
+    case "setPositions": {
+      const m = new Map(action.positions.map((p) => [p.id, p]));
+      return { ...state, doc: { ...state.doc, layers: state.doc.layers.map((l) => { const p = m.get(l.id); return p ? { ...l, x: p.x, y: p.y } : l; }) } };
+    }
     case "removeLayer":
       return {
         doc: { ...state.doc, layers: state.doc.layers.filter((l) => l.id !== action.id) },
-        selectedId: state.selectedId === action.id ? null : state.selectedId,
+        selectedIds: state.selectedIds.filter((id) => id !== action.id),
       };
+    case "removeLayers": {
+      const set = new Set(action.ids);
+      return {
+        doc: { ...state.doc, layers: state.doc.layers.filter((l) => !set.has(l.id)) },
+        selectedIds: state.selectedIds.filter((id) => !set.has(id)),
+      };
+    }
     case "reorder": {
       const layers = [...state.doc.layers];
       const i = layers.findIndex((l) => l.id === action.id);
@@ -577,6 +599,25 @@ export function reducer(state: AppState, action: Action): AppState {
       if (i < 0 || j < 0 || j >= layers.length) return state;
       [layers[i], layers[j]] = [layers[j], layers[i]];
       return { ...state, doc: { ...state.doc, layers } };
+    }
+    case "group": {
+      const gid = uid();
+      const set = new Set(action.ids);
+      return { ...state, doc: { ...state.doc, layers: state.doc.layers.map((l) => (set.has(l.id) ? { ...l, groupId: gid } : l)) } };
+    }
+    case "ungroup": {
+      const set = new Set(action.ids);
+      return {
+        ...state,
+        doc: {
+          ...state.doc,
+          layers: state.doc.layers.map((l) => {
+            if (!set.has(l.id)) return l;
+            const { groupId: _drop, ...rest } = l;
+            return rest as Layer;
+          }),
+        },
+      };
     }
     case "updateBackground":
       return { ...state, doc: { ...state.doc, background: { ...state.doc.background, ...action.patch } } };
@@ -606,7 +647,7 @@ export const initHistory = (present: AppState): History => ({ past: [], present,
 function gestureTag(action: Action): string | null {
   switch (action.type) {
     case "nudge":
-      return `nudge:${action.id}`;
+      return `nudge:${[...action.ids].sort().join(",")}`;
     case "updateLayer":
       return `update:${action.id}:${Object.keys(action.patch).sort().join(",")}`;
     case "updateBackground":

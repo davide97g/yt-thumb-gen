@@ -13,10 +13,10 @@ import { Input } from "./components/ui/input";
 import { exportThumb } from "./lib/export";
 import { loadImageFile } from "./lib/loadImageFile";
 import { getProject, getWorking, renameConfig, saveConfig, setProject, setWorking } from "./lib/storage";
-import { historyReducer, initHistory, newImageLayer, type AppState, type FontKey, type Layer, type ThumbDoc } from "./state";
+import { historyReducer, initHistory, newImageLayer, primaryId, type AppState, type FontKey, type Layer, type ThumbDoc } from "./state";
 import { TEMPLATES } from "./presets";
 
-const initial: AppState = { doc: TEMPLATES.dacoder(), selectedId: null };
+const initial: AppState = { doc: TEMPLATES.dacoder(), selectedIds: [] };
 
 export default function App() {
   const [hist, dispatch] = useReducer(historyReducer, initial, initHistory);
@@ -45,12 +45,13 @@ export default function App() {
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const savedDocRef = useRef<ThumbDoc>(initial.doc);
 
-  const { doc, selectedId } = hist.present;
+  const { doc, selectedIds } = hist.present;
   const dirty = hydrated && doc !== savedDocRef.current;
 
+  const primary = primaryId(hist.present);
   // Crop tooling is per-selection; drop it whenever the selected layer changes.
-  useEffect(() => setCropMode(null), [selectedId]);
-  const selected = doc.layers.find((l) => l.id === selectedId) ?? null;
+  useEffect(() => setCropMode(null), [primary]);
+  const selected = doc.layers.find((l) => l.id === primary) ?? null;
 
   // Canvas gets the doc with the hovered font swapped onto the selected text layer,
   // so the preview shows live without ever hitting the reducer/history.
@@ -62,8 +63,8 @@ export default function App() {
   // Latest doc/selection + a copy/paste clipboard, read by the global key handler
   // without rebinding it each render. Clipboard is a layer snapshot (immutable), so
   // it lives outside undo history and survives edits to the original.
-  const selRef = useRef(selectedId);
-  selRef.current = selectedId;
+  const selRef = useRef(selectedIds);
+  selRef.current = selectedIds;
   const docRef = useRef(doc);
   docRef.current = doc;
   const clipboardRef = useRef<Layer | null>(null);
@@ -145,14 +146,14 @@ export default function App() {
         const k = e.key.toLowerCase();
         if (k === "z") { e.preventDefault(); dispatch(e.shiftKey ? { type: "redo" } : { type: "undo" }); return; }
         if (k === "y") { e.preventDefault(); dispatch({ type: "redo" }); return; } // Windows redo
-        if (k === "c") { const l = docRef.current.layers.find((x) => x.id === selRef.current); if (l) clipboardRef.current = l; return; }
+        if (k === "c") { const l = docRef.current.layers.find((x) => x.id === selRef.current[selRef.current.length - 1]); if (l) clipboardRef.current = l; return; }
         if (k === "v" && clipboardRef.current) { e.preventDefault(); dispatch({ type: "pasteLayer", layer: clipboardRef.current }); return; }
         return;
       }
       // "\" toggles all chrome (rails + dock) for a full-bleed preview.
       if (e.key === "\\") { e.preventDefault(); setChromeHidden((v) => !v); return; }
       if (e.key !== "Backspace" && e.key !== "Delete") return;
-      if (selRef.current) dispatch({ type: "removeLayer", id: selRef.current });
+      if (selRef.current.length) dispatch({ type: "removeLayers", ids: selRef.current });
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -294,7 +295,7 @@ export default function App() {
             />
 
             <Section title="Livelli">
-              <LayerList layers={doc.layers} selectedId={selectedId} dispatch={dispatch} />
+              <LayerList layers={doc.layers} selectedIds={selectedIds} dispatch={dispatch} />
             </Section>
 
             <SavesPanel
@@ -316,7 +317,7 @@ export default function App() {
             <ThumbCanvas
               doc={viewDoc}
               scale={scale}
-              selectedId={selectedId}
+              selectedIds={selectedIds}
               exporting={exporting}
               cropMode={cropMode}
               setCropMode={setCropMode}
