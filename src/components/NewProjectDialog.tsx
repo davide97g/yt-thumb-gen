@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { FilePlus, Save } from "lucide-react";
 import type { ThumbDoc } from "../state";
-import { TEMPLATES } from "../presets";
 import { saveConfig } from "../lib/storage";
 import { SwitchRow } from "./controls";
 import { Button } from "./ui/button";
@@ -41,7 +40,9 @@ export function NewProjectDialog({ doc, projectName, projectId, onClose, onCreat
   async function create() {
     setBusy(true);
     try {
-      const fresh = clone ? structuredClone(doc) : TEMPLATES.dacoder();
+      const fresh: ThumbDoc = clone
+        ? structuredClone(doc)
+        : { background: { mode: "gradient", from: "#0d1b13", to: "#04070a", image: null, overlay: 0 }, layers: [] };
       const saved = await saveConfig(newName, structuredClone(fresh));
       onCreated(fresh, saved.name, saved.id, saved.updatedAt);
       onClose();
