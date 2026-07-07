@@ -14,10 +14,12 @@ import {
   defaultEffect,
   defaultBgBorder,
   defaultFx,
+  EMOJIFX_PRESETS,
   newTextLayer,
   newImageLayer,
   newBrandLayer,
   newEmojiLayer,
+  newEmojiFxLayer,
   newShapeLayer,
   newEffectLayer,
   newDrawLayer,
@@ -30,6 +32,7 @@ import {
   type BgEffect,
   type EffectLayer,
   type EmojiLayer,
+  type EmojiFxLayer,
   type FontKey,
   type ImageLayer,
   type Layer,
@@ -130,6 +133,7 @@ export function Inspector({ selected, selectedIds, layers, dispatch, onError, cr
         {selected.type === "text" && <TextProps layer={selected} set={set} onFontPreview={onFontPreview} />}
         {selected.type === "image" && <ImageProps layer={selected} set={set} onError={onError} cropMode={cropMode} setCropMode={setCropMode} />}
         {selected.type === "emoji" && <EmojiProps layer={selected} set={set} />}
+        {selected.type === "emojifx" && <EmojiFxProps layer={selected} set={set} layers={layers} />}
         {selected.type === "shape" && <ShapeProps layer={selected} set={set} />}
         {selected.type === "effect" && <EffectProps layer={selected} set={set} />}
         {selected.type === "draw" && <DrawProps layer={selected} set={set} />}
@@ -384,6 +388,54 @@ function EmojiProps({ layer, set }: { layer: EmojiLayer; set: Setter }) {
       </Field>
       <SliderRow label="Dimensione" min={40} max={360} value={layer.size} defaultValue={D.size} onChange={(size) => set({ size })} />
       <SliderRow label="Rotazione" min={-180} max={180} value={layer.rotation} defaultValue={D.rotation} display={`${layer.rotation}°`} onChange={(rotation) => set({ rotation })} />
+    </>
+  );
+}
+
+const EMOJIFX_PATTERN_OPTIONS: { value: EmojiFxLayer["pattern"]; label: string }[] = [
+  { value: "ring", label: "Anello 3D" },
+  { value: "scatter", label: "Sparso" },
+  { value: "burst", label: "Esplosione" },
+];
+
+function EmojiFxProps({ layer, set, layers }: { layer: EmojiFxLayer; set: Setter; layers: Layer[] }) {
+  const D = newEmojiFxLayer();
+  const imageOptions = [
+    { value: "", label: "Nessuna (al centro)" },
+    ...layers.filter((l) => l.type === "image").map((l) => ({ value: l.id, label: l.name })),
+  ];
+  return (
+    <>
+      <SelectField
+        label="Immagine"
+        value={layer.targetId ?? ""}
+        options={imageOptions}
+        onChange={(id) => set({ targetId: id === "" ? null : id })}
+      />
+      <SelectField label="Motivo" value={layer.pattern} options={EMOJIFX_PATTERN_OPTIONS} onChange={(pattern) => set({ pattern })} />
+      <Field label="Emoji">
+        {/* ponytail: space-separated glyphs — avoids grapheme-cluster splitting; presets below fill it. */}
+        <Input value={layer.glyphs.join(" ")} onChange={(e) => set({ glyphs: e.target.value.split(/\s+/).filter(Boolean) })} />
+      </Field>
+      <div className="flex flex-wrap gap-1">
+        {EMOJIFX_PRESETS.map((p) => (
+          <Button key={p.label} variant="outline" size="sm" onClick={() => set({ glyphs: [...p.glyphs] })}>
+            {p.label}
+          </Button>
+        ))}
+      </div>
+      <SliderRow label="Numero" min={3} max={80} value={layer.count} defaultValue={D.count} onChange={(count) => set({ count })} />
+      <SliderRow label="Dimensione" min={20} max={220} value={layer.size} defaultValue={D.size} onChange={(size) => set({ size })} />
+      <SliderRow label="Varianza" min={0} max={100} value={layer.sizeJitter} defaultValue={D.sizeJitter} display={`${layer.sizeJitter}%`} onChange={(sizeJitter) => set({ sizeJitter })} />
+      <SliderRow label="Raggio" min={80} max={640} value={layer.radius} defaultValue={D.radius} onChange={(radius) => set({ radius })} />
+      {layer.pattern === "ring" && (
+        <SliderRow label="Inclinazione" min={5} max={100} value={Math.round(layer.tilt * 100)} defaultValue={Math.round(D.tilt * 100)} display={`${Math.round(layer.tilt * 100)}%`} onChange={(v) => set({ tilt: v / 100 })} />
+      )}
+      <SliderRow label="Profondità" min={0} max={100} value={layer.depth} defaultValue={D.depth} display={`${layer.depth}%`} onChange={(depth) => set({ depth })} />
+      <SliderRow label="Rotazione casuale" min={0} max={100} value={layer.spin} defaultValue={D.spin} display={`${layer.spin}%`} onChange={(spin) => set({ spin })} />
+      <Button variant="outline" size="sm" onClick={() => set({ seed: Math.floor(Math.random() * 1e9) })}>
+        Rimescola
+      </Button>
     </>
   );
 }

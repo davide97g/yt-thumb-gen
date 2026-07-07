@@ -1,5 +1,5 @@
-import { useState, type CSSProperties, type Dispatch, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
-import { CANVAS_H, CANVAS_W, FONTS, FONT_WEIGHT, drawPad, newDrawLayer, resolveBgBorder, type Action, type DrawCap, type DrawLayer, type ImageLayer, type Layer, type LayerPatch, type TextLayer, type ThumbDoc } from "../state";
+import { Fragment, useLayoutEffect, useState, type CSSProperties, type Dispatch, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
+import { CANVAS_H, CANVAS_W, FONTS, FONT_WEIGHT, drawPad, layoutEmojiFx, newDrawLayer, resolveBgBorder, type Action, type DrawCap, type DrawLayer, type EmojiFxLayer, type ImageLayer, type Layer, type LayerPatch, type TextLayer, type ThumbDoc } from "../state";
 import { smoothPath, type Pt } from "../lib/smoothPath";
 import { boxesIntersect, resolveSnap, type Box } from "../lib/layout";
 import { ClaudeLogo, ClaudeWordmark } from "./brand";
@@ -132,6 +132,19 @@ export function ThumbCanvas({ doc, scale, selectedIds, exporting, cropMode, setC
 
   const [marquee, setMarquee] = useState<Box | null>(null);
 
+  // Measured bbox centres of image layers targeted by an emoji field (canvas units).
+  // Effects centre on these; on the first frame (empty) render falls back to layer x/y + est.
+  const [centers, setCenters] = useState<Record<string, { cx: number; cy: number }>>({});
+  useLayoutEffect(() => {
+    const next: Record<string, { cx: number; cy: number }> = {};
+    for (const l of doc.layers) {
+      if (l.type !== "image") continue;
+      const el = canvasRef.current?.querySelector<HTMLElement>(`[data-layer-id="${l.id}"]`);
+      if (el) next[l.id] = { cx: l.x + el.offsetWidth / 2, cy: l.y + el.offsetHeight / 2 };
+    }
+    setCenters(next);
+  }, [doc.layers, scale]);
+
   // All ids in a layer's group (or just itself if ungrouped).
   const groupMates = (layer: Layer): string[] =>
     layer.groupId ? doc.layers.filter((l) => l.groupId === layer.groupId).map((l) => l.id) : [layer.id];
@@ -262,6 +275,22 @@ export function ThumbCanvas({ doc, scale, selectedIds, exporting, cropMode, setC
     window.addEventListener("pointerup", up);
   }
 
+  // Visible emoji fields grouped by the image they wrap.
+  const fxByTarget = new Map<string, EmojiFxLayer[]>();
+  const orphanFx: EmojiFxLayer[] = [];
+  for (const l of doc.layers) {
+    if (l.type !== "emojifx" || !l.visible) continue;
+    const target = l.targetId ? doc.layers.find((t) => t.id === l.targetId) : null;
+    if (target && target.type === "image" && target.visible) {
+      const arr = fxByTarget.get(target.id) ?? [];
+      arr.push(l);
+      fxByTarget.set(target.id, arr);
+    } else {
+      orphanFx.push(l); // ponytail: no live target → centred fallback, no straddle
+    }
+  }
+  const fallbackCenter = (l: ImageLayer) => ({ cx: l.x + (BASE_IMG_W * l.scale) / 2, cy: l.y + BASE_IMG_W * l.scale * 0.6 });
+
   return (
     <div
       ref={canvasRef}
@@ -300,9 +329,10 @@ export function ThumbCanvas({ doc, scale, selectedIds, exporting, cropMode, setC
 
       {doc.layers.map((layer) => {
         if (!layer.visible) return null;
+        if (layer.type === "emojifx") return null; // rendered around its target below / as orphan
         // Crop only applies to the selected image, and never during PNG capture.
         const layerCrop = !exporting && layer.id === primary ? cropMode : null;
-        return (
+        const node = (
           <div
             key={layer.id}
             data-lbox
@@ -337,7 +367,21 @@ export function ThumbCanvas({ doc, scale, selectedIds, exporting, cropMode, setC
             )}
           </div>
         );
+        const fxs = layer.type === "image" ? fxByTarget.get(layer.id) ?? [] : [];
+        if (fxs.length === 0) return node;
+        const center = centers[layer.id] ?? fallbackCenter(layer as ImageLayer);
+        return (
+          <Fragment key={layer.id}>
+            {fxs.map((fx) => <EmojiFxGroup key={`${fx.id}-b`} fx={fx} center={center} half="back" />)}
+            {node}
+            {fxs.map((fx) => <EmojiFxGroup key={`${fx.id}-f`} fx={fx} center={center} half="front" />)}
+          </Fragment>
+        );
       })}
+
+      {orphanFx.map((fx) => (
+        <EmojiFxGroup key={fx.id} fx={fx} center={{ cx: CANVAS_W / 2, cy: CANVAS_H / 2 }} half="all" />
+      ))}
 
       <GlobalGrade bg={bg} />
       <BackgroundBorder border={resolveBgBorder(bg.border)} />
@@ -650,7 +694,37 @@ function LayerContent({ layer, cropMode }: { layer: Layer; cropMode: CropMode })
 
     case "draw":
       return <DrawContent layer={layer} />;
+
+    case "emojifx":
+      return null; // rendered by the straddle splice in the layer map, never as a normal box
   }
+}
+
+/** One rendered half (or all) of an emoji field. pointer-events:none so it never blocks
+ *  selecting the image beneath. Plain emoji spans → captured 1:1 by html-to-image. */
+function EmojiFxGroup({ fx, center, half }: { fx: EmojiFxLayer; center: { cx: number; cy: number }; half: "back" | "front" | "all" }) {
+  const placed = layoutEmojiFx(fx, center);
+  const items = half === "all" ? placed : placed.filter((p) => (half === "front" ? p.front : !p.front));
+  return (
+    <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+      {items.map((p, i) => (
+        <span
+          key={i}
+          style={{
+            position: "absolute",
+            left: p.x,
+            top: p.y,
+            fontSize: p.size,
+            lineHeight: 1,
+            opacity: p.opacity,
+            transform: `translate(-50%, -50%) rotate(${p.rotation}deg)`,
+          }}
+        >
+          {p.glyph}
+        </span>
+      ))}
+    </div>
+  );
 }
 
 /** End-cap marker. `markerUnits=strokeWidth` makes caps scale with the stroke; the

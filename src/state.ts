@@ -119,7 +119,7 @@ export const FONT_LABELS: Record<FontKey, string> = {
   anthropicSans: "Anthropic Sans",
 };
 
-export type LayerType = "text" | "image" | "emoji" | "shape" | "effect" | "draw";
+export type LayerType = "text" | "image" | "emoji" | "shape" | "effect" | "draw" | "emojifx";
 
 /** Fields shared by every layer. */
 type LayerBase = {
@@ -198,6 +198,24 @@ export type EmojiLayer = LayerBase & {
   size: number;
 };
 
+/** A field of emojis (confetti / fireworks / sparkles / 3D orbit) wrapping a target image.
+ *  Bound: it centers on `targetId`'s bbox and is rendered straddling that image (some
+ *  emojis behind, some in front). `x`/`y` are only used for the orphan fallback. */
+export type EmojiFxLayer = LayerBase & {
+  type: "emojifx";
+  targetId: string | null; // image layer this wraps; null / missing = centered orphan fallback
+  pattern: "ring" | "scatter" | "burst";
+  glyphs: string[]; // multi-select set, distributed round-robin over `count`
+  count: number; // number of emoji instances
+  size: number; // base emoji px (1280×720 space); depth-scaled per emoji
+  sizeJitter: number; // 0–100 random size variance
+  radius: number; // ellipse radiusX (ring) / spread radius (scatter, burst), canvas units
+  tilt: number; // 0–1: radiusY = radius * tilt (flattens the ring into an orbit). ring only.
+  depth: number; // 0–100: front↔back scale & opacity contrast (the "3D" look)
+  spin: number; // 0–100 random per-emoji rotation amount
+  seed: number; // seeds the PRNG → arrangement stable across render/undo/save/export
+};
+
 /** A rectangle, pill, or the fake YouTube "watched" progress bar. */
 export type ShapeLayer = LayerBase & {
   type: "shape";
@@ -246,7 +264,7 @@ export function drawPad(thickness: number, startCap: DrawCap, endCap: DrawCap): 
   return thickness * (capped ? 2.5 : 0.7);
 }
 
-export type Layer = TextLayer | ImageLayer | EmojiLayer | ShapeLayer | EffectLayer | DrawLayer;
+export type Layer = TextLayer | ImageLayer | EmojiLayer | ShapeLayer | EffectLayer | DrawLayer | EmojiFxLayer;
 
 /** A partial patch for any single layer type (used by inspectors → updateLayer). */
 export type LayerPatch =
@@ -255,7 +273,8 @@ export type LayerPatch =
   | Partial<EmojiLayer>
   | Partial<ShapeLayer>
   | Partial<EffectLayer>
-  | Partial<DrawLayer>;
+  | Partial<DrawLayer>
+  | Partial<EmojiFxLayer>;
 
 /**
  * Animated background presets ported from React Bits. `grainient`/`aurora` are WebGL
@@ -481,6 +500,88 @@ export function newEffectLayer(): EffectLayer {
 
 export function newEmojiLayer(): EmojiLayer {
   return { id: uid(), type: "emoji", name: "Emoji", x: 760, y: 90, rotation: 0, visible: true, glyph: "🤯", size: 150 };
+}
+
+/** Deterministic PRNG (mulberry32). Same seed → same stream — used so an emoji field's
+ *  arrangement is identical across renders, undo/redo, save/reload, and PNG export. */
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+export type PlacedEmoji = { glyph: string; x: number; y: number; size: number; rotation: number; opacity: number; front: boolean };
+
+/** Emoji quick-fill sets for the inspector. */
+export const EMOJIFX_PRESETS: { label: string; glyphs: string[] }[] = [
+  { label: "Coriandoli", glyphs: ["🎉", "🎊", "✨"] },
+  { label: "Fuochi", glyphs: ["🎆", "🎇", "💥", "✨"] },
+  { label: "Scintille", glyphs: ["✨", "⭐", "💫", "🌟"] },
+  { label: "Cuori", glyphs: ["❤️", "💕", "💖", "💗"] },
+];
+
+/** Deterministically place a field of emojis around `center` (canvas coords, glyph centres).
+ *  ring: emojis on an ellipse, front = bottom half (nearest). scatter/burst: random cloud,
+ *  each emoji independently in-front-or-behind (per design). All patterns apply size jitter,
+ *  a per-emoji depth (drives size + opacity), and random rotation from the seeded stream. */
+export function layoutEmojiFx(l: EmojiFxLayer, center: { cx: number; cy: number }): PlacedEmoji[] {
+  const rng = mulberry32(l.seed);
+  const glyphs = l.glyphs.length ? l.glyphs : ["✨"]; // ponytail: never render a blank field
+  const depth = l.depth / 100;
+  const out: PlacedEmoji[] = [];
+  for (let i = 0; i < l.count; i++) {
+    const glyph = glyphs[i % glyphs.length];
+    let x: number, y: number, front: boolean, d: number;
+    if (l.pattern === "ring") {
+      const theta = (i / l.count) * Math.PI * 2 + (rng() - 0.5) * (Math.PI / l.count);
+      x = center.cx + Math.cos(theta) * l.radius;
+      y = center.cy + Math.sin(theta) * l.radius * l.tilt;
+      d = Math.sin(theta); // -1 (top/back) .. 1 (bottom/front)
+      front = d > 0;
+    } else {
+      const theta = rng() * Math.PI * 2;
+      // burst radiates from the centre (√ for even area fill); scatter fills uniformly.
+      const dist = (l.pattern === "burst" ? Math.sqrt(rng()) : rng()) * l.radius;
+      x = center.cx + Math.cos(theta) * dist;
+      y = center.cy + Math.sin(theta) * dist;
+      d = rng() * 2 - 1;
+      front = rng() < 0.5;
+    }
+    const jitter = 1 + (rng() * 2 - 1) * (l.sizeJitter / 100);
+    const depthScale = 1 + d * depth * 0.6; // front bigger, back smaller
+    const size = Math.max(8, l.size * jitter * depthScale);
+    const opacity = Math.max(0.15, 1 - (1 - (d + 1) / 2) * depth * 0.7); // back fades
+    const rotation = (rng() * 2 - 1) * l.spin * 1.8; // deg, ~±180 at spin=100
+    out.push({ glyph, x, y, size, rotation, opacity, front });
+  }
+  return out;
+}
+
+export function newEmojiFxLayer(targetId: string | null = null): EmojiFxLayer {
+  return {
+    id: uid(),
+    type: "emojifx",
+    name: "Effetto emoji",
+    x: 460,
+    y: 260,
+    rotation: 0,
+    visible: true,
+    targetId,
+    pattern: "ring",
+    glyphs: ["🎉", "🎊", "✨"],
+    count: 18,
+    size: 84,
+    sizeJitter: 30,
+    radius: 320,
+    tilt: 0.45,
+    depth: 55,
+    spin: 40,
+    seed: Math.floor(Math.random() * 1e9),
+  };
 }
 
 export function newShapeLayer(kind: ShapeLayer["kind"]): ShapeLayer {
