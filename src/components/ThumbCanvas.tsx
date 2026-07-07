@@ -1,6 +1,7 @@
 import { useState, type CSSProperties, type Dispatch, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
 import { CANVAS_H, CANVAS_W, FONTS, FONT_WEIGHT, drawPad, newDrawLayer, resolveBgBorder, type Action, type DrawCap, type DrawLayer, type ImageLayer, type Layer, type LayerPatch, type TextLayer, type ThumbDoc } from "../state";
 import { smoothPath, type Pt } from "../lib/smoothPath";
+import { resolveSnap, type Box } from "../lib/layout";
 import { ClaudeLogo, ClaudeWordmark } from "./brand";
 import { EffectBackground } from "./EffectBackground";
 
@@ -116,6 +117,22 @@ type Props = {
 
 export function ThumbCanvas({ doc, scale, selectedIds, exporting, cropMode, setCropMode, drawMode, setDrawMode, canvasRef, dispatch }: Props) {
   const primary = selectedIds[selectedIds.length - 1] ?? null;
+
+  // Ephemeral snap guides shown only during a drag (never during export).
+  const [guides, setGuides] = useState<{ vx: number | null; hy: number | null }>({ vx: null, hy: null });
+
+  // A layer's rendered box in canvas units (offsetWidth/Height are layout px =
+  // canvas units, since the canvas is scaled by a CSS transform, not layout).
+  const layerBox = (id: string): Box | null => {
+    const el = canvasRef.current?.querySelector<HTMLElement>(`[data-layer-id="${id}"]`);
+    const l = doc.layers.find((x) => x.id === id);
+    if (!el || !l) return null;
+    return { x: l.x, y: l.y, w: el.offsetWidth, h: el.offsetHeight };
+  };
+
+  const SNAP = 6 / scale;   // grab distance
+  const BREAK = 12 / scale; // effort to leave a snapped line
+
   const bg = doc.background;
   const background =
     bg.mode === "image" && bg.image
@@ -126,19 +143,51 @@ export function ThumbCanvas({ doc, scale, selectedIds, exporting, cropMode, setC
           ? "#000" // backdrop behind the effect (aurora has transparency)
           : bg.from;
 
-  /** pointerdown on a layer: select it, then stream drag deltas (divided by screen scale). */
+  /** pointerdown on a layer: select it (unless already selected), then stream a
+   *  snapped drag over the whole current selection. */
   function startDrag(e: ReactPointerEvent, id: string) {
     e.stopPropagation();
     e.preventDefault();
-    dispatch({ type: "select", ids: [id] });
-    let last = { x: e.clientX, y: e.clientY };
+
+    // Drag set: keep the current selection if this layer is in it, else select just it.
+    const dragIds = selectedIds.includes(id) ? selectedIds : [id];
+    if (!selectedIds.includes(id)) dispatch({ type: "select", ids: [id] });
+
+    // Union bbox of the drag set, and candidate snap lines from every other layer + canvas.
+    const boxes = dragIds.map(layerBox).filter((b): b is Box => b !== null);
+    if (boxes.length === 0) return;
+    const minX = Math.min(...boxes.map((b) => b.x)), minY = Math.min(...boxes.map((b) => b.y));
+    const maxX = Math.max(...boxes.map((b) => b.x + b.w)), maxY = Math.max(...boxes.map((b) => b.y + b.h));
+    const start = { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+
+    const setIds = new Set(dragIds);
+    const xLines = [0, CANVAS_W / 2, CANVAS_W];
+    const yLines = [0, CANVAS_H / 2, CANVAS_H];
+    for (const l of doc.layers) {
+      if (setIds.has(l.id) || !l.visible) continue;
+      const b = layerBox(l.id);
+      if (!b) continue;
+      xLines.push(b.x, b.x + b.w / 2, b.x + b.w);
+      yLines.push(b.y, b.y + b.h / 2, b.y + b.h);
+    }
+
+    const startClient = { x: e.clientX, y: e.clientY };
+    let applied = { x: start.x, y: start.y };
+    let sticky: { vx: number | null; hy: number | null } = { vx: null, hy: null };
+
     const move = (ev: PointerEvent) => {
-      dispatch({ type: "nudge", ids: [id], dx: (ev.clientX - last.x) / scale, dy: (ev.clientY - last.y) / scale });
-      last = { x: ev.clientX, y: ev.clientY };
+      const raw = { x: start.x + (ev.clientX - startClient.x) / scale, y: start.y + (ev.clientY - startClient.y) / scale };
+      const r = resolveSnap(raw, { w: start.w, h: start.h }, xLines, yLines, sticky, SNAP, BREAK);
+      sticky = { vx: r.vx, hy: r.hy };
+      const dx = r.x - applied.x, dy = r.y - applied.y;
+      if (dx !== 0 || dy !== 0) dispatch({ type: "nudge", ids: dragIds, dx, dy });
+      applied = { x: r.x, y: r.y };
+      setGuides({ vx: r.vx, hy: r.hy });
     };
     const up = () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
+      setGuides({ vx: null, hy: null });
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
@@ -224,6 +273,13 @@ export function ThumbCanvas({ doc, scale, selectedIds, exporting, cropMode, setC
           canvasRef={canvasRef}
           onStroke={(points) => { if (points.length >= 2) dispatch({ type: "addLayer", layer: newDrawLayer(points) }); setDrawMode(false); }}
         />
+      )}
+
+      {guides.vx != null && (
+        <div style={{ position: "absolute", left: guides.vx, top: 0, width: 1.5 / scale, height: CANVAS_H, background: SELECT_COLOR, pointerEvents: "none", zIndex: 60 }} />
+      )}
+      {guides.hy != null && (
+        <div style={{ position: "absolute", top: guides.hy, left: 0, height: 1.5 / scale, width: CANVAS_W, background: SELECT_COLOR, pointerEvents: "none", zIndex: 60 }} />
       )}
     </div>
   );
