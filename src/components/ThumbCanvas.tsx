@@ -211,8 +211,12 @@ export function ThumbCanvas({ doc, scale, selectedIds, exporting, cropMode, setC
     let sticky: { vx: number | null; hy: number | null } = { vx: null, hy: null };
 
     const move = (ev: PointerEvent) => {
-      const raw = { x: start.x + (ev.clientX - startClient.x) / scale, y: start.y + (ev.clientY - startClient.y) / scale };
-      const r = resolveSnap(raw, { w: start.w, h: start.h }, xLines, yLines, sticky, SNAP, BREAK);
+      let ddx = (ev.clientX - startClient.x) / scale, ddy = (ev.clientY - startClient.y) / scale;
+      // Shift held mid-drag: lock to the dominant axis for a straight-line move, and skip
+      // magnetic snap so the locked axis stays rigid (precise mode = no auto-alignment).
+      if (ev.shiftKey) { if (Math.abs(ddx) >= Math.abs(ddy)) ddy = 0; else ddx = 0; }
+      const raw = { x: start.x + ddx, y: start.y + ddy };
+      const r = ev.shiftKey ? { x: raw.x, y: raw.y, vx: null, hy: null } : resolveSnap(raw, { w: start.w, h: start.h }, xLines, yLines, sticky, SNAP, BREAK);
       sticky = { vx: r.vx, hy: r.hy };
       const dx = r.x - applied.x, dy = r.y - applied.y;
       if (dx !== 0 || dy !== 0) dispatch({ type: "nudge", ids: dragIds, dx, dy });
