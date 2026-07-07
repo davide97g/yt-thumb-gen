@@ -700,10 +700,13 @@ At the top of `startDrag`, replace the drag-set selection logic (the two lines c
     }
 
     // Plain click on a layer already in the selection keeps it (so a group drags together);
-    // otherwise select the group (or the single layer).
+    // otherwise select the group (or the single layer). Dispatch select UNCONDITIONALLY —
+    // even when the selection is unchanged — because `select` is the only action that resets
+    // history.tag to null, which is what makes each drag its own undo entry. Skipping it when
+    // already-selected merges consecutive drags of the same layer into one undo step.
     const alreadyIn = selectedIds.includes(id);
     const dragIds = alreadyIn ? selectedIds : mates;
-    if (!alreadyIn) dispatch({ type: "select", ids: mates });
+    dispatch({ type: "select", ids: dragIds });
 ```
 
 Then add a double-click handler on the layer box. In the layer `.map(...)` render, add to the layer `<div>` (next to `onPointerDown`):
