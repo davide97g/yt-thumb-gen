@@ -8,6 +8,10 @@ import {
   type AppState,
   type ThumbDoc,
 } from "./state";
+import {
+  newEmojiFxLayer,
+  layoutEmojiFx,
+} from "./state";
 
 const emptyDoc: ThumbDoc = {
   background: { mode: "solid", from: "#000", to: "#000", image: null, overlay: 0 },
@@ -189,4 +193,42 @@ test("setPositions sets absolute x/y for the given ids, leaving others untouched
   expect(aAfter.y).toBe(222);
   expect(bAfter.x).toBe(bBefore.x); // untouched
   expect(bAfter.y).toBe(bBefore.y);
+});
+
+const CENTER = { cx: 640, cy: 360 };
+
+test("layoutEmojiFx returns exactly `count` placements", () => {
+  const l = { ...newEmojiFxLayer(), count: 24 };
+  expect(layoutEmojiFx(l, CENTER).length).toBe(24);
+});
+
+test("layoutEmojiFx is deterministic for a fixed seed", () => {
+  const l = { ...newEmojiFxLayer(), seed: 12345 };
+  expect(layoutEmojiFx(l, CENTER)).toEqual(layoutEmojiFx(l, CENTER));
+});
+
+test("layoutEmojiFx reseeds a different arrangement for a different seed", () => {
+  const a = layoutEmojiFx({ ...newEmojiFxLayer(), seed: 1 }, CENTER);
+  const b = layoutEmojiFx({ ...newEmojiFxLayer(), seed: 2 }, CENTER);
+  expect(a).not.toEqual(b);
+});
+
+test("ring pattern straddles the image (has both front and behind emojis)", () => {
+  const l = { ...newEmojiFxLayer(), pattern: "ring" as const, count: 24 };
+  const placed = layoutEmojiFx(l, CENTER);
+  expect(placed.some((p) => p.front)).toBe(true);
+  expect(placed.some((p) => !p.front)).toBe(true);
+});
+
+test("ring placements stay within radius (x) and radius*tilt (y) of center, plus jitter", () => {
+  const l = { ...newEmojiFxLayer(), pattern: "ring" as const, radius: 300, tilt: 0.5, count: 40, sizeJitter: 0 };
+  for (const p of layoutEmojiFx(l, CENTER)) {
+    expect(Math.abs(p.x - CENTER.cx)).toBeLessThanOrEqual(300 + 1);
+    expect(Math.abs(p.y - CENTER.cy)).toBeLessThanOrEqual(300 * 0.5 + 1);
+  }
+});
+
+test("empty glyphs falls back to a default so placements are never blank", () => {
+  const l = { ...newEmojiFxLayer(), glyphs: [] as string[], count: 4 };
+  expect(layoutEmojiFx(l, CENTER).every((p) => p.glyph.length > 0)).toBe(true);
 });
