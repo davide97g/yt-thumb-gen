@@ -32,6 +32,27 @@ test("paste inserts a fresh clone directly above the selection, offset & selecte
   expect(layers[1].x).toBe(a.x + 24); // offset applied
 });
 
+test("pasting a clone of a grouped layer does NOT inherit groupId (copy/paste stays single-layer)", () => {
+  let h = initHistory(start());
+  const a = newTextLayer();
+  const b = newTextLayer();
+  h = historyReducer(h, { type: "addLayer", layer: a });
+  h = historyReducer(h, { type: "addLayer", layer: b });
+  h = historyReducer(h, { type: "group", ids: [a.id, b.id] });
+
+  const grouped = h.present.doc.layers.find((l) => l.id === a.id)!;
+  expect(grouped.groupId).toBeTruthy(); // sanity: a is really grouped before pasting
+
+  const beforeIds = new Set(h.present.doc.layers.map((l) => l.id));
+  h = historyReducer(h, { type: "select", ids: [a.id] });
+  h = historyReducer(h, { type: "pasteLayer", layer: grouped });
+
+  const clone = h.present.doc.layers.find((l) => !beforeIds.has(l.id))!;
+  expect(clone).toBeTruthy(); // fresh layer was actually inserted
+  expect(primaryId(h.present)).toBe(clone.id); // clone is the one selected
+  expect("groupId" in clone).toBe(false); // must NOT just be undefined — key itself must be absent
+});
+
 test("undo / redo step through discrete edits", () => {
   let h = initHistory(start());
   const a = newTextLayer();

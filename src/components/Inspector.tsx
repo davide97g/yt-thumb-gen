@@ -88,7 +88,7 @@ function AlignSection({ selectedIds, layers, dispatch }: { selectedIds: string[]
   const hasGroup = selectedIds.some((id) => layers.find((l) => l.id === id)?.groupId);
   const canDistribute = selectedIds.length >= 3;
 
-  const btn = "flex h-8 flex-1 items-center justify-center rounded-md border border-border hover:bg-accent [&_svg]:size-4";
+  const btn = "flex h-8 flex-1 items-center justify-center rounded-md border border-border hover:bg-accent disabled:opacity-40 disabled:pointer-events-none [&_svg]:size-4";
   return (
     <Section title={`Allinea · ${selectedIds.length} livelli`}>
       <div className="space-y-1.5">

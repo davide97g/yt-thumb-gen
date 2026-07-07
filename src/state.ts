@@ -563,7 +563,8 @@ export function reducer(state: AppState, action: Action): AppState {
       return { doc: { ...state.doc, layers: [...state.doc.layers, action.layer] }, selectedIds: [action.layer.id] };
     case "pasteLayer": {
       // ponytail: +24px offset so the clone is visibly distinct from its source.
-      const clone = { ...action.layer, id: uid(), x: action.layer.x + 24, y: action.layer.y + 24 } as Layer;
+      const { groupId: _drop, ...rest } = action.layer;
+      const clone = { ...rest, id: uid(), x: action.layer.x + 24, y: action.layer.y + 24 } as Layer;
       const layers = [...state.doc.layers];
       const anchor = primaryId(state);
       const i = anchor ? layers.findIndex((l) => l.id === anchor) : -1;
