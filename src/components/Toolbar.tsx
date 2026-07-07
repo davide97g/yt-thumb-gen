@@ -1,9 +1,10 @@
 import { useState, type Dispatch, type ReactNode } from "react";
-import { Camera, ImagePlus, Minus, Pencil, Smile, Sparkles, Square, Type } from "lucide-react";
+import { Camera, ImagePlus, Minus, PartyPopper, Pencil, Smile, Sparkles, Square, Type } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   newBrandLayer,
   newEffectLayer,
+  newEmojiFxLayer,
   newEmojiLayer,
   newImageLayer,
   newShapeLayer,
@@ -19,7 +20,7 @@ const MAX_UPLOAD = 8 * 1024 * 1024;
 
 /** Floating, bottom-centred creation dock (Excalidraw-style): every "add a layer"
     action lives here so the side panels stay focused on editing what exists. */
-export function Toolbar({ dispatch, onError, drawMode, setDrawMode }: { dispatch: Dispatch<Action>; onError: (msg: string) => void; drawMode: boolean; setDrawMode: (v: boolean) => void }) {
+export function Toolbar({ dispatch, layers, onError, drawMode, setDrawMode }: { dispatch: Dispatch<Action>; layers: Layer[]; onError: (msg: string) => void; drawMode: boolean; setDrawMode: (v: boolean) => void }) {
   const [showCam, setShowCam] = useState(false);
   const add = (layer: Layer) => dispatch({ type: "addLayer", layer });
 
@@ -63,6 +64,16 @@ export function Toolbar({ dispatch, onError, drawMode, setDrawMode }: { dispatch
         </DockButton>
         <DockButton label="Effetto" onClick={() => add(newEffectLayer())}>
           <Sparkles />
+        </DockButton>
+        <DockButton
+          label="Effetto emoji"
+          onClick={() => {
+            // Default to the topmost image layer as the target; null = centred orphan.
+            const target = [...layers].reverse().find((l) => l.type === "image")?.id ?? null;
+            add(newEmojiFxLayer(target));
+          }}
+        >
+          <PartyPopper />
         </DockButton>
         <DockButton label="Logo Claude" onClick={() => add(newBrandLayer("logo"))}>
           <span className="size-[1.125rem]"><ClaudeLogo color="currentColor" /></span>

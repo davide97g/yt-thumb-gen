@@ -343,7 +343,7 @@ export default function App() {
 
           {!chromeHidden && (
             <div className="pointer-events-none absolute bottom-5 left-1/2 -translate-x-1/2">
-              <Toolbar dispatch={dispatch} onError={setMessage} drawMode={drawMode} setDrawMode={setDrawMode} />
+              <Toolbar dispatch={dispatch} layers={doc.layers} onError={setMessage} drawMode={drawMode} setDrawMode={setDrawMode} />
             </div>
           )}
         </main>
