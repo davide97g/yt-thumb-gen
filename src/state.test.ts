@@ -98,3 +98,74 @@ test("loadDoc resets history (no undo across a project switch)", () => {
   expect(h.past.length).toBe(0);
   expect(h.future.length).toBe(0);
 });
+
+test("group assigns a shared groupId to the given ids without reordering the layers array", () => {
+  let h = initHistory(start());
+  const a = newTextLayer();
+  const b = newTextLayer();
+  const c = newTextLayer();
+  h = historyReducer(h, { type: "addLayer", layer: a });
+  h = historyReducer(h, { type: "addLayer", layer: b });
+  h = historyReducer(h, { type: "addLayer", layer: c });
+  const orderBefore = h.present.doc.layers.map((l) => l.id);
+
+  h = historyReducer(h, { type: "group", ids: [a.id, c.id] });
+
+  const { layers } = h.present.doc;
+  expect(layers.map((l) => l.id)).toEqual(orderBefore); // no reordering
+  const ga = layers.find((l) => l.id === a.id)!.groupId;
+  const gc = layers.find((l) => l.id === c.id)!.groupId;
+  expect(ga).toBeTruthy();
+  expect(ga).toBe(gc); // shared groupId
+  expect(layers.find((l) => l.id === b.id)!.groupId).toBeUndefined(); // untouched
+});
+
+test("ungroup removes the groupId key from the given layers", () => {
+  let h = initHistory(start());
+  const a = newTextLayer();
+  const b = newTextLayer();
+  h = historyReducer(h, { type: "addLayer", layer: a });
+  h = historyReducer(h, { type: "addLayer", layer: b });
+  h = historyReducer(h, { type: "group", ids: [a.id, b.id] });
+  expect(h.present.doc.layers.find((l) => l.id === a.id)!.groupId).toBeTruthy();
+
+  h = historyReducer(h, { type: "ungroup", ids: [a.id, b.id] });
+
+  const { layers } = h.present.doc;
+  expect("groupId" in layers.find((l) => l.id === a.id)!).toBe(false);
+  expect("groupId" in layers.find((l) => l.id === b.id)!).toBe(false);
+});
+
+test("removeLayers removes all given ids and drops them from selectedIds", () => {
+  let h = initHistory(start());
+  const a = newTextLayer();
+  const b = newTextLayer();
+  const c = newTextLayer();
+  h = historyReducer(h, { type: "addLayer", layer: a });
+  h = historyReducer(h, { type: "addLayer", layer: b });
+  h = historyReducer(h, { type: "addLayer", layer: c });
+  h = historyReducer(h, { type: "select", ids: [a.id, b.id, c.id] });
+
+  h = historyReducer(h, { type: "removeLayers", ids: [a.id, c.id] });
+
+  expect(h.present.doc.layers.map((l) => l.id)).toEqual([b.id]);
+  expect(h.present.selectedIds).toEqual([b.id]);
+});
+
+test("setPositions sets absolute x/y for the given ids, leaving others untouched", () => {
+  let h = initHistory(start());
+  const a = newTextLayer();
+  const b = newTextLayer();
+  h = historyReducer(h, { type: "addLayer", layer: a });
+  h = historyReducer(h, { type: "addLayer", layer: b });
+  const bBefore = h.present.doc.layers.find((l) => l.id === b.id)!;
+
+  h = historyReducer(h, { type: "setPositions", positions: [{ id: a.id, x: 111, y: 222 }] });
+
+  const aAfter = h.present.doc.layers.find((l) => l.id === a.id)!;
+  const bAfter = h.present.doc.layers.find((l) => l.id === b.id)!;
+  expect(aAfter.x).toBe(111);
+  expect(aAfter.y).toBe(222);
+  expect(bAfter.x).toBe(bBefore.x); // untouched
+  expect(bAfter.y).toBe(bBefore.y);
+});

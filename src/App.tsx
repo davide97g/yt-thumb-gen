@@ -148,6 +148,15 @@ export default function App() {
         if (k === "y") { e.preventDefault(); dispatch({ type: "redo" }); return; } // Windows redo
         if (k === "c") { const l = docRef.current.layers.find((x) => x.id === selRef.current[selRef.current.length - 1]); if (l) clipboardRef.current = l; return; }
         if (k === "v" && clipboardRef.current) { e.preventDefault(); dispatch({ type: "pasteLayer", layer: clipboardRef.current }); return; }
+        if (k === "g") {
+          e.preventDefault();
+          if (e.shiftKey) {
+            if (selRef.current.length) dispatch({ type: "ungroup", ids: selRef.current });
+          } else if (selRef.current.length >= 2) {
+            dispatch({ type: "group", ids: selRef.current });
+          }
+          return;
+        }
         return;
       }
       // "\" toggles all chrome (rails + dock) for a full-bleed preview.
@@ -341,7 +350,7 @@ export default function App() {
 
         {!chromeHidden && (
           <aside className="anim-panel-r panel panel-scroll flex w-80 shrink-0 flex-col gap-5 overflow-y-auto border-l border-border p-4">
-            <Inspector selected={selected} dispatch={dispatch} onError={setMessage} cropMode={cropMode} setCropMode={setCropMode} onFontPreview={setFontPreview} />
+            <Inspector selected={selected} selectedIds={selectedIds} layers={doc.layers} dispatch={dispatch} onError={setMessage} cropMode={cropMode} setCropMode={setCropMode} onFontPreview={setFontPreview} />
             <BackgroundInspector background={doc.background} dispatch={dispatch} onError={setMessage} />
           </aside>
         )}

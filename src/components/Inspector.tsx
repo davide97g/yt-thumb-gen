@@ -1,5 +1,11 @@
 import { useState, type Dispatch } from "react";
-import { Camera, ChevronDown, ChevronRight, Crop, ImagePlus, Lasso, Maximize, RotateCcw, Scissors, Undo2 } from "lucide-react";
+import {
+  AlignHorizontalJustifyCenter, AlignHorizontalJustifyEnd, AlignHorizontalJustifyStart,
+  AlignHorizontalSpaceBetween, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd, AlignVerticalJustifyStart,
+  AlignVerticalSpaceBetween, Camera, ChevronDown, ChevronRight, Crop, Group, ImagePlus, Lasso, Maximize,
+  RotateCcw, Scissors, Undo2, Ungroup,
+} from "lucide-react";
+import { alignBoxes, distributeBoxes, type AlignEdge, type Placed } from "../lib/layout";
 import {
   CANVAS_H,
   CANVAS_W,
@@ -57,6 +63,8 @@ const SHAPE_OPTIONS: { value: ShapeLayer["kind"]; label: string }[] = [
 
 type InspectorProps = {
   selected: Layer | null;
+  selectedIds: string[];
+  layers: Layer[];
   dispatch: Dispatch<Action>;
   onError: (msg: string) => void;
   cropMode: CropMode;
@@ -64,7 +72,46 @@ type InspectorProps = {
   onFontPreview: (f: FontKey | null) => void;
 };
 
-export function Inspector({ selected, dispatch, onError, cropMode, setCropMode, onFontPreview }: InspectorProps) {
+/** Measure a selected layer's rendered box (canvas units) straight from the DOM. */
+function placedOf(id: string, layers: Layer[]): Placed | null {
+  const el = document.querySelector<HTMLElement>(`[data-layer-id="${id}"]`);
+  const l = layers.find((x) => x.id === id);
+  if (!el || !l) return null;
+  return { id, box: { x: l.x, y: l.y, w: el.offsetWidth, h: el.offsetHeight } };
+}
+
+function AlignSection({ selectedIds, layers, dispatch }: { selectedIds: string[]; layers: Layer[]; dispatch: Dispatch<Action> }) {
+  if (selectedIds.length < 2) return null;
+  const placed = () => selectedIds.map((id) => placedOf(id, layers)).filter((p): p is Placed => p !== null);
+  const align = (edge: AlignEdge) => dispatch({ type: "setPositions", positions: alignBoxes(placed(), edge) });
+  const distribute = (axis: "h" | "v") => dispatch({ type: "setPositions", positions: distributeBoxes(placed(), axis) });
+  const hasGroup = selectedIds.some((id) => layers.find((l) => l.id === id)?.groupId);
+  const canDistribute = selectedIds.length >= 3;
+
+  const btn = "flex h-8 flex-1 items-center justify-center rounded-md border border-border hover:bg-accent [&_svg]:size-4";
+  return (
+    <Section title={`Allinea · ${selectedIds.length} livelli`}>
+      <div className="space-y-1.5">
+        <div className="flex gap-1">
+          <button className={btn} title="Allinea a sinistra" onClick={() => align("left")}><AlignHorizontalJustifyStart /></button>
+          <button className={btn} title="Centra orizzontalmente" onClick={() => align("hcenter")}><AlignHorizontalJustifyCenter /></button>
+          <button className={btn} title="Allinea a destra" onClick={() => align("right")}><AlignHorizontalJustifyEnd /></button>
+          <button className={btn} title="Allinea in alto" onClick={() => align("top")}><AlignVerticalJustifyStart /></button>
+          <button className={btn} title="Centra verticalmente" onClick={() => align("vcenter")}><AlignVerticalJustifyCenter /></button>
+          <button className={btn} title="Allinea in basso" onClick={() => align("bottom")}><AlignVerticalJustifyEnd /></button>
+        </div>
+        <div className="flex gap-1">
+          <button className={btn} disabled={!canDistribute} title="Distribuisci orizzontalmente" onClick={() => distribute("h")}><AlignHorizontalSpaceBetween /></button>
+          <button className={btn} disabled={!canDistribute} title="Distribuisci verticalmente" onClick={() => distribute("v")}><AlignVerticalSpaceBetween /></button>
+          <button className={btn} title="Raggruppa (⌘G)" onClick={() => dispatch({ type: "group", ids: selectedIds })}><Group /></button>
+          <button className={btn} disabled={!hasGroup} title="Separa (⌘⇧G)" onClick={() => dispatch({ type: "ungroup", ids: selectedIds })}><Ungroup /></button>
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+export function Inspector({ selected, selectedIds, layers, dispatch, onError, cropMode, setCropMode, onFontPreview }: InspectorProps) {
   if (!selected) {
     return (
       <Section title="Proprietà">
@@ -74,17 +121,20 @@ export function Inspector({ selected, dispatch, onError, cropMode, setCropMode, 
   }
   const set = (patch: LayerPatch) => dispatch({ type: "updateLayer", id: selected.id, patch });
   return (
-    <Section title={`Proprietà — ${selected.name}`}>
-      <Field label="Nome">
-        <Input value={selected.name} onChange={(e) => set({ name: e.target.value })} />
-      </Field>
-      {selected.type === "text" && <TextProps layer={selected} set={set} onFontPreview={onFontPreview} />}
-      {selected.type === "image" && <ImageProps layer={selected} set={set} onError={onError} cropMode={cropMode} setCropMode={setCropMode} />}
-      {selected.type === "emoji" && <EmojiProps layer={selected} set={set} />}
-      {selected.type === "shape" && <ShapeProps layer={selected} set={set} />}
-      {selected.type === "effect" && <EffectProps layer={selected} set={set} />}
-      {selected.type === "draw" && <DrawProps layer={selected} set={set} />}
-    </Section>
+    <>
+      <AlignSection selectedIds={selectedIds} layers={layers} dispatch={dispatch} />
+      <Section title={`Proprietà — ${selected.name}`}>
+        <Field label="Nome">
+          <Input value={selected.name} onChange={(e) => set({ name: e.target.value })} />
+        </Field>
+        {selected.type === "text" && <TextProps layer={selected} set={set} onFontPreview={onFontPreview} />}
+        {selected.type === "image" && <ImageProps layer={selected} set={set} onError={onError} cropMode={cropMode} setCropMode={setCropMode} />}
+        {selected.type === "emoji" && <EmojiProps layer={selected} set={set} />}
+        {selected.type === "shape" && <ShapeProps layer={selected} set={set} />}
+        {selected.type === "effect" && <EffectProps layer={selected} set={set} />}
+        {selected.type === "draw" && <DrawProps layer={selected} set={set} />}
+      </Section>
+    </>
   );
 }
 

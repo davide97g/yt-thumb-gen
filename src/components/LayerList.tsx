@@ -1,5 +1,5 @@
 import type { Dispatch, ReactNode } from "react";
-import { ChevronDown, ChevronUp, Copy, Eye, EyeOff, Image as ImageIcon, Pencil, Smile, Sparkles, Square, Trash2, Type } from "lucide-react";
+import { ChevronDown, ChevronUp, Copy, Eye, EyeOff, Image as ImageIcon, Link2, Pencil, Smile, Sparkles, Square, Trash2, Type } from "lucide-react";
 import type { Action, Layer, LayerType } from "../state";
 import { Button } from "./ui/button";
 import { Hint } from "./controls";
@@ -62,6 +62,7 @@ export function LayerList({ layers, selectedIds, dispatch }: Props) {
                 {layer.visible ? <Eye /> : <EyeOff />}
               </Button>
               <span className={cn("shrink-0", active ? "text-primary" : "text-muted-foreground")}>{TYPE_ICON[layer.type]}</span>
+              {layer.groupId && <Link2 className="size-3 shrink-0 text-muted-foreground" aria-label="Raggruppato" />}
               <span className="flex-1 truncate px-1 transition-[padding] group-hover/row:pr-[6.25rem] group-focus-within/row:pr-[6.25rem]">{layer.name}</span>
               <div className="absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center rounded-md opacity-0 transition-opacity pointer-events-none group-hover/row:pointer-events-auto group-focus-within/row:pointer-events-auto group-hover/row:opacity-100 group-focus-within/row:opacity-100">
                 <Button
