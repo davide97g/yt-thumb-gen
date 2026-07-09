@@ -232,9 +232,19 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-full flex-col bg-background text-foreground">
+    <div
+      className="flex h-full flex-col bg-background text-foreground"
+      // iOS standalone PWA draws under the notch/home indicator (viewport-fit=cover).
+      // Keep the body clear of the side notches + home indicator; the header owns the
+      // top inset itself so its bar fills the status-bar area.
+      style={{
+        paddingLeft: "env(safe-area-inset-left)",
+        paddingRight: "env(safe-area-inset-right)",
+        paddingBottom: "env(safe-area-inset-bottom)",
+      }}
+    >
       {/* ── Top bar ─────────────────────────────────────────────────────── */}
-      <header className="flex h-14 shrink-0 items-center justify-between gap-4 border-b border-border bg-card/40 px-4 backdrop-blur">
+      <header className="flex h-[calc(3.5rem_+_env(safe-area-inset-top))] shrink-0 items-center justify-between gap-4 border-b border-border bg-card/40 px-4 pt-[env(safe-area-inset-top)] backdrop-blur">
         <div className="flex items-center gap-2.5">
           {/* Mobile: open the layers/project drawer. Desktop: toggle both rails. */}
           <Button
@@ -343,8 +353,8 @@ export default function App() {
           <aside
             className={cn(
               "panel panel-scroll flex flex-col gap-5 overflow-y-auto border-r border-border p-4",
-              // mobile: off-canvas drawer (sits below the h-14 header)
-              "fixed bottom-0 left-0 top-14 z-40 w-[86vw] max-w-xs shadow-2xl transition-transform duration-300 ease-out",
+              // mobile: off-canvas drawer (below the header, clear of the safe-area insets)
+              "fixed left-[env(safe-area-inset-left)] top-[calc(3.5rem_+_env(safe-area-inset-top))] bottom-[env(safe-area-inset-bottom)] z-40 w-[86vw] max-w-xs shadow-2xl transition-transform duration-300 ease-out",
               mobileLeft ? "translate-x-0" : "-translate-x-full",
               // desktop: static rail in the flex row
               "md:static md:z-auto md:w-64 md:max-w-none md:shrink-0 md:translate-x-0 md:shadow-none md:transition-none",
@@ -424,8 +434,8 @@ export default function App() {
           <aside
             className={cn(
               "panel panel-scroll flex flex-col gap-5 overflow-y-auto border-l border-border p-4",
-              // mobile: off-canvas drawer (sits below the h-14 header)
-              "fixed bottom-0 right-0 top-14 z-40 w-[86vw] max-w-xs shadow-2xl transition-transform duration-300 ease-out",
+              // mobile: off-canvas drawer (below the header, clear of the safe-area insets)
+              "fixed right-[env(safe-area-inset-right)] top-[calc(3.5rem_+_env(safe-area-inset-top))] bottom-[env(safe-area-inset-bottom)] z-40 w-[86vw] max-w-xs shadow-2xl transition-transform duration-300 ease-out",
               mobileRight ? "translate-x-0" : "translate-x-full",
               // desktop: static rail in the flex row
               "md:static md:z-auto md:w-80 md:max-w-none md:shrink-0 md:translate-x-0 md:shadow-none md:transition-none",
