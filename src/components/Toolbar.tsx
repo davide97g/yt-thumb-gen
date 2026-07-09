@@ -37,7 +37,7 @@ export function Toolbar({ dispatch, layers, onError, drawMode, setDrawMode }: { 
 
   return (
     <>
-      <div className="dock anim-dock pointer-events-auto">
+      <div className="dock anim-dock pointer-events-auto max-w-full overflow-x-auto md:overflow-visible">
         <DockButton label="Testo" onClick={() => add(newTextLayer())}>
           <Type />
         </DockButton>

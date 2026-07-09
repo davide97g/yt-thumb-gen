@@ -1,5 +1,5 @@
 import { useEffect, useReducer, useRef, useState } from "react";
-import { Download, Maximize2, PanelsTopLeft, Redo2, Undo2 } from "lucide-react";
+import { Download, Layers, Maximize2, PanelsTopLeft, Redo2, SlidersHorizontal, Undo2, X } from "lucide-react";
 import { CANVAS_H, CANVAS_W, ThumbCanvas, type CropMode } from "./components/ThumbCanvas";
 import { Inspector, BackgroundInspector } from "./components/Inspector";
 import { LayerList } from "./components/LayerList";
@@ -7,7 +7,7 @@ import { SavesPanel } from "./components/SavesPanel";
 import { ProjectHeader } from "./components/ProjectHeader";
 import { NewProjectDialog } from "./components/NewProjectDialog";
 import { Toolbar } from "./components/Toolbar";
-import { Section } from "./components/controls";
+import { Field, Section } from "./components/controls";
 import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
 import { exportThumb } from "./lib/export";
@@ -15,6 +15,8 @@ import { loadImageFile } from "./lib/loadImageFile";
 import { getProject, getWorking, renameConfig, saveConfig, setProject, setWorking } from "./lib/storage";
 import { historyReducer, initHistory, newImageLayer, primaryId, type AppState, type FontKey, type Layer, type ThumbDoc } from "./state";
 import { TEMPLATES } from "./presets";
+import { useIsMobile } from "./lib/useIsMobile";
+import { cn } from "./lib/utils";
 
 const initial: AppState = { doc: TEMPLATES.dacoder(), selectedIds: [] };
 
@@ -25,6 +27,10 @@ export default function App() {
   const previewRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(0.4);
   const [chromeHidden, setChromeHidden] = useState(false);
+  const isMobile = useIsMobile();
+  // Off-canvas panels for the mobile shell — the two side rails become icon-triggered drawers.
+  const [mobileLeft, setMobileLeft] = useState(false);
+  const [mobileRight, setMobileRight] = useState(false);
   const [newOpen, setNewOpen] = useState(false);
   const [savesKey, setSavesKey] = useState(0);
   const [exporting, setExporting] = useState(false);
@@ -189,18 +195,25 @@ export default function App() {
     return () => window.removeEventListener("paste", onPaste);
   }, []);
 
+  // Leaving mobile width: drop any open drawers so the desktop rails aren't shadowed.
+  useEffect(() => {
+    if (!isMobile) { setMobileLeft(false); setMobileRight(false); }
+  }, [isMobile]);
+
   // Fit the canvas to the stage, leaving room for the floating dock + readout.
+  // Mobile trims the padding so the 1280×720 frame stays as large as the screen allows
+  // (largest in landscape — hence the manifest's landscape orientation hint).
   useEffect(() => {
     const el = previewRef.current;
     if (!el) return;
     const ro = new ResizeObserver(() => {
-      const padX = 80;
-      const padY = 150;
+      const padX = isMobile ? 24 : 80;
+      const padY = isMobile ? 96 : 150;
       setScale(Math.max(0.1, Math.min((el.clientWidth - padX) / CANVAS_W, (el.clientHeight - padY) / CANVAS_H)));
     });
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
+  }, [isMobile]);
 
   async function onExport() {
     if (!canvasRef.current) return;
@@ -223,10 +236,21 @@ export default function App() {
       {/* ── Top bar ─────────────────────────────────────────────────────── */}
       <header className="flex h-14 shrink-0 items-center justify-between gap-4 border-b border-border bg-card/40 px-4 backdrop-blur">
         <div className="flex items-center gap-2.5">
+          {/* Mobile: open the layers/project drawer. Desktop: toggle both rails. */}
           <Button
             variant="ghost"
             size="icon-sm"
-            className="text-muted-foreground hover:text-foreground"
+            className="text-muted-foreground hover:text-foreground md:hidden"
+            onClick={() => setMobileLeft(true)}
+            title="Livelli e progetto"
+            aria-label="Apri livelli e progetto"
+          >
+            <Layers />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="hidden text-muted-foreground hover:text-foreground md:inline-flex"
             onClick={() => setChromeHidden((v) => !v)}
             title={chromeHidden ? "Mostra pannelli (\\)" : "Nascondi pannelli (\\)"}
             aria-label={chromeHidden ? "Mostra pannelli" : "Nascondi pannelli"}
@@ -243,7 +267,7 @@ export default function App() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-1.5 md:gap-2.5">
           <div className="flex items-center gap-1">
             <Button
               variant="ghost"
@@ -276,23 +300,71 @@ export default function App() {
               {message}
             </span>
           )}
+          {/* Mobile: open the properties/inspector drawer. */}
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="text-muted-foreground hover:text-foreground md:hidden"
+            onClick={() => setMobileRight(true)}
+            title="Proprietà"
+            aria-label="Apri proprietà"
+          >
+            <SlidersHorizontal />
+          </Button>
           <Input
-            className="h-8 w-40"
+            className="hidden h-8 w-40 md:block"
             value={fileName}
             onChange={(e) => setFileName(e.target.value)}
             placeholder="thumb.png"
             aria-label="Nome file"
           />
           <Button className="h-8" onClick={onExport} disabled={exporting}>
-            <Download /> {exporting ? "Esporto…" : "Esporta PNG"}
+            <Download />
+            <span className="hidden sm:inline">{exporting ? "Esporto…" : "Esporta PNG"}</span>
           </Button>
         </div>
       </header>
 
-      {/* ── Body: left rail · stage · inspector ─────────────────────────── */}
-      <div className="flex min-h-0 flex-1">
-        {!chromeHidden && (
-          <aside className="anim-panel-l panel panel-scroll flex w-64 shrink-0 flex-col gap-5 overflow-y-auto border-r border-border p-4">
+      {/* ── Body: left rail · stage · inspector ───────────────────────────
+          On desktop the two rails sit in the flex row (toggled by `chromeHidden`).
+          On mobile they become off-canvas drawers over the stage, opened from the
+          header icons and dismissed by the backdrop or their own close button. */}
+      <div className="relative flex min-h-0 flex-1">
+        {/* Backdrop behind an open mobile drawer. */}
+        {isMobile && (mobileLeft || mobileRight) && (
+          <div
+            className="absolute inset-0 z-30 bg-black/50 md:hidden"
+            onClick={() => { setMobileLeft(false); setMobileRight(false); }}
+            aria-hidden
+          />
+        )}
+
+        {(isMobile || !chromeHidden) && (
+          <aside
+            className={cn(
+              "panel panel-scroll flex flex-col gap-5 overflow-y-auto border-r border-border p-4",
+              // mobile: off-canvas drawer (sits below the h-14 header)
+              "fixed bottom-0 left-0 top-14 z-40 w-[86vw] max-w-xs shadow-2xl transition-transform duration-300 ease-out",
+              mobileLeft ? "translate-x-0" : "-translate-x-full",
+              // desktop: static rail in the flex row
+              "md:static md:z-auto md:w-64 md:max-w-none md:shrink-0 md:translate-x-0 md:shadow-none md:transition-none",
+              !isMobile && "anim-panel-l",
+            )}
+          >
+            <DrawerClose label="Livelli e progetto" onClose={() => setMobileLeft(false)} />
+
+            {/* File name lives in the header on desktop; on mobile it moves in here. */}
+            <div className="md:hidden">
+              <Field label="Nome file">
+                <Input
+                  value={fileName}
+                  onChange={(e) => setFileName(e.target.value)}
+                  placeholder="thumb.png"
+                  aria-label="Nome file"
+                />
+              </Field>
+            </div>
+
             <ProjectHeader
               name={projectName}
               dirty={dirty}
@@ -318,7 +390,7 @@ export default function App() {
           </aside>
         )}
 
-        <main ref={previewRef} className="stage relative flex min-w-0 flex-1 items-center justify-center overflow-hidden p-8">
+        <main ref={previewRef} className="stage relative flex min-w-0 flex-1 items-center justify-center overflow-hidden p-3 md:p-8">
           <div
             className="overflow-hidden rounded-lg shadow-[0_30px_80px_-20px_rgba(0,0,0,0.8)] ring-1 ring-white/10"
             style={{ width: CANVAS_W * scale, height: CANVAS_H * scale }}
@@ -337,19 +409,30 @@ export default function App() {
             />
           </div>
 
-          <div className="pointer-events-none absolute bottom-4 left-4 font-mono text-[11px] uppercase tracking-wider text-muted-foreground/80">
+          <div className="pointer-events-none absolute bottom-4 left-4 hidden font-mono text-[11px] uppercase tracking-wider text-muted-foreground/80 md:block">
             1280 × 720 · {Math.round(scale * 100)}%
           </div>
 
-          {!chromeHidden && (
-            <div className="pointer-events-none absolute bottom-5 left-1/2 -translate-x-1/2">
+          {(isMobile || !chromeHidden) && (
+            <div className="pointer-events-none absolute inset-x-2 bottom-3 flex justify-center md:inset-x-auto md:bottom-5 md:left-1/2 md:-translate-x-1/2">
               <Toolbar dispatch={dispatch} layers={doc.layers} onError={setMessage} drawMode={drawMode} setDrawMode={setDrawMode} />
             </div>
           )}
         </main>
 
-        {!chromeHidden && (
-          <aside className="anim-panel-r panel panel-scroll flex w-80 shrink-0 flex-col gap-5 overflow-y-auto border-l border-border p-4">
+        {(isMobile || !chromeHidden) && (
+          <aside
+            className={cn(
+              "panel panel-scroll flex flex-col gap-5 overflow-y-auto border-l border-border p-4",
+              // mobile: off-canvas drawer (sits below the h-14 header)
+              "fixed bottom-0 right-0 top-14 z-40 w-[86vw] max-w-xs shadow-2xl transition-transform duration-300 ease-out",
+              mobileRight ? "translate-x-0" : "translate-x-full",
+              // desktop: static rail in the flex row
+              "md:static md:z-auto md:w-80 md:max-w-none md:shrink-0 md:translate-x-0 md:shadow-none md:transition-none",
+              !isMobile && "anim-panel-r",
+            )}
+          >
+            <DrawerClose label="Proprietà" onClose={() => setMobileRight(false)} />
             <Inspector selected={selected} selectedIds={selectedIds} layers={doc.layers} dispatch={dispatch} onError={setMessage} cropMode={cropMode} setCropMode={setCropMode} onFontPreview={setFontPreview} />
             <BackgroundInspector background={doc.background} dispatch={dispatch} onError={setMessage} />
           </aside>
@@ -366,6 +449,19 @@ export default function App() {
           onError={setMessage}
         />
       )}
+    </div>
+  );
+}
+
+/** Header for a mobile drawer: its title + a close button. Hidden on desktop,
+    where the rails are always-on columns with no need to dismiss. */
+function DrawerClose({ label, onClose }: { label: string; onClose: () => void }) {
+  return (
+    <div className="flex items-center justify-between md:hidden">
+      <span className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">{label}</span>
+      <Button variant="ghost" size="icon-sm" className="text-muted-foreground hover:text-foreground" onClick={onClose} aria-label="Chiudi pannello">
+        <X />
+      </Button>
     </div>
   );
 }
