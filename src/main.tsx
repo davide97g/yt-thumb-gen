@@ -31,4 +31,7 @@ createRoot(document.getElementById("root")!).render(
   </StrictMode>
 );
 
+// Build stamp in the console — a hidden spot to confirm which version is running.
+console.info(`%cThumb Studio v${__APP_VERSION__} · ${__APP_COMMIT__} · ${__BUILD_TIME__}`, "color:#d97757;font-weight:600");
+
 registerServiceWorker();

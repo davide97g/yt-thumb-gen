@@ -64,8 +64,9 @@ export function LayerList({ layers, selectedIds, dispatch }: Props) {
               </Button>
               <span className={cn("shrink-0", active ? "text-primary" : "text-muted-foreground")}>{TYPE_ICON[layer.type]}</span>
               {layer.groupId && <Link2 className="size-3 shrink-0 text-muted-foreground" aria-label="Raggruppato" />}
-              <span className="flex-1 truncate px-1 transition-[padding] group-hover/row:pr-[6.25rem] group-focus-within/row:pr-[6.25rem]">{layer.name}</span>
-              <div className="absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center rounded-md opacity-0 transition-opacity pointer-events-none group-hover/row:pointer-events-auto group-focus-within/row:pointer-events-auto group-hover/row:opacity-100 group-focus-within/row:opacity-100">
+              <span className="flex-1 truncate px-1 transition-[padding] pr-[6.25rem] md:pr-1 md:group-hover/row:pr-[6.25rem] md:group-focus-within/row:pr-[6.25rem]">{layer.name}</span>
+              {/* Row actions reveal on hover with a mouse; on touch (no hover) they stay visible. */}
+              <div className="absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center rounded-md opacity-100 transition-opacity pointer-events-auto md:pointer-events-none md:opacity-0 md:group-hover/row:pointer-events-auto md:group-focus-within/row:pointer-events-auto md:group-hover/row:opacity-100 md:group-focus-within/row:opacity-100">
                 <Button
                   variant="ghost"
                   size="icon-sm"

@@ -86,7 +86,7 @@ export function SavesPanel({ doc, projectId, projectName, onLoad, onError, refre
                 <Button
                   variant="ghost"
                   size="icon-sm"
-                  className="size-7 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+                  className="size-7 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
                   title="Esporta JSON"
                   onClick={() => exportConfigFile(c.doc, c.name)}
                 >
@@ -95,7 +95,7 @@ export function SavesPanel({ doc, projectId, projectName, onLoad, onError, refre
                 <Button
                   variant="ghost"
                   size="icon-sm"
-                  className="size-7 opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100 focus-visible:opacity-100"
+                  className="size-7 opacity-100 transition-opacity hover:text-destructive md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
                   title="Elimina"
                   onClick={() => void onDelete(c.id)}
                 >

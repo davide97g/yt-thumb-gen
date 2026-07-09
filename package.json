@@ -1,7 +1,7 @@
 {
   "name": "yt-thumb-gen",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
   "description": "YouTube thumbnail generator — Vite/React editor + local rembg background-removal service.",
   "scripts": {

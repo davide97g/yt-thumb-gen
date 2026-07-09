@@ -397,6 +397,14 @@ export default function App() {
               onError={setMessage}
               refreshKey={savesKey}
             />
+
+            {/* Discreet build stamp — tap-and-hold shows the build time. */}
+            <div
+              className="mt-auto shrink-0 select-text pt-1 text-center font-mono text-[10px] leading-none text-muted-foreground/35"
+              title={`Build ${__BUILD_TIME__}`}
+            >
+              v{__APP_VERSION__} · {__APP_COMMIT__}
+            </div>
           </aside>
         )}
 
