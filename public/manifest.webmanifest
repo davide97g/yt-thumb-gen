@@ -1,0 +1,27 @@
+{
+  "name": "Thumb Studio — YouTube Thumbnail Editor",
+  "short_name": "Thumb Studio",
+  "description": "Editor per copertine YouTube (1280×720). Installabile e utilizzabile offline.",
+  "lang": "it",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#242119",
+  "theme_color": "#242119",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
