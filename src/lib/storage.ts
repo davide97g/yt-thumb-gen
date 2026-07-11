@@ -1,29 +1,38 @@
 // Persistence for the thumbnail editor.
 //
-// Configs embed images as base64 dataURLs, so a single doc can be several MB —
-// well past the ~5MB localStorage cap. Everything therefore lives in IndexedDB:
-//   • store "meta"    — the working canvas (key "working") + its project identity
-//                       (key "project"), both autosaved
-//   • store "configs" — named projects the user can reload later (keyPath "id")
-// Plus JSON file export/import so projects survive a cache clear and move between
-// machines.
+// Split across two backends by concern:
+//   • The live *working* canvas + its project identity stay in **IndexedDB** (store
+//     "meta"): a fast, offline, per-browser cache. Docs here keep images as inline
+//     base64 data URLs so the canvas can paint/export them directly.
+//   • Named, reloadable **projects** live on the **backend** (Postgres + R2), scoped to
+//     the logged-in user. On the way out, inline images are offloaded to R2 and replaced
+//     by `blob:<id>` refs (see lib/blobs.ts); on the way in they're re-hydrated to data
+//     URLs. So the DB row stays small and images survive a cache clear / move machines.
+// Plus JSON file export/import (unchanged) so a project can leave the account entirely.
 
 import type { ThumbDoc } from "../state";
+import { apiGet, apiSend } from "./api";
+import { dehydrateDoc, hydrateDoc } from "./blobs";
 
 const DB_NAME = "grocerai-thumb";
 const VERSION = 1;
 const META = "meta";
-const CONFIGS = "configs";
+const CONFIGS = "configs"; // legacy store, kept so existing DBs open without an upgrade
 const WORKING_KEY = "working";
 const PROJECT_KEY = "project";
 
-export type SavedConfig = { id: string; name: string; updatedAt: number; doc: ThumbDoc };
+/** Lightweight archive-list row (no doc) — what the backend returns for a list. */
+export type ConfigMeta = { id: string; name: string; updatedAt: number };
+/** A full project including its (hydrated) doc. */
+export type SavedConfig = ConfigMeta & { doc: ThumbDoc };
 
 /** Identity of the live working canvas. `id` is null until it's archived. */
 export type Project = { name: string; id: string | null };
 
 const EXPORT_VERSION = 1;
 type ExportFile = { app: "grocerai-thumb"; version: number; name?: string; doc: ThumbDoc };
+
+// ── IndexedDB (local working cache) ───────────────────────────────────────────
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -69,28 +78,38 @@ export function setProject(project: Project): Promise<void> {
   return run<IDBValidKey>(META, "readwrite", (s) => s.put(project, PROJECT_KEY)).then(() => undefined);
 }
 
-export async function listConfigs(): Promise<SavedConfig[]> {
-  const all = await run<SavedConfig[]>(CONFIGS, "readonly", (s) => s.getAll());
-  return all.sort((a, b) => b.updatedAt - a.updatedAt);
+/** Clears the local working cache — used on logout so the next user starts clean. */
+export async function clearWorking(): Promise<void> {
+  await run(META, "readwrite", (s) => s.delete(WORKING_KEY));
+  await run(META, "readwrite", (s) => s.delete(PROJECT_KEY));
 }
 
-/** Upserts a config: pass the existing `id` to overwrite it (re-saving the same
- *  project), or omit it to archive a new one under a fresh id. Returns the record. */
-export function saveConfig(name: string, doc: ThumbDoc, id: string = crypto.randomUUID()): Promise<SavedConfig> {
-  const config: SavedConfig = { id, name: name.trim() || "Senza nome", updatedAt: Date.now(), doc };
-  return run<IDBValidKey>(CONFIGS, "readwrite", (s) => s.put(config)).then(() => config);
+// ── Backend projects (source of truth) ────────────────────────────────────────
+
+export function listConfigs(): Promise<ConfigMeta[]> {
+  return apiGet<ConfigMeta[]>("/projects");
+}
+
+/** Fetches one archived project and re-hydrates its images from R2. */
+export async function loadConfig(id: string): Promise<SavedConfig> {
+  const row = await apiGet<{ id: string; name: string; updatedAt: number; doc: ThumbDoc }>(`/projects/${id}`);
+  return { id: row.id, name: row.name, updatedAt: row.updatedAt, doc: await hydrateDoc(row.doc) };
+}
+
+/** Upserts a project: pass an existing `id` to overwrite it, or omit it to archive a new
+ *  one. Offloads inline images to R2 before sending. Returns the archive metadata. */
+export async function saveConfig(name: string, doc: ThumbDoc, id?: string): Promise<ConfigMeta> {
+  const payload = { name: name.trim() || "Senza nome", doc: await dehydrateDoc(doc) };
+  return id ? apiSend<ConfigMeta>("PUT", `/projects/${id}`, payload) : apiSend<ConfigMeta>("POST", "/projects", payload);
 }
 
 /** Renames an archived project in place, leaving its doc untouched. */
-// ponytail: read-then-write, no transaction — fine for a single local user.
-export async function renameConfig(id: string, name: string): Promise<void> {
-  const c = await run<SavedConfig | undefined>(CONFIGS, "readonly", (s) => s.get(id));
-  if (!c) return;
-  await run<IDBValidKey>(CONFIGS, "readwrite", (s) => s.put({ ...c, name: name.trim() || "Senza nome", updatedAt: Date.now() }));
+export function renameConfig(id: string, name: string): Promise<ConfigMeta> {
+  return apiSend<ConfigMeta>("PUT", `/projects/${id}`, { name: name.trim() || "Senza nome" });
 }
 
 export function deleteConfig(id: string): Promise<void> {
-  return run<undefined>(CONFIGS, "readwrite", (s) => s.delete(id)).then(() => undefined);
+  return apiSend<{ ok: true }>("DELETE", `/projects/${id}`).then(() => undefined);
 }
 
 // ── JSON file export / import ─────────────────────────────────────────────────

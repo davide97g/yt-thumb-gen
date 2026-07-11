@@ -1,0 +1,16 @@
+{
+  "name": "yt-thumb-gen-server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "dev": "bun --watch run src/index.ts"
+  },
+  "dependencies": {
+    "hono": "^4.6.14",
+    "postgres": "^3.4.5"
+  },
+  "devDependencies": {
+    "bun-types": "^1.2.0"
+  }
+}

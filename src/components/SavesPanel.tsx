@@ -2,11 +2,12 @@ import { useEffect, useState } from "react";
 import { FileDown, FileUp, FolderOpen, Trash2 } from "lucide-react";
 import type { ThumbDoc } from "../state";
 import {
+  type ConfigMeta,
   deleteConfig,
   exportConfigFile,
   importConfigFile,
   listConfigs,
-  type SavedConfig,
+  loadConfig,
 } from "../lib/storage";
 import { Hint, Section, UploadButton } from "./controls";
 import { Button } from "./ui/button";
@@ -34,7 +35,8 @@ function relTime(ts: number): string {
 /** The project library: every named save, newest first. The live project (if it
  *  was loaded from here) is pinned visually and shows its current name. */
 export function SavesPanel({ doc, projectId, projectName, onLoad, onError, refreshKey }: Props) {
-  const [configs, setConfigs] = useState<SavedConfig[]>([]);
+  const [configs, setConfigs] = useState<ConfigMeta[]>([]);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   const refresh = () => listConfigs().then(setConfigs).catch(() => onError("Impossibile leggere l'archivio."));
   useEffect(() => { void refresh(); }, [refreshKey]);
@@ -42,6 +44,32 @@ export function SavesPanel({ doc, projectId, projectName, onLoad, onError, refre
   async function onDelete(id: string) {
     await deleteConfig(id);
     await refresh();
+  }
+
+  // The list carries only metadata; the full doc (with images) is fetched on demand.
+  async function onOpen(c: ConfigMeta) {
+    setBusyId(c.id);
+    try {
+      const full = await loadConfig(c.id);
+      onLoad(full.doc, full.name, full.id, full.updatedAt);
+      onError("");
+    } catch {
+      onError("Impossibile caricare il progetto.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function onExport(c: ConfigMeta) {
+    setBusyId(c.id);
+    try {
+      const full = await loadConfig(c.id);
+      exportConfigFile(full.doc, full.name);
+    } catch {
+      onError("Impossibile esportare il progetto.");
+    } finally {
+      setBusyId(null);
+    }
   }
 
   async function onImport(file: File | undefined) {
@@ -71,9 +99,10 @@ export function SavesPanel({ doc, projectId, projectName, onLoad, onError, refre
               >
                 <button
                   type="button"
-                  className="flex min-w-0 flex-1 items-center gap-2.5 px-2 py-1.5 text-left"
+                  className="flex min-w-0 flex-1 items-center gap-2.5 px-2 py-1.5 text-left disabled:opacity-60"
                   title={active ? "Progetto attuale" : "Carica"}
-                  onClick={() => onLoad(c.doc, c.name, c.id, c.updatedAt)}
+                  disabled={busyId === c.id}
+                  onClick={() => void onOpen(c)}
                 >
                   <FolderOpen className={cn("size-4 shrink-0", active ? "text-primary" : "text-muted-foreground")} />
                   <span className="min-w-0 flex-1">
@@ -88,7 +117,8 @@ export function SavesPanel({ doc, projectId, projectName, onLoad, onError, refre
                   size="icon-sm"
                   className="size-7 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
                   title="Esporta JSON"
-                  onClick={() => exportConfigFile(c.doc, c.name)}
+                  disabled={busyId === c.id}
+                  onClick={() => void onExport(c)}
                 >
                   <FileDown />
                 </Button>
