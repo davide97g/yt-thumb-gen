@@ -1,11 +1,11 @@
 import type { Dispatch, ReactNode } from "react";
-import { ChevronDown, ChevronUp, Copy, Eye, EyeOff, Image as ImageIcon, Link2, PartyPopper, Pencil, Smile, Sparkles, Square, Trash2, Type } from "lucide-react";
+import { ChevronDown, ChevronUp, Copy, Eye, EyeOff, Image as ImageIcon, Link2, PartyPopper, Pencil, Smile, Sparkles, Square, Star, Trash2, Type } from "lucide-react";
 import type { Action, Layer, LayerType } from "../state";
 import { Button } from "./ui/button";
 import { Hint } from "./controls";
 import { cn } from "@/lib/utils";
 
-const TYPE_ICON: Record<LayerType, ReactNode> = {
+export const TYPE_ICON: Record<LayerType, ReactNode> = {
   text: <Type className="size-3.5" />,
   image: <ImageIcon className="size-3.5" />,
   emoji: <Smile className="size-3.5" />,
@@ -15,10 +15,10 @@ const TYPE_ICON: Record<LayerType, ReactNode> = {
   emojifx: <PartyPopper className="size-3.5" />,
 };
 
-type Props = { layers: Layer[]; selectedIds: string[]; dispatch: Dispatch<Action> };
+type Props = { layers: Layer[]; selectedIds: string[]; dispatch: Dispatch<Action>; onStar: (layer: Layer) => void };
 
 /** Layer stack, shown front-first (top of the list = frontmost on the canvas). */
-export function LayerList({ layers, selectedIds, dispatch }: Props) {
+export function LayerList({ layers, selectedIds, dispatch, onStar }: Props) {
   if (layers.length === 0) return <Hint>Nessun livello. Aggiungine uno qui sopra o carica un modello.</Hint>;
 
   const groupMates = (layer: Layer): string[] =>
@@ -64,7 +64,7 @@ export function LayerList({ layers, selectedIds, dispatch }: Props) {
               </Button>
               <span className={cn("shrink-0", active ? "text-primary" : "text-muted-foreground")}>{TYPE_ICON[layer.type]}</span>
               {layer.groupId && <Link2 className="size-3 shrink-0 text-muted-foreground" aria-label="Raggruppato" />}
-              <span className="flex-1 truncate px-1 transition-[padding] pr-[6.25rem] md:pr-1 md:group-hover/row:pr-[6.25rem] md:group-focus-within/row:pr-[6.25rem]">{layer.name}</span>
+              <span className="flex-1 truncate px-1 transition-[padding] pr-[7.75rem] md:pr-1 md:group-hover/row:pr-[7.75rem] md:group-focus-within/row:pr-[7.75rem]">{layer.name}</span>
               {/* Row actions reveal on hover with a mouse; on touch (no hover) they stay visible. */}
               <div className="absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center rounded-md opacity-100 transition-opacity pointer-events-auto md:pointer-events-none md:opacity-0 md:group-hover/row:pointer-events-auto md:group-focus-within/row:pointer-events-auto md:group-hover/row:opacity-100 md:group-focus-within/row:opacity-100">
                 <Button
@@ -86,6 +86,15 @@ export function LayerList({ layers, selectedIds, dispatch }: Props) {
                   onClick={(e) => { e.stopPropagation(); dispatch({ type: "reorder", id: layer.id, dir: -1 }); }}
                 >
                   <ChevronDown />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="size-6 text-muted-foreground hover:text-amber-400 [&_svg]:size-3.5"
+                  title="Aggiungi ai preferiti"
+                  onClick={(e) => { e.stopPropagation(); onStar(layer); }}
+                >
+                  <Star />
                 </Button>
                 <Button
                   variant="ghost"

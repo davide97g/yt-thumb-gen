@@ -45,5 +45,20 @@ export async function initSchema(): Promise<void> {
       created_at   timestamptz NOT NULL DEFAULT now(),
       PRIMARY KEY (id, user_id)
     )`;
+  // Starred elements: single layers (any type) saved out of a project into a per-user
+  // collection, so they can be searched and re-inserted into any other project. The
+  // layer JSON is stored dehydrated (images as blob:<id> refs, bytes in R2), same as
+  // project docs. `kind` mirrors layer.type for cheap filtering without opening jsonb.
+  await sql`
+    CREATE TABLE IF NOT EXISTS starred_items (
+      id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id    uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      name       text NOT NULL,
+      kind       text NOT NULL,
+      layer      jsonb NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )`;
   await sql`CREATE INDEX IF NOT EXISTS projects_user_idx ON projects(user_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS starred_user_idx ON starred_items(user_id)`;
 }

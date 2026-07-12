@@ -110,6 +110,8 @@ app.use("/api/projects/*", requireUser);
 app.use("/api/projects", requireUser);
 app.use("/api/blobs/*", requireUser);
 app.use("/api/blobs", requireUser);
+app.use("/api/starred/*", requireUser);
+app.use("/api/starred", requireUser);
 
 async function requireUser(c: any, next: () => Promise<void>) {
   const user = await currentUser(c);
@@ -163,6 +165,54 @@ app.put("/api/projects/:id", async (c) => {
 app.delete("/api/projects/:id", async (c) => {
   const user = c.get("user") as User;
   await sql`DELETE FROM projects WHERE id = ${c.req.param("id")} AND user_id = ${user.id}`;
+  return c.json({ ok: true });
+});
+
+// ── starred elements (single layers saved into a per-user collection) ────────
+app.get("/api/starred", async (c) => {
+  const user = c.get("user") as User;
+  const rows = await sql`
+    SELECT id, name, kind, extract(epoch from updated_at) * 1000 AS "updatedAt"
+    FROM starred_items WHERE user_id = ${user.id} ORDER BY updated_at DESC`;
+  return c.json(rows);
+});
+
+app.get("/api/starred/:id", async (c) => {
+  const user = c.get("user") as User;
+  const rows = await sql`
+    SELECT id, name, kind, layer, extract(epoch from updated_at) * 1000 AS "updatedAt"
+    FROM starred_items WHERE id = ${c.req.param("id")} AND user_id = ${user.id}`;
+  if (!rows[0]) return c.json({ error: "not found" }, 404);
+  return c.json(rows[0]);
+});
+
+app.post("/api/starred", async (c) => {
+  const user = c.get("user") as User;
+  const { name, kind, layer } = await c.req.json().catch(() => ({}));
+  if (typeof name !== "string" || typeof kind !== "string" || typeof layer !== "object" || layer === null) {
+    return c.json({ error: "bad request" }, 400);
+  }
+  const [row] = await sql`
+    INSERT INTO starred_items (user_id, name, kind, layer) VALUES (${user.id}, ${name}, ${kind}, ${sql.json(layer)})
+    RETURNING id, name, kind, extract(epoch from updated_at) * 1000 AS "updatedAt"`;
+  return c.json(row);
+});
+
+app.put("/api/starred/:id", async (c) => {
+  const user = c.get("user") as User;
+  const { name } = await c.req.json().catch(() => ({}));
+  if (typeof name !== "string" || !name.trim()) return c.json({ error: "bad request" }, 400);
+  const [row] = await sql`
+    UPDATE starred_items SET name = ${name}, updated_at = now()
+    WHERE id = ${c.req.param("id")} AND user_id = ${user.id}
+    RETURNING id, name, kind, extract(epoch from updated_at) * 1000 AS "updatedAt"`;
+  if (!row) return c.json({ error: "not found" }, 404);
+  return c.json(row);
+});
+
+app.delete("/api/starred/:id", async (c) => {
+  const user = c.get("user") as User;
+  await sql`DELETE FROM starred_items WHERE id = ${c.req.param("id")} AND user_id = ${user.id}`;
   return c.json({ ok: true });
 });
 

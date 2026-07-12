@@ -3,7 +3,7 @@
 // backend the data URLs are swapped for content-addressed refs whose bytes live in R2, and
 // swapped back on load. This module is the only place that translation happens.
 
-import type { ImageLayer, ThumbDoc } from "../state";
+import type { ImageLayer, Layer, ThumbDoc } from "../state";
 
 const REF = "blob:"; // sentinel prefix for a stored-blob reference ("blob:<sha256>")
 
@@ -52,18 +52,19 @@ async function fetchRef(ref: string, cache: Map<string, string>): Promise<string
   return dataUrl;
 }
 
+/** The image-bearing string fields on a single layer, resolved by a mapper. */
+async function mapLayerImages(l: Layer, map: (v: string) => Promise<string>): Promise<Layer> {
+  if (l.type !== "image") return l;
+  const img = l as ImageLayer;
+  const src = img.src ? await map(img.src) : img.src;
+  const origSrc = img.origSrc ? await map(img.origSrc) : img.origSrc;
+  return { ...img, src, origSrc };
+}
+
 /** The image-bearing string fields on a doc, resolved in place by a mapper. */
 async function mapImageFields(doc: ThumbDoc, map: (v: string) => Promise<string>): Promise<ThumbDoc> {
   const background = doc.background.image ? { ...doc.background, image: await map(doc.background.image) } : doc.background;
-  const layers = await Promise.all(
-    doc.layers.map(async (l) => {
-      if (l.type !== "image") return l;
-      const img = l as ImageLayer;
-      const src = img.src ? await map(img.src) : img.src;
-      const origSrc = img.origSrc ? await map(img.origSrc) : img.origSrc;
-      return { ...img, src, origSrc };
-    }),
-  );
+  const layers = await Promise.all(doc.layers.map((l) => mapLayerImages(l, map)));
   return { ...doc, background, layers };
 }
 
@@ -77,4 +78,16 @@ export function dehydrateDoc(doc: ThumbDoc): Promise<ThumbDoc> {
 export function hydrateDoc(doc: ThumbDoc): Promise<ThumbDoc> {
   const cache = new Map<string, string>();
   return mapImageFields(doc, (v) => (isRef(v) ? fetchRef(v, cache) : Promise.resolve(v)));
+}
+
+/** Layer-level variants — used by the starred-elements collection, which stores single
+ *  layers instead of whole docs. Same translation, same refs, same R2 objects. */
+export function dehydrateLayer(layer: Layer): Promise<Layer> {
+  const cache = new Map<string, string>();
+  return mapLayerImages(layer, (v) => (isDataUrl(v) ? uploadDataUrl(v, cache) : Promise.resolve(v)));
+}
+
+export function hydrateLayer(layer: Layer): Promise<Layer> {
+  const cache = new Map<string, string>();
+  return mapLayerImages(layer, (v) => (isRef(v) ? fetchRef(v, cache) : Promise.resolve(v)));
 }

@@ -11,7 +11,7 @@ import {
 } from "../lib/storage";
 import { Hint, Section, UploadButton } from "./controls";
 import { Button } from "./ui/button";
-import { cn } from "@/lib/utils";
+import { cn, relTime } from "@/lib/utils";
 
 type Props = {
   doc: ThumbDoc; // current working canvas, for "export current"
@@ -21,16 +21,6 @@ type Props = {
   onError: (msg: string) => void;
   refreshKey?: number;
 };
-
-const rtf = new Intl.RelativeTimeFormat("it", { numeric: "auto" });
-function relTime(ts: number): string {
-  const s = Math.round((ts - Date.now()) / 1000);
-  const a = Math.abs(s);
-  if (a < 60) return rtf.format(Math.round(s), "second");
-  if (a < 3600) return rtf.format(Math.round(s / 60), "minute");
-  if (a < 86400) return rtf.format(Math.round(s / 3600), "hour");
-  return rtf.format(Math.round(s / 86400), "day");
-}
 
 /** The project library: every named save, newest first. The live project (if it
  *  was loaded from here) is pinned visually and shows its current name. */

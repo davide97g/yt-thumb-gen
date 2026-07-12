@@ -4,6 +4,7 @@ import { CANVAS_H, CANVAS_W, ThumbCanvas, type CropMode } from "./components/Thu
 import { Inspector, BackgroundInspector } from "./components/Inspector";
 import { LayerList } from "./components/LayerList";
 import { SavesPanel } from "./components/SavesPanel";
+import { StarredPanel } from "./components/StarredPanel";
 import { ProjectHeader } from "./components/ProjectHeader";
 import { NewProjectDialog } from "./components/NewProjectDialog";
 import { useAuth } from "./components/AuthGate";
@@ -13,7 +14,7 @@ import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
 import { exportThumb } from "./lib/export";
 import { loadImageFile } from "./lib/loadImageFile";
-import { getProject, getWorking, renameConfig, saveConfig, setProject, setWorking } from "./lib/storage";
+import { getProject, getWorking, renameConfig, saveConfig, setProject, setWorking, starLayer } from "./lib/storage";
 import { historyReducer, initHistory, newImageLayer, primaryId, type AppState, type FontKey, type Layer, type ThumbDoc } from "./state";
 import { TEMPLATES } from "./presets";
 import { useIsMobile } from "./lib/useIsMobile";
@@ -35,6 +36,7 @@ export default function App() {
   const [mobileRight, setMobileRight] = useState(false);
   const [newOpen, setNewOpen] = useState(false);
   const [savesKey, setSavesKey] = useState(0);
+  const [starredKey, setStarredKey] = useState(0);
   const [exporting, setExporting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [fileName, setFileName] = useState("thumb.png");
@@ -124,6 +126,18 @@ export default function App() {
       setSavesKey((k) => k + 1);
     } catch {
       setMessage("Salvataggio non riuscito.");
+    }
+  }
+
+  // Star a layer straight from the layer list: uploads its images and saves it into
+  // the per-account collection (see StarredPanel).
+  async function starFromList(layer: Layer) {
+    try {
+      await starLayer(layer);
+      setStarredKey((k) => k + 1);
+      setMessage(`«${layer.name}» aggiunto ai preferiti.`);
+    } catch {
+      setMessage("Impossibile salvare nei preferiti.");
     }
   }
 
@@ -398,8 +412,15 @@ export default function App() {
             />
 
             <Section title="Livelli">
-              <LayerList layers={doc.layers} selectedIds={selectedIds} dispatch={dispatch} />
+              <LayerList layers={doc.layers} selectedIds={selectedIds} dispatch={dispatch} onStar={(l) => void starFromList(l)} />
             </Section>
+
+            <StarredPanel
+              dispatch={dispatch}
+              onError={setMessage}
+              refreshKey={starredKey}
+              onChanged={() => setStarredKey((k) => k + 1)}
+            />
 
             <SavesPanel
               doc={doc}

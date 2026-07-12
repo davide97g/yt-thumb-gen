@@ -10,9 +10,9 @@
 //     URLs. So the DB row stays small and images survive a cache clear / move machines.
 // Plus JSON file export/import (unchanged) so a project can leave the account entirely.
 
-import type { ThumbDoc } from "../state";
+import type { EmojiFxLayer, Layer, LayerType, ThumbDoc } from "../state";
 import { apiGet, apiSend } from "./api";
-import { dehydrateDoc, hydrateDoc } from "./blobs";
+import { dehydrateDoc, dehydrateLayer, hydrateDoc, hydrateLayer } from "./blobs";
 
 const DB_NAME = "grocerai-thumb";
 const VERSION = 1;
@@ -110,6 +110,49 @@ export function renameConfig(id: string, name: string): Promise<ConfigMeta> {
 
 export function deleteConfig(id: string): Promise<void> {
   return apiSend<{ ok: true }>("DELETE", `/projects/${id}`).then(() => undefined);
+}
+
+// ── Starred elements (per-user collection of single layers) ───────────────────
+//
+// Any layer can be starred out of a project into a global, searchable collection and
+// re-inserted into any other project later. Stored dehydrated (images → R2 refs) like
+// project docs; hydrated back to data URLs on load so the canvas can paint it.
+
+/** Collection-list row (no layer payload). `kind` mirrors layer.type for filtering. */
+export type StarredMeta = { id: string; name: string; kind: LayerType; updatedAt: number };
+export type StarredItem = StarredMeta & { layer: Layer };
+
+/** Strip everything that only makes sense inside its source doc: the group link and,
+ *  for emoji fields, the bound target image (it won't exist in the destination doc). */
+export function detachLayer(layer: Layer): Layer {
+  const { groupId: _drop, ...rest } = layer;
+  if (rest.type === "emojifx") return { ...rest, targetId: null } as EmojiFxLayer;
+  return rest as Layer;
+}
+
+export function listStarred(): Promise<StarredMeta[]> {
+  return apiGet<StarredMeta[]>("/starred");
+}
+
+/** Stars a layer: detaches it from its doc, offloads images to R2, saves it. */
+export async function starLayer(layer: Layer, name?: string): Promise<StarredMeta> {
+  const clean = await dehydrateLayer(detachLayer(layer));
+  const payload = { name: (name ?? layer.name).trim() || "Senza nome", kind: layer.type, layer: clean };
+  return apiSend<StarredMeta>("POST", "/starred", payload);
+}
+
+/** Fetches one starred element and re-hydrates its images from R2. */
+export async function loadStarred(id: string): Promise<StarredItem> {
+  const row = await apiGet<StarredItem>(`/starred/${id}`);
+  return { ...row, layer: await hydrateLayer(row.layer) };
+}
+
+export function renameStarred(id: string, name: string): Promise<StarredMeta> {
+  return apiSend<StarredMeta>("PUT", `/starred/${id}`, { name: name.trim() || "Senza nome" });
+}
+
+export function deleteStarred(id: string): Promise<void> {
+  return apiSend<{ ok: true }>("DELETE", `/starred/${id}`).then(() => undefined);
 }
 
 // ── JSON file export / import ─────────────────────────────────────────────────
