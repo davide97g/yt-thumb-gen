@@ -119,7 +119,10 @@ export function deleteConfig(id: string): Promise<void> {
 // project docs; hydrated back to data URLs on load so the canvas can paint it.
 
 /** Collection-list row (no layer payload). `kind` mirrors layer.type for filtering. */
-export type StarredMeta = { id: string; name: string; kind: LayerType; updatedAt: number };
+export type StarredMeta = {
+  id: string; name: string; kind: LayerType; updatedAt: number; lastUsedAt: number;
+  sourceProjectId: string | null; sourceProjectName: string | null;
+};
 export type StarredItem = StarredMeta & { layer: Layer };
 
 /** Strip everything that only makes sense inside its source doc: the group link and,
@@ -135,9 +138,12 @@ export function listStarred(): Promise<StarredMeta[]> {
 }
 
 /** Stars a layer: detaches it from its doc, offloads images to R2, saves it. */
-export async function starLayer(layer: Layer, name?: string): Promise<StarredMeta> {
+export async function starLayer(layer: Layer, name?: string, sourceProject?: Project): Promise<StarredMeta> {
   const clean = await dehydrateLayer(detachLayer(layer));
-  const payload = { name: (name ?? layer.name).trim() || "Senza nome", kind: layer.type, layer: clean };
+  const payload = {
+    name: (name ?? layer.name).trim() || "Senza nome", kind: layer.type, layer: clean,
+    sourceProjectId: sourceProject?.id ?? null, sourceProjectName: sourceProject?.name ?? null,
+  };
   return apiSend<StarredMeta>("POST", "/starred", payload);
 }
 
@@ -153,6 +159,11 @@ export function renameStarred(id: string, name: string): Promise<StarredMeta> {
 
 export function deleteStarred(id: string): Promise<void> {
   return apiSend<{ ok: true }>("DELETE", `/starred/${id}`).then(() => undefined);
+}
+
+/** Records an insertion so favourites can be ranked by actual use. */
+export function useStarred(id: string): Promise<void> {
+  return apiSend<{ ok: true }>("POST", `/starred/${id}/use`).then(() => undefined);
 }
 
 // ── JSON file export / import ─────────────────────────────────────────────────

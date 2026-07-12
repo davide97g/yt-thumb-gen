@@ -1,5 +1,5 @@
 import { useEffect, useState, type Dispatch } from "react";
-import { Check, FolderInput, FolderOpen, Pencil, Plus, Search, Star, Trash2, X } from "lucide-react";
+import { Check, FolderInput, FolderOpen, ListFilter, Pencil, Plus, Search, Star, Trash2, X } from "lucide-react";
 import type { Action, Layer, LayerType } from "../state";
 import {
   type ConfigMeta,
@@ -12,6 +12,7 @@ import {
   loadStarred,
   renameStarred,
   starLayer,
+  useStarred,
 } from "../lib/storage";
 import { TYPE_ICON } from "./LayerList";
 import { Hint, Section } from "./controls";
@@ -56,12 +57,14 @@ type Props = {
   onError: (msg: string) => void;
   refreshKey?: number; // bumped by App when something gets starred elsewhere
   onChanged: () => void; // bump the key so every consumer stays in sync
+  onManage: () => void;
+  project: { id: string | null; name: string };
 };
 
 /** The starred-elements collection: any layer saved out of a project, searchable by
  *  name/type, re-insertable into the current canvas. Includes an importer that opens
  *  any archived project and lets you pull single layers from it. */
-export function StarredPanel({ dispatch, onError, refreshKey, onChanged }: Props) {
+export function StarredPanel({ dispatch, onError, refreshKey, onChanged, onManage, project }: Props) {
   const [items, setItems] = useState<StarredMeta[]>([]);
   const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
@@ -86,6 +89,7 @@ export function StarredPanel({ dispatch, onError, refreshKey, onChanged }: Props
     try {
       const { layer } = await loadStarred(m.id);
       dispatch({ type: "addLayer", layer: { ...layer, id: crypto.randomUUID() } });
+      void useStarred(m.id);
       onError("");
     } catch {
       onError("Impossibile inserire l'elemento.");
@@ -127,6 +131,9 @@ export function StarredPanel({ dispatch, onError, refreshKey, onChanged }: Props
           )}
           <Button variant="ghost" size="icon-sm" className="size-6 text-muted-foreground [&_svg]:size-3.5" title="Importa da un altro progetto" onClick={() => setImportOpen(true)}>
             <FolderInput />
+          </Button>
+          <Button variant="ghost" size="icon-sm" className="size-6 text-muted-foreground [&_svg]:size-3.5" title="Gestisci preferiti" onClick={onManage}>
+            <ListFilter />
           </Button>
         </div>
       }
@@ -229,6 +236,7 @@ export function StarredPanel({ dispatch, onError, refreshKey, onChanged }: Props
           }}
           onStarred={() => { onChanged(); void refresh(); }}
           onError={onError}
+          project={project}
         />
       )}
     </Section>
@@ -262,6 +270,7 @@ export function StarredCommandDialog({
     try {
       const { layer } = await loadStarred(m.id);
       dispatch({ type: "addLayer", layer: { ...layer, id: crypto.randomUUID() } });
+      void useStarred(m.id);
       onError("");
       onClose();
     } catch {
@@ -334,11 +343,114 @@ export function StarredCommandDialog({
   );
 }
 
+/** A project-aware, removal-only view of the collection.  The compact rail stays
+ * focused on insertion; this dialog is where ownership and cleanup are visible. */
+export function ManageStarredDialog({
+  open, onClose, onError, onChanged,
+}: { open: boolean; onClose: () => void; onError: (msg: string) => void; onChanged: () => void }) {
+  const [items, setItems] = useState<StarredMeta[]>([]);
+  const [tab, setTab] = useState("all");
+  const [removing, setRemoving] = useState<string | null>(null);
+
+  const refresh = async () => {
+    try { setItems(await listStarred()); }
+    catch { onError("Impossibile leggere i preferiti."); }
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    setTab("all");
+    void refresh();
+  }, [open]);
+
+  if (!open) return null;
+
+  const projects = Array.from(
+    items.reduce((map, item) => {
+      if (item.sourceProjectName) map.set(item.sourceProjectId ?? `name:${item.sourceProjectName}`, item.sourceProjectName);
+      return map;
+    }, new Map<string, string>()),
+  ).sort(([a], [b]) => {
+    const aUse = Math.max(...items.filter((i) => (i.sourceProjectId ?? `name:${i.sourceProjectName}`) === a).map((i) => i.lastUsedAt));
+    const bUse = Math.max(...items.filter((i) => (i.sourceProjectId ?? `name:${i.sourceProjectName}`) === b).map((i) => i.lastUsedAt));
+    return bUse - aUse;
+  });
+  const tabs = [
+    ["all", "Tutti"], ["image", "Immagini"], ["text", "Testi"],
+    ...projects.map(([id, name]) => [`project:${id}`, name]),
+  ];
+  const visible = items.filter((item) => {
+    if (tab === "all") return true;
+    if (tab === "image" || tab === "text") return item.kind === tab;
+    return `project:${item.sourceProjectId ?? `name:${item.sourceProjectName}`}` === tab;
+  });
+
+  async function remove(id: string) {
+    setRemoving(id);
+    try {
+      await deleteStarred(id);
+      setItems((current) => current.filter((item) => item.id !== id));
+      onChanged();
+    } catch {
+      onError("Impossibile eliminare l'elemento.");
+    } finally {
+      setRemoving(null);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4" onPointerDown={onClose}>
+      <section className="anim-panel flex h-[min(620px,82vh)] w-[min(720px,94vw)] flex-col overflow-hidden rounded-xl border border-border bg-card shadow-2xl" onPointerDown={(e) => e.stopPropagation()} aria-label="Gestisci preferiti">
+        <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-4">
+          <div>
+            <h2 className="text-base font-semibold">Gestisci preferiti</h2>
+            <p className="mt-0.5 text-sm text-muted-foreground">Organizzati per ultimo utilizzo, tipo e progetto di origine.</p>
+          </div>
+          <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Chiudi"><X /></Button>
+        </div>
+        <div className="shrink-0 overflow-x-auto border-b border-border px-3 pt-2">
+          <div className="flex min-w-max gap-1" role="tablist" aria-label="Filtra preferiti">
+            {tabs.map(([id, label]) => (
+              <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)} className={cn("rounded-t-md px-3 py-2 text-sm transition-colors", tab === id ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-foreground")}>
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto p-3">
+          {visible.length === 0 ? (
+            <Hint>Nessun preferito in questa raccolta.</Hint>
+          ) : (
+            <div className="divide-y divide-border/70">
+              {visible.map((item) => (
+                <div key={item.id} className="flex items-center gap-3 px-2 py-3">
+                  <span className="shrink-0 text-muted-foreground">{TYPE_ICON[item.kind]}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium">{item.name}</span>
+                    <span className="block truncate text-xs text-muted-foreground">{KIND_LABELS[item.kind]} · {item.sourceProjectName ?? "Senza progetto"} · usato {shortTime(item.lastUsedAt)}</span>
+                  </span>
+                  <Button variant="ghost" size="icon-sm" className="shrink-0 text-muted-foreground hover:text-destructive" title="Rimuovi dai preferiti" aria-label={`Rimuovi ${item.name} dai preferiti`} disabled={removing === item.id} onClick={() => void remove(item.id)}>
+                    <Trash2 />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="flex justify-between border-t border-border px-5 py-3 text-xs text-muted-foreground">
+          <span>{visible.length} {visible.length === 1 ? "elemento" : "elementi"}</span>
+          <Button variant="ghost" size="sm" onClick={onClose}>Chiudi</Button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 /** Browse any archived project and pull single layers out of it: insert them straight
  *  into the current canvas, or star them into the collection. */
 function ImportFromProjectDialog({
-  onClose, onInsert, onStarred, onError,
-}: { onClose: () => void; onInsert: (layer: Layer) => void; onStarred: () => void; onError: (msg: string) => void }) {
+  onClose, onInsert, onStarred, onError, project,
+}: { onClose: () => void; onInsert: (layer: Layer) => void; onStarred: () => void; onError: (msg: string) => void; project: { id: string | null; name: string } }) {
   const [projects, setProjects] = useState<ConfigMeta[]>([]);
   const [openProject, setOpenProject] = useState<{ meta: ConfigMeta; layers: Layer[] } | null>(null);
   const [busy, setBusy] = useState<string | null>(null); // project id being loaded / layer id being starred
@@ -363,7 +475,7 @@ function ImportFromProjectDialog({
   async function star(layer: Layer) {
     setBusy(layer.id);
     try {
-      await starLayer(layer);
+      await starLayer(layer, undefined, openProject ? { id: openProject.meta.id, name: openProject.meta.name } : project);
       setStarredIds((s) => new Set(s).add(layer.id));
       onStarred();
     } catch {

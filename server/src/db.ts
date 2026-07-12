@@ -59,6 +59,13 @@ export async function initSchema(): Promise<void> {
       created_at timestamptz NOT NULL DEFAULT now(),
       updated_at timestamptz NOT NULL DEFAULT now()
     )`;
+  // These ALTERs are deliberately idempotent: existing installations predate
+  // project-aware favourites and do not have a migration runner.
+  await sql`ALTER TABLE starred_items ADD COLUMN IF NOT EXISTS source_project_id uuid`;
+  await sql`ALTER TABLE starred_items ADD COLUMN IF NOT EXISTS source_project_name text`;
+  await sql`ALTER TABLE starred_items ADD COLUMN IF NOT EXISTS last_used_at timestamptz`;
+  await sql`UPDATE starred_items SET last_used_at = coalesce(last_used_at, updated_at) WHERE last_used_at IS NULL`;
   await sql`CREATE INDEX IF NOT EXISTS projects_user_idx ON projects(user_id)`;
   await sql`CREATE INDEX IF NOT EXISTS starred_user_idx ON starred_items(user_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS starred_last_used_idx ON starred_items(user_id, last_used_at DESC)`;
 }

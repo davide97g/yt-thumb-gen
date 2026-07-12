@@ -4,7 +4,7 @@ import { CANVAS_H, CANVAS_W, ThumbCanvas, type CropMode } from "./components/Thu
 import { Inspector, BackgroundInspector } from "./components/Inspector";
 import { LayerList } from "./components/LayerList";
 import { SavesPanel } from "./components/SavesPanel";
-import { StarredCommandDialog, StarredPanel } from "./components/StarredPanel";
+import { ManageStarredDialog, StarredCommandDialog, StarredPanel } from "./components/StarredPanel";
 import { ProjectHeader } from "./components/ProjectHeader";
 import { NewProjectDialog } from "./components/NewProjectDialog";
 import { useAuth } from "./components/AuthGate";
@@ -38,6 +38,7 @@ export default function App() {
   const [savesKey, setSavesKey] = useState(0);
   const [starredKey, setStarredKey] = useState(0);
   const [cmdkOpen, setCmdkOpen] = useState(false);
+  const [manageStarredOpen, setManageStarredOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [fileName, setFileName] = useState("thumb.png");
@@ -134,7 +135,7 @@ export default function App() {
   // the per-account collection (see StarredPanel).
   async function starFromList(layer: Layer) {
     try {
-      await starLayer(layer);
+      await starLayer(layer, undefined, { id: projectId, name: projectName });
       setStarredKey((k) => k + 1);
       setMessage(`«${layer.name}» aggiunto ai preferiti.`);
     } catch {
@@ -423,6 +424,8 @@ export default function App() {
               onError={setMessage}
               refreshKey={starredKey}
               onChanged={() => setStarredKey((k) => k + 1)}
+              onManage={() => setManageStarredOpen(true)}
+              project={{ id: projectId, name: projectName }}
             />
 
             <SavesPanel
@@ -494,6 +497,7 @@ export default function App() {
       </div>
 
       <StarredCommandDialog open={cmdkOpen} onClose={() => setCmdkOpen(false)} dispatch={dispatch} onError={setMessage} />
+      <ManageStarredDialog open={manageStarredOpen} onClose={() => setManageStarredOpen(false)} onError={setMessage} onChanged={() => setStarredKey((k) => k + 1)} />
 
       {newOpen && (
         <NewProjectDialog

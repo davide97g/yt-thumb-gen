@@ -172,15 +172,19 @@ app.delete("/api/projects/:id", async (c) => {
 app.get("/api/starred", async (c) => {
   const user = c.get("user") as User;
   const rows = await sql`
-    SELECT id, name, kind, extract(epoch from updated_at) * 1000 AS "updatedAt"
-    FROM starred_items WHERE user_id = ${user.id} ORDER BY updated_at DESC`;
+    SELECT id, name, kind, source_project_id AS "sourceProjectId", source_project_name AS "sourceProjectName",
+      extract(epoch from updated_at) * 1000 AS "updatedAt",
+      extract(epoch from coalesce(last_used_at, updated_at)) * 1000 AS "lastUsedAt"
+    FROM starred_items WHERE user_id = ${user.id} ORDER BY coalesce(last_used_at, updated_at) DESC`;
   return c.json(rows);
 });
 
 app.get("/api/starred/:id", async (c) => {
   const user = c.get("user") as User;
   const rows = await sql`
-    SELECT id, name, kind, layer, extract(epoch from updated_at) * 1000 AS "updatedAt"
+    SELECT id, name, kind, layer, source_project_id AS "sourceProjectId", source_project_name AS "sourceProjectName",
+      extract(epoch from updated_at) * 1000 AS "updatedAt",
+      extract(epoch from coalesce(last_used_at, updated_at)) * 1000 AS "lastUsedAt"
     FROM starred_items WHERE id = ${c.req.param("id")} AND user_id = ${user.id}`;
   if (!rows[0]) return c.json({ error: "not found" }, 404);
   return c.json(rows[0]);
@@ -188,13 +192,15 @@ app.get("/api/starred/:id", async (c) => {
 
 app.post("/api/starred", async (c) => {
   const user = c.get("user") as User;
-  const { name, kind, layer } = await c.req.json().catch(() => ({}));
+  const { name, kind, layer, sourceProjectId, sourceProjectName } = await c.req.json().catch(() => ({}));
   if (typeof name !== "string" || typeof kind !== "string" || typeof layer !== "object" || layer === null) {
     return c.json({ error: "bad request" }, 400);
   }
   const [row] = await sql`
-    INSERT INTO starred_items (user_id, name, kind, layer) VALUES (${user.id}, ${name}, ${kind}, ${sql.json(layer)})
-    RETURNING id, name, kind, extract(epoch from updated_at) * 1000 AS "updatedAt"`;
+    INSERT INTO starred_items (user_id, name, kind, layer, source_project_id, source_project_name, last_used_at)
+    VALUES (${user.id}, ${name}, ${kind}, ${sql.json(layer)}, ${typeof sourceProjectId === "string" ? sourceProjectId : null}, ${typeof sourceProjectName === "string" ? sourceProjectName : null}, now())
+    RETURNING id, name, kind, source_project_id AS "sourceProjectId", source_project_name AS "sourceProjectName",
+      extract(epoch from updated_at) * 1000 AS "updatedAt", extract(epoch from last_used_at) * 1000 AS "lastUsedAt"`;
   return c.json(row);
 });
 
@@ -213,6 +219,18 @@ app.put("/api/starred/:id", async (c) => {
 app.delete("/api/starred/:id", async (c) => {
   const user = c.get("user") as User;
   await sql`DELETE FROM starred_items WHERE id = ${c.req.param("id")} AND user_id = ${user.id}`;
+  return c.json({ ok: true });
+});
+
+// Insertion is a use event, separate from editing a favourite's name. This powers
+// the default manager view without making a frequently-used item look recently edited.
+app.post("/api/starred/:id/use", async (c) => {
+  const user = c.get("user") as User;
+  const [row] = await sql`
+    UPDATE starred_items SET last_used_at = now()
+    WHERE id = ${c.req.param("id")} AND user_id = ${user.id}
+    RETURNING id`;
+  if (!row) return c.json({ error: "not found" }, 404);
   return c.json({ ok: true });
 });
 
