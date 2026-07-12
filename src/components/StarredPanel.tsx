@@ -1,6 +1,7 @@
-import { useEffect, useState, type Dispatch } from "react";
+import { useEffect, useState, type Dispatch, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { Check, FolderInput, FolderOpen, ListFilter, Pencil, Plus, Search, Star, Trash2, X } from "lucide-react";
-import type { Action, Layer, LayerType } from "../state";
+import { FONTS, FONT_WEIGHT, type Action, type Layer, type LayerType, type TextLayer } from "../state";
 import {
   type ConfigMeta,
   type StarredMeta,
@@ -66,6 +67,7 @@ type Props = {
  *  any archived project and lets you pull single layers from it. */
 export function StarredPanel({ dispatch, onError, refreshKey, onChanged, onManage, project }: Props) {
   const [items, setItems] = useState<StarredMeta[]>([]);
+  const [previews, setPreviews] = useState<Map<string, Layer>>(new Map());
   const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -73,7 +75,16 @@ export function StarredPanel({ dispatch, onError, refreshKey, onChanged, onManag
   const [editName, setEditName] = useState("");
   const [importOpen, setImportOpen] = useState(false);
 
-  const refresh = () => listStarred().then(setItems).catch(() => onError("Impossibile leggere i preferiti."));
+  const refresh = async () => {
+    try {
+      const next = await listStarred();
+      setItems(next);
+      const layers = await Promise.all(next.map(async (item) => {
+        try { return [item.id, (await loadStarred(item.id)).layer] as const; } catch { return null; }
+      }));
+      setPreviews(new Map(layers.filter((row): row is readonly [string, Layer] => row !== null)));
+    } catch { onError("Impossibile leggere i preferiti."); }
+  };
   useEffect(() => { void refresh(); }, [refreshKey]);
 
   const visible = filterStarred(items, query);
@@ -195,7 +206,7 @@ export function StarredPanel({ dispatch, onError, refreshKey, onChanged, onManag
                     disabled={busyId === m.id}
                     onClick={() => void onInsert(m)}
                   >
-                    <span className="shrink-0 text-muted-foreground">{TYPE_ICON[m.kind]}</span>
+                    <FavoritePreview item={m} layer={previews.get(m.id)} compact />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm leading-tight">{m.name}</span>
                       <span className="block truncate text-[11px] leading-tight text-muted-foreground">{subtitle(m)}</span>
@@ -241,6 +252,32 @@ export function StarredPanel({ dispatch, onError, refreshKey, onChanged, onManag
       )}
     </Section>
   );
+}
+
+/** A recognisable miniature of the saved layer.  Images retain their actual pixels;
+ * text keeps its face, colour and background pill so scanning the library is visual. */
+function FavoritePreview({ item, layer, compact = false }: { item: StarredMeta; layer?: Layer; compact?: boolean }) {
+  const size = compact ? "h-9 w-11" : "h-14 w-20";
+  if (layer?.type === "image" && layer.src) {
+    return <span className={cn("grid shrink-0 overflow-hidden rounded border border-white/10 bg-black/20", size)}><img src={layer.src} alt="" className="h-full w-full object-cover" /></span>;
+  }
+  if (layer?.type === "text") {
+    const text = layer as TextLayer;
+    return (
+      <span className={cn("grid shrink-0 overflow-hidden rounded border border-white/10 bg-black/20 px-1 text-center", size)} style={{ backgroundColor: text.bg.enabled ? text.bg.color : undefined }}>
+        <span className="min-w-0 self-center truncate leading-none" style={{ color: text.color, fontFamily: FONTS[text.font], fontWeight: FONT_WEIGHT[text.font], fontSize: compact ? 11 : 16 }}>
+          {text.text.replace(/\n/g, " ")}
+        </span>
+      </span>
+    );
+  }
+  return <span className={cn("grid shrink-0 place-items-center rounded border border-white/10 bg-secondary text-muted-foreground", size)}>{TYPE_ICON[item.kind]}</span>;
+}
+
+/** Keep dialog layers out of transformed rails: CSS makes `position: fixed` relative
+ * to a transformed ancestor, which was clipping the importer to the sidebar. */
+function DialogPortal({ children }: { children: ReactNode }) {
+  return typeof document === "undefined" ? null : createPortal(children, document.body);
 }
 
 /** ⌘K palette: floating search over the starred collection. Type to filter, ↑↓ to move,
@@ -349,11 +386,19 @@ export function ManageStarredDialog({
   open, onClose, onError, onChanged,
 }: { open: boolean; onClose: () => void; onError: (msg: string) => void; onChanged: () => void }) {
   const [items, setItems] = useState<StarredMeta[]>([]);
+  const [previews, setPreviews] = useState<Map<string, Layer>>(new Map());
   const [tab, setTab] = useState("all");
   const [removing, setRemoving] = useState<string | null>(null);
 
   const refresh = async () => {
-    try { setItems(await listStarred()); }
+    try {
+      const next = await listStarred();
+      setItems(next);
+      const layers = await Promise.all(next.map(async (item) => {
+        try { return [item.id, (await loadStarred(item.id)).layer] as const; } catch { return null; }
+      }));
+      setPreviews(new Map(layers.filter((row): row is readonly [string, Layer] => row !== null)));
+    }
     catch { onError("Impossibile leggere i preferiti."); }
   };
 
@@ -399,6 +444,7 @@ export function ManageStarredDialog({
   }
 
   return (
+    <DialogPortal>
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4" onPointerDown={onClose}>
       <section className="anim-panel flex h-[min(620px,82vh)] w-[min(720px,94vw)] flex-col overflow-hidden rounded-xl border border-border bg-card shadow-2xl" onPointerDown={(e) => e.stopPropagation()} aria-label="Gestisci preferiti">
         <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-4">
@@ -424,7 +470,7 @@ export function ManageStarredDialog({
             <div className="divide-y divide-border/70">
               {visible.map((item) => (
                 <div key={item.id} className="flex items-center gap-3 px-2 py-3">
-                  <span className="shrink-0 text-muted-foreground">{TYPE_ICON[item.kind]}</span>
+                  <FavoritePreview item={item} layer={previews.get(item.id)} />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-medium">{item.name}</span>
                     <span className="block truncate text-xs text-muted-foreground">{KIND_LABELS[item.kind]} · {item.sourceProjectName ?? "Senza progetto"} · usato {shortTime(item.lastUsedAt)}</span>
@@ -443,6 +489,7 @@ export function ManageStarredDialog({
         </div>
       </section>
     </div>
+    </DialogPortal>
   );
 }
 
@@ -486,6 +533,7 @@ function ImportFromProjectDialog({
   }
 
   return (
+    <DialogPortal>
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4" onPointerDown={onClose}>
       <div
         className="anim-panel flex max-h-[80vh] w-[min(440px,92vw)] flex-col gap-4 rounded-xl border border-border bg-card p-5 shadow-xl"
@@ -565,5 +613,6 @@ function ImportFromProjectDialog({
         </div>
       </div>
     </div>
+    </DialogPortal>
   );
 }
