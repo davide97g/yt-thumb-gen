@@ -45,6 +45,15 @@ services:
       - "80"
     depends_on:
       - api
+    networks:
+      # Dokploy's Traefik lives on this external network; without it the domain
+      # router can never reach the container (symptom: Traefik default cert + 404).
+      - dokploy-network
+      - default
+
+networks:
+  dokploy-network:
+    external: true
 
 volumes:
   pgdata:
