@@ -1,0 +1,50 @@
+# Full deployment unit: static SPA (nginx) + Bun API + Postgres. Built by Dokploy from
+# this repo. Only `web` is exposed to Traefik; `api` and `postgres` stay on the internal
+# network. Secrets come from the Dokploy environment (see .env.example) — nothing real
+# is committed here.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-thumb}
+      POSTGRES_DB: ${POSTGRES_DB:-thumb}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-thumb} -d ${POSTGRES_DB:-thumb}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-thumb}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-thumb}
+      APP_URL: ${APP_URL:-http://localhost}
+      ALLOW_SIGNUP: ${ALLOW_SIGNUP:-false}
+      R2_ENDPOINT: ${R2_ENDPOINT}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY}
+      R2_BUCKET: ${R2_BUCKET}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    expose:
+      - "80"
+    depends_on:
+      - api
+
+volumes:
+  pgdata:

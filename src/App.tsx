@@ -1,11 +1,12 @@
 import { useEffect, useReducer, useRef, useState } from "react";
-import { Download, Layers, Maximize2, PanelsTopLeft, Redo2, SlidersHorizontal, Undo2, X } from "lucide-react";
+import { Download, Layers, LogOut, Maximize2, PanelsTopLeft, Redo2, SlidersHorizontal, Undo2, X } from "lucide-react";
 import { CANVAS_H, CANVAS_W, ThumbCanvas, type CropMode } from "./components/ThumbCanvas";
 import { Inspector, BackgroundInspector } from "./components/Inspector";
 import { LayerList } from "./components/LayerList";
 import { SavesPanel } from "./components/SavesPanel";
 import { ProjectHeader } from "./components/ProjectHeader";
 import { NewProjectDialog } from "./components/NewProjectDialog";
+import { useAuth } from "./components/AuthGate";
 import { Toolbar } from "./components/Toolbar";
 import { Field, Section } from "./components/controls";
 import { Button } from "./components/ui/button";
@@ -21,6 +22,7 @@ import { cn } from "./lib/utils";
 const initial: AppState = { doc: TEMPLATES.dacoder(), selectedIds: [] };
 
 export default function App() {
+  const { logout } = useAuth();
   const [hist, dispatch] = useReducer(historyReducer, initial, initHistory);
   const [hydrated, setHydrated] = useState(false);
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -331,6 +333,16 @@ export default function App() {
           <Button className="h-8" onClick={onExport} disabled={exporting}>
             <Download />
             <span className="hidden sm:inline">{exporting ? "Esporto…" : "Esporta PNG"}</span>
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="text-muted-foreground hover:text-foreground"
+            onClick={() => void logout()}
+            title="Esci"
+            aria-label="Esci"
+          >
+            <LogOut />
           </Button>
         </div>
       </header>

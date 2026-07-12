@@ -21,7 +21,7 @@ cd bgremove && docker build -t yt-thumb-bgremove . && docker run --rm -p 8000:80
 
 ## Architecture
 
-Single-page React editor for YouTube thumbnails (fixed 1280×720). No backend, no router, no global state library. Output is a PNG downloaded client-side. The UI strings are in **Italian** — match that when adding user-facing text.
+Single-page React editor for YouTube thumbnails (fixed 1280×720). No router, no global state library. Output is a PNG downloaded client-side. The UI strings are in **Italian** — match that when adding user-facing text. There is now an optional backend (`server/`) for accounts + remote project storage; the editor itself is unchanged and still works fully client-side against IndexedDB for the live working canvas.
 
 ### The document model is the core abstraction — `src/state.ts`
 
@@ -45,7 +45,18 @@ Renders each layer as an absolutely-positioned element inside a node that is `tr
 
 ### Persistence — `src/lib/storage.ts`
 
-Everything is IndexedDB (DB name `grocerai-thumb`), because docs embed images as base64 data URLs and blow past the localStorage cap. Store `meta` holds the autosaved `working` canvas (debounced save in `App.tsx`, hydrated once on mount); store `configs` holds named, reloadable projects. Plus JSON file export/import so projects survive a cache clear. **Bumping the schema requires bumping `VERSION` and handling `onupgradeneeded`.**
+`storage.ts` is the single seam for all persistence, split by concern:
+- **Local (IndexedDB, DB name `grocerai-thumb`)** — the autosaved `working` canvas + its project identity (store `meta`). Kept local so the live canvas is fast/offline and holds full base64 data URLs the canvas can paint. **Bumping the schema requires bumping `VERSION` and handling `onupgradeneeded`.**
+- **Remote (backend API)** — named, reloadable projects (`listConfigs`/`loadConfig`/`saveConfig`/`renameConfig`/`deleteConfig` → `fetch('/api/...')` via `src/lib/api.ts`). The list returns metadata only (`ConfigMeta`); the full doc is fetched on open.
+- Plus JSON file export/import (unchanged) so a project can leave the account.
+
+### Backend, accounts & blob storage — `server/` + `src/lib/blobs.ts`, `src/components/AuthGate.tsx`
+
+`server/` is a Bun + Hono API (Postgres + Cloudflare R2). Accounts are email+password with an httpOnly session cookie; **signup locks after the first user** unless `ALLOW_SIGNUP=true`. `AuthGate` wraps `<App/>` in `main.tsx` so the editor's mount/autosave effects never run until logged in. **Critical blob rule:** the doc keeps images as data URLs *at runtime* (so `html-to-image` export never hits cross-origin canvas taint); R2 offload happens only at the storage boundary — `dehydrateDoc` (data URL → `blob:<id>` ref, uploaded to R2) on save, `hydrateDoc` (ref → data URL, streamed back through our same-origin API) on load. Never make `ThumbCanvas`/`export.ts` consume remote image URLs directly.
+
+### Deployment — `Dockerfile` (web/nginx), `server/Dockerfile` (api), `docker-compose.yml`
+
+One Compose unit: `web` (nginx serves `dist/`, proxies `/api` → `api` same-origin), `api` (Bun), `postgres`. Deployed on a VPS via Dokploy from this repo; secrets (`POSTGRES_PASSWORD`, `R2_*`, `APP_URL`, `ALLOW_SIGNUP`) come from the Dokploy environment — see `.env.example`. Frontend calls the API at relative `/api`, so no build-time URL is needed.
 
 ### Background removal — `src/lib/bgremove.ts`
 

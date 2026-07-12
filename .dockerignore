@@ -1,0 +1,14 @@
+node_modules
+dist
+.git
+.gitignore
+.cursor
+.vercel
+docs
+bgremove
+*.md
+!README.md
+.env
+.env.*
+.DS_Store
+*.local
