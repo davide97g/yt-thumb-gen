@@ -29,6 +29,28 @@ const KIND_LABELS: Record<LayerType, string> = {
   emojifx: "Effetto emoji",
 };
 
+/** Compact "39 s fa"-style age — the rail rows are too narrow for the full relTime. */
+function shortTime(ts: number): string {
+  const s = Math.max(1, Math.round((Date.now() - ts) / 1000));
+  if (s < 60) return `${s} s fa`;
+  if (s < 3600) return `${Math.round(s / 60)} min fa`;
+  if (s < 86400) return `${Math.round(s / 3600)} h fa`;
+  return `${Math.round(s / 86400)} g fa`;
+}
+
+/** Row subtitle: type + age, but skip the type when the name already is the type
+ *  (a freshly starred "Immagine" would otherwise read "Immagine · Immagine"). */
+function subtitle(m: StarredMeta): string {
+  const age = shortTime(m.updatedAt);
+  return m.name === KIND_LABELS[m.kind] ? age : `${KIND_LABELS[m.kind]} · ${age}`;
+}
+
+function filterStarred(items: StarredMeta[], query: string): StarredMeta[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return items;
+  return items.filter((i) => i.name.toLowerCase().includes(q) || KIND_LABELS[i.kind].toLowerCase().includes(q));
+}
+
 type Props = {
   dispatch: Dispatch<Action>;
   onError: (msg: string) => void;
@@ -42,6 +64,7 @@ type Props = {
 export function StarredPanel({ dispatch, onError, refreshKey, onChanged }: Props) {
   const [items, setItems] = useState<StarredMeta[]>([]);
   const [query, setQuery] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
@@ -50,10 +73,12 @@ export function StarredPanel({ dispatch, onError, refreshKey, onChanged }: Props
   const refresh = () => listStarred().then(setItems).catch(() => onError("Impossibile leggere i preferiti."));
   useEffect(() => { void refresh(); }, [refreshKey]);
 
-  const q = query.trim().toLowerCase();
-  const visible = q
-    ? items.filter((i) => i.name.toLowerCase().includes(q) || KIND_LABELS[i.kind].toLowerCase().includes(q))
-    : items;
+  const visible = filterStarred(items, query);
+
+  function closeSearch() {
+    setQuery("");
+    setSearchOpen(false);
+  }
 
   // Insert = fetch the full layer (images re-hydrated) and add it as a fresh layer.
   async function onInsert(m: StarredMeta) {
@@ -88,18 +113,36 @@ export function StarredPanel({ dispatch, onError, refreshKey, onChanged }: Props
     <Section
       title="Preferiti"
       action={
-        <Button variant="ghost" size="icon-sm" className="size-6 text-muted-foreground [&_svg]:size-3.5" title="Importa da un altro progetto" onClick={() => setImportOpen(true)}>
-          <FolderInput />
-        </Button>
+        <div className="flex items-center gap-0.5">
+          {items.length > 0 && !searchOpen && (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="size-6 text-muted-foreground [&_svg]:size-3.5"
+              title="Cerca nei preferiti (⌘K)"
+              onClick={() => setSearchOpen(true)}
+            >
+              <Search />
+            </Button>
+          )}
+          <Button variant="ghost" size="icon-sm" className="size-6 text-muted-foreground [&_svg]:size-3.5" title="Importa da un altro progetto" onClick={() => setImportOpen(true)}>
+            <FolderInput />
+          </Button>
+        </div>
       }
     >
-      {items.length > 0 && (
+      {/* Search is collapsed into the header icon by default; the input appears on demand
+          and folds away when it loses focus while empty (Esc always closes it). */}
+      {searchOpen && (
         <div className="relative">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input
             className="h-8 pl-8"
             value={query}
+            autoFocus
             onChange={(e) => setQuery(e.target.value)}
+            onBlur={() => { if (!query.trim()) closeSearch(); }}
+            onKeyDown={(e) => { if (e.key === "Escape") closeSearch(); }}
             placeholder="Cerca per nome o tipo…"
             aria-label="Cerca nei preferiti"
           />
@@ -148,9 +191,7 @@ export function StarredPanel({ dispatch, onError, refreshKey, onChanged }: Props
                     <span className="shrink-0 text-muted-foreground">{TYPE_ICON[m.kind]}</span>
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm leading-tight">{m.name}</span>
-                      <span className="block truncate text-[11px] leading-tight text-muted-foreground">
-                        {KIND_LABELS[m.kind]} · {relTime(m.updatedAt)}
-                      </span>
+                      <span className="block truncate text-[11px] leading-tight text-muted-foreground">{subtitle(m)}</span>
                     </span>
                     <Plus className={cn("size-4 shrink-0 text-muted-foreground opacity-100 md:opacity-0 md:group-hover:opacity-100", busyId === m.id && "animate-pulse opacity-100")} />
                   </button>
@@ -191,6 +232,105 @@ export function StarredPanel({ dispatch, onError, refreshKey, onChanged }: Props
         />
       )}
     </Section>
+  );
+}
+
+/** ⌘K palette: floating search over the starred collection. Type to filter, ↑↓ to move,
+ *  ↵ inserts the highlighted element into the current canvas, Esc closes. */
+export function StarredCommandDialog({
+  open, onClose, dispatch, onError,
+}: { open: boolean; onClose: () => void; dispatch: Dispatch<Action>; onError: (msg: string) => void }) {
+  const [items, setItems] = useState<StarredMeta[]>([]);
+  const [query, setQuery] = useState("");
+  const [active, setActive] = useState(0);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setQuery("");
+    setActive(0);
+    listStarred().then(setItems).catch(() => onError("Impossibile leggere i preferiti."));
+  }, [open]);
+
+  if (!open) return null;
+
+  const visible = filterStarred(items, query);
+  const idx = Math.min(active, Math.max(0, visible.length - 1));
+
+  async function insert(m: StarredMeta) {
+    setBusy(true);
+    try {
+      const { layer } = await loadStarred(m.id);
+      dispatch({ type: "addLayer", layer: { ...layer, id: crypto.randomUUID() } });
+      onError("");
+      onClose();
+    } catch {
+      onError("Impossibile inserire l'elemento.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function onKey(e: React.KeyboardEvent) {
+    if (e.key === "Escape") { e.preventDefault(); onClose(); return; }
+    if (e.key === "ArrowDown") { e.preventDefault(); setActive((a) => Math.min(a + 1, visible.length - 1)); return; }
+    if (e.key === "ArrowUp") { e.preventDefault(); setActive((a) => Math.max(a - 1, 0)); return; }
+    if (e.key === "Enter" && visible[idx] && !busy) { e.preventDefault(); void insert(visible[idx]); }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-center bg-black/60 p-4 pt-[14vh]" onPointerDown={onClose}>
+      <div
+        className="anim-panel flex h-fit max-h-[60vh] w-[min(520px,92vw)] flex-col overflow-hidden rounded-xl border border-border bg-card shadow-xl"
+        onPointerDown={(e) => e.stopPropagation()}
+      >
+        <div className="relative border-b border-border">
+          <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <input
+            className="h-12 w-full bg-transparent pl-10 pr-4 text-sm outline-none placeholder:text-muted-foreground"
+            value={query}
+            autoFocus
+            onChange={(e) => { setQuery(e.target.value); setActive(0); }}
+            onKeyDown={onKey}
+            placeholder="Cerca un preferito per nome o tipo…"
+            aria-label="Cerca nei preferiti"
+          />
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
+          {items.length === 0 ? (
+            <Hint>Nessun preferito. Usa la stella su un livello per salvarlo qui.</Hint>
+          ) : visible.length === 0 ? (
+            <p className="px-2.5 py-3 text-sm text-muted-foreground">Nessun risultato per «{query.trim()}».</p>
+          ) : (
+            visible.map((m, i) => (
+              <button
+                key={m.id}
+                type="button"
+                className={cn(
+                  "flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left transition-colors",
+                  i === idx ? "bg-accent" : "hover:bg-accent/50",
+                  busy && "opacity-60",
+                )}
+                disabled={busy}
+                onPointerMove={() => setActive(i)}
+                onClick={() => void insert(m)}
+              >
+                <span className={cn("shrink-0", i === idx ? "text-primary" : "text-muted-foreground")}>{TYPE_ICON[m.kind]}</span>
+                <span className="min-w-0 flex-1 truncate text-sm">{m.name}</span>
+                <span className="shrink-0 text-[11px] text-muted-foreground">{subtitle(m)}</span>
+              </button>
+            ))
+          )}
+        </div>
+
+        <div className="flex items-center gap-3 border-t border-border px-3.5 py-2 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+          <span>↑↓ naviga</span>
+          <span>↵ inserisci</span>
+          <span>esc chiude</span>
+        </div>
+      </div>
+    </div>
   );
 }
 

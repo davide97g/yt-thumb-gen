@@ -4,7 +4,7 @@ import { CANVAS_H, CANVAS_W, ThumbCanvas, type CropMode } from "./components/Thu
 import { Inspector, BackgroundInspector } from "./components/Inspector";
 import { LayerList } from "./components/LayerList";
 import { SavesPanel } from "./components/SavesPanel";
-import { StarredPanel } from "./components/StarredPanel";
+import { StarredCommandDialog, StarredPanel } from "./components/StarredPanel";
 import { ProjectHeader } from "./components/ProjectHeader";
 import { NewProjectDialog } from "./components/NewProjectDialog";
 import { useAuth } from "./components/AuthGate";
@@ -37,6 +37,7 @@ export default function App() {
   const [newOpen, setNewOpen] = useState(false);
   const [savesKey, setSavesKey] = useState(0);
   const [starredKey, setStarredKey] = useState(0);
+  const [cmdkOpen, setCmdkOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [fileName, setFileName] = useState("thumb.png");
@@ -156,6 +157,8 @@ export default function App() {
       // ⌘S / Ctrl+S saves the project — wins over the browser's "save page", even
       // while a field (e.g. the project name) is focused.
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") { e.preventDefault(); saveRef.current(); return; }
+      // ⌘K / Ctrl+K opens the starred-elements palette — like ⌘S, it also fires while typing.
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setCmdkOpen(true); return; }
 
       const el = document.activeElement as HTMLElement | null;
       const typing = el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
@@ -489,6 +492,8 @@ export default function App() {
           </aside>
         )}
       </div>
+
+      <StarredCommandDialog open={cmdkOpen} onClose={() => setCmdkOpen(false)} dispatch={dispatch} onError={setMessage} />
 
       {newOpen && (
         <NewProjectDialog
