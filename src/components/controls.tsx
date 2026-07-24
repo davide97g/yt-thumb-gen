@@ -37,8 +37,9 @@ export function UploadButton({
 export function Section({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) {
   return (
     <section className="space-y-2.5">
-      <div className="flex items-center gap-3">
-        <h3 className="shrink-0 font-mono text-[11px] font-medium tracking-[0.16em] text-muted-foreground uppercase">{title}</h3>
+      {/* rail-head pins this row to the top of a scrolling rail (see styles.css). */}
+      <div className="rail-head flex items-center gap-3">
+        <h3 className="shrink-0 font-mono text-[10.5px] font-medium tracking-[0.2em] text-muted-foreground uppercase">{title}</h3>
         <span className="h-px flex-1 bg-border" aria-hidden />
         {action}
       </div>
@@ -54,7 +55,7 @@ export function Hint({ children }: { children: ReactNode }) {
 export function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-3">
-      <span className="text-sm text-muted-foreground">{label}</span>
+      <span className="text-[13px] text-muted-foreground">{label}</span>
       {children}
     </div>
   );
@@ -63,7 +64,7 @@ export function Row({ label, children }: { label: string; children: ReactNode })
 export function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <label className="block space-y-1.5">
-      <span className="text-sm text-muted-foreground">{label}</span>
+      <span className="text-[13px] text-muted-foreground">{label}</span>
       {children}
     </label>
   );
@@ -117,10 +118,10 @@ export function SliderRow({
   const fromPos = (p: number) => quantize(Math.min(max, Math.max(min, min * Math.exp((p / LOG_TICKS) * ratio))));
   return (
     <div className="space-y-1.5">
-      <div className="flex items-center justify-between">
-        <span className="text-sm text-muted-foreground">{label}</span>
-        <div className="flex items-center gap-1.5">
-          <span className="text-xs tabular-nums text-foreground/70">{display ?? value}</span>
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-[13px] text-muted-foreground">{label}</span>
+        <div className="flex items-center gap-1">
+          <span className="readout text-[11px] text-foreground/85">{display ?? value}</span>
           {defaultValue !== undefined && value !== defaultValue && <ResetButton onReset={() => onChange(defaultValue)} />}
         </div>
       </div>

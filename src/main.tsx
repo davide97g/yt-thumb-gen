@@ -1,3 +1,8 @@
+/* UI faces: Geist for the chrome, Geist Mono for every readout. The rest are
+   canvas display faces offered in the font picker. */
+import "@fontsource/geist/400.css";
+import "@fontsource/geist/500.css";
+import "@fontsource/geist/600.css";
 import "@fontsource/archivo-black";
 import "@fontsource/inter/400.css";
 import "@fontsource/inter/700.css";

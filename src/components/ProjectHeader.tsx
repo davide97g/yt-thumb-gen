@@ -17,8 +17,12 @@ type Props = {
   onNew: () => void;
 };
 
-const time = (ms: number) =>
-  new Date(ms).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
+/** Epoch ms → "14:32", or null if the value isn't a usable timestamp — the status line
+ *  falls back to a plain "Salvato" rather than printing "Invalid Date". */
+function time(ms: number): string | null {
+  const d = new Date(Number(ms));
+  return Number.isFinite(d.getTime()) ? d.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" }) : null;
+}
 
 /** The live project's identity card — name, save state, and the primary
  *  "new project" action. The one place in the chrome that names the work. */
@@ -45,19 +49,22 @@ export function ProjectHeader({ name, dirty, savedAt, archived, onRename, onSave
   };
 
   const canSave = dirty || !archived;
+  const savedTime = savedAt === null ? null : time(savedAt);
   const status = canSave
     ? archived
       ? "Modifiche non salvate"
       : "Da salvare"
-    : savedAt
-      ? `Salvato ${time(savedAt)}`
+    : savedTime
+      ? `Salvato ${savedTime}`
       : "Salvato";
 
   return (
     <div className="space-y-2.5">
-      <div className="layer-accent rounded-lg border border-border bg-card/60 p-3">
+      {/* The one place elevation is earned: this block names the work, so it lifts
+          off the rail. Everything else in the rail is hairlines. */}
+      <div className="layer-accent rounded-lg border border-border bg-secondary/35 p-3">
         <div className="flex items-center justify-between gap-2">
-          <span className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+          <span className="font-mono text-[10.5px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
             Progetto
           </span>
           {!editing && (
@@ -107,7 +114,7 @@ export function ProjectHeader({ name, dirty, savedAt, archived, onRename, onSave
             <span
               className={cn(
                 "size-1.5 shrink-0 rounded-full",
-                canSave ? "bg-primary shadow-[0_0_6px_var(--color-primary)]" : "bg-muted-foreground/40"
+                canSave ? "bg-primary" : "bg-muted-foreground/40"
               )}
               aria-hidden
             />

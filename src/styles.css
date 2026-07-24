@@ -4,9 +4,11 @@
 
 /* Warm "darkroom" editor chrome. The canvas content is loud and colourful, so the
    tool around it stays quiet, warm, and precise — Claude terracotta is the single
-   accent, monospace is the instrument readout. */
+   accent, monospace is the instrument readout.
+   Direction "camera oscura": panels are matte and recede, the dock is the only
+   floating glass object, hierarchy comes from hairlines and type — never from cards. */
 :root {
-  --radius: 0.625rem;
+  --radius: 0.75rem;
   --background: oklch(0.985 0.004 70);
   --foreground: oklch(0.18 0.01 55);
   --card: oklch(1 0 0);
@@ -29,24 +31,24 @@
 }
 
 .dark {
-  --background: oklch(0.145 0.006 55); /* warm near-black — the stage void */
-  --foreground: oklch(0.95 0.008 75);
-  --card: oklch(0.195 0.008 58); /* warm charcoal panel */
-  --card-foreground: oklch(0.95 0.008 75);
-  --popover: oklch(0.215 0.009 58);
-  --popover-foreground: oklch(0.95 0.008 75);
-  --primary: oklch(0.67 0.17 42); /* Claude terracotta */
+  --background: oklch(0.135 0.007 52); /* warm near-black — the stage void */
+  --foreground: oklch(0.955 0.008 78);
+  --card: oklch(0.183 0.008 54); /* matte warm charcoal — the rails */
+  --card-foreground: oklch(0.955 0.008 78);
+  --popover: oklch(0.212 0.009 55); /* lifted surfaces: dock, menus, tips */
+  --popover-foreground: oklch(0.955 0.008 78);
+  --primary: oklch(0.67 0.17 42); /* Claude terracotta — the only accent */
   --primary-foreground: oklch(0.99 0.012 80);
-  --secondary: oklch(0.255 0.01 58);
-  --secondary-foreground: oklch(0.95 0.008 75);
-  --muted: oklch(0.255 0.01 58);
-  --muted-foreground: oklch(0.7 0.015 65);
-  --accent: oklch(0.29 0.012 56);
-  --accent-foreground: oklch(0.96 0.008 75);
+  --secondary: oklch(0.243 0.009 55);
+  --secondary-foreground: oklch(0.955 0.008 78);
+  --muted: oklch(0.243 0.009 55);
+  --muted-foreground: oklch(0.685 0.014 62);
+  --accent: oklch(0.272 0.011 54); /* hover fill */
+  --accent-foreground: oklch(0.965 0.008 78);
   --destructive: oklch(0.64 0.2 22);
   --destructive-foreground: oklch(0.99 0.012 80);
-  --border: oklch(0.92 0.02 70 / 9%);
-  --input: oklch(0.92 0.02 70 / 13%);
+  --border: oklch(0.9 0.02 70 / 8%);
+  --input: oklch(0.9 0.02 70 / 12%);
   --ring: oklch(0.67 0.17 42);
 }
 
@@ -74,7 +76,7 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
-  --font-sans: "Inter", system-ui, sans-serif;
+  --font-sans: "Geist", "Inter", system-ui, sans-serif;
   --font-mono: ui-monospace, "SF Mono", SFMono-Regular, "JetBrains Mono", monospace;
 }
 
@@ -110,14 +112,23 @@ input[type="color"]::-webkit-color-swatch { border: none; border-radius: calc(va
 /* ── Editor shell ──────────────────────────────────────────────────────────── */
 
 /* The stage the canvas floats in: faint dotted grid + a warm glow up top, the way
-   an infinite-canvas editor signals "this is a workspace, not a page." */
+   an infinite-canvas editor signals "this is a workspace, not a page." The grid is
+   deliberately below the threshold of "pattern" — it reads as tooth on paper. */
 .stage {
   background-color: var(--background);
   background-image:
-    radial-gradient(110% 80% at 50% -10%, oklch(0.67 0.17 42 / 7%), transparent 60%),
-    radial-gradient(oklch(0.92 0.02 70 / 6%) 1px, transparent 1.4px);
-  background-size: auto, 22px 22px;
+    radial-gradient(120% 85% at 50% -12%, oklch(0.67 0.17 42 / 6%), transparent 62%),
+    radial-gradient(oklch(0.92 0.02 70 / 5%) 1px, transparent 1.4px);
+  background-size: auto, 24px 24px;
   background-position: center, center;
+}
+
+/* Any number in the chrome: monospace, tabular, so a dragging slider never
+   reflows the row it sits in. */
+.readout {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
 }
 
 /* The floating creation dock — the one bold object in the chrome. */
@@ -193,14 +204,22 @@ input[type="color"]::-webkit-color-swatch { border: none; border-radius: calc(va
   transform: translateX(-50%) translateY(0);
 }
 
-/* Side rails share the dock's glass: warm translucency, a faint top highlight,
-   a soft inner depth. Quiet next to the dock, but cut from the same material. */
+/* Side rails: matte, opaque, no glass. They are the wall the tools hang on, so
+   they stay flat and let the dock be the only object that floats. */
 .panel {
-  background: color-mix(in oklch, var(--card) 72%, transparent);
-  backdrop-filter: blur(12px) saturate(1.1);
-  box-shadow:
-    inset 0 1px 0 oklch(1 0 0 / 4%),
-    inset 0 0 40px oklch(0 0 0 / 12%);
+  background: var(--card);
+}
+
+/* Section headers inside a rail pin to the top while their controls scroll under.
+   Scoped to .panel so the same Section renders normally inside dialogs. The
+   negative inline margin lets the solid backdrop span the rail's own padding. */
+.panel .rail-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  margin-inline: -1rem;
+  padding: 0.3125rem 1rem;
+  background: var(--card);
 }
 
 /* Layer-row left accent — a terracotta tick that marks the selected layer,
@@ -251,6 +270,7 @@ input[type="color"]::-webkit-color-swatch { border: none; border-radius: calc(va
 @media (prefers-reduced-motion: reduce) {
   .anim-dock, .anim-panel, .anim-panel-l, .anim-panel-r { animation: none; }
   .dock-btn, .dock-tip { transition: none; }
+  [role="slider"] { transition: none; }
   .rb-glitch::before, .rb-glitch::after { animation: none; }
 }
 

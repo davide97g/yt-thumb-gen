@@ -25,7 +25,9 @@ export function LayerList({ layers, selectedIds, dispatch, onStar }: Props) {
     layer.groupId ? layers.filter((l) => l.groupId === layer.groupId).map((l) => l.id) : [layer.id];
 
   return (
-    <div className="space-y-1">
+    // Hairlines instead of one card per layer: the stack reads as a single list,
+    // and the selected row is marked by its terracotta tick, not by a border.
+    <div className="-mx-1.5 divide-y divide-border/45">
       {layers
         .map((layer, index) => ({ layer, index }))
         .reverse()
@@ -46,10 +48,8 @@ export function LayerList({ layers, selectedIds, dispatch, onStar }: Props) {
                 }
               }}
               className={cn(
-                "group/row relative flex cursor-pointer items-center gap-1 rounded-lg border px-1.5 py-1.5 text-sm transition-colors",
-                active
-                  ? "layer-accent border-primary/40 bg-primary/10"
-                  : "border-transparent hover:border-border hover:bg-accent",
+                "group/row relative flex cursor-pointer items-center gap-1 px-1.5 py-1.5 text-[13px] transition-colors",
+                active ? "layer-accent bg-primary/10 text-foreground" : "hover:bg-accent",
                 !layer.visible && "opacity-55"
               )}
             >

@@ -266,7 +266,7 @@ export default function App() {
       }}
     >
       {/* ── Top bar ─────────────────────────────────────────────────────── */}
-      <header className="flex h-[calc(3.5rem_+_env(safe-area-inset-top))] shrink-0 items-center justify-between gap-4 border-b border-border bg-card/40 px-4 pt-[env(safe-area-inset-top)] backdrop-blur">
+      <header className="flex h-[calc(3.5rem_+_env(safe-area-inset-top))] shrink-0 items-center justify-between gap-4 border-b border-border bg-card px-4 pt-[env(safe-area-inset-top)]">
         <div className="flex items-center gap-2.5">
           {/* Mobile: open the layers/project drawer. Desktop: toggle both rails. */}
           <Button
@@ -290,21 +290,22 @@ export default function App() {
           >
             {chromeHidden ? <Maximize2 /> : <PanelsTopLeft />}
           </Button>
-          <span className="grid size-7 place-items-center rounded-lg bg-primary/15 ring-1 ring-primary/25">
-            <span className="size-2.5 rounded-full bg-primary shadow-[0_0_8px_var(--color-primary)]" />
+          <span className="grid size-7 place-items-center rounded-md bg-primary/15 ring-1 ring-primary/25">
+            <span className="size-2.5 rounded-full bg-primary" />
           </span>
           <div className="leading-tight">
-            <div className="text-sm font-semibold tracking-tight">Thumb Studio</div>
-            <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">{fmt.platform} · {CW}×{CH}</div>
+            <div className="text-[13px] font-semibold tracking-tight">Thumb Studio</div>
+            <div className="readout text-[10px] uppercase tracking-[0.18em] text-muted-foreground">{fmt.platform} · {CW}×{CH}</div>
           </div>
         </div>
 
         <div className="flex items-center gap-1.5 md:gap-2.5">
-          <div className="flex items-center gap-1">
+          {/* Undo/redo read as one instrument: a segmented pair, not two loose icons. */}
+          <div className="flex items-center gap-0.5 rounded-lg border border-border bg-secondary/40 p-0.5">
             <Button
               variant="ghost"
               size="icon-sm"
-              className="text-muted-foreground hover:text-foreground"
+              className="size-6 text-muted-foreground hover:text-foreground"
               onClick={() => dispatch({ type: "undo" })}
               disabled={hist.past.length === 0}
               title="Annulla (⌘Z)"
@@ -315,7 +316,7 @@ export default function App() {
             <Button
               variant="ghost"
               size="icon-sm"
-              className="text-muted-foreground hover:text-foreground"
+              className="size-6 text-muted-foreground hover:text-foreground"
               onClick={() => dispatch({ type: "redo" })}
               disabled={hist.future.length === 0}
               title="Ripristina (⌘⇧Z)"
@@ -344,7 +345,7 @@ export default function App() {
             <SlidersHorizontal />
           </Button>
           <Input
-            className="hidden h-8 w-40 md:block"
+            className="readout hidden h-8 w-40 border-transparent bg-secondary/50 text-xs shadow-none md:block"
             value={fileName}
             onChange={(e) => setFileName(e.target.value)}
             placeholder="thumb.png"
@@ -450,8 +451,10 @@ export default function App() {
         )}
 
         <main ref={previewRef} className="stage relative flex min-w-0 flex-1 items-center justify-center overflow-hidden p-3 md:p-8">
+          {/* The canvas sits on the stage like a print on a table: small radius so the
+              1280×720 frame stays honest, one hairline, one long soft shadow. */}
           <div
-            className="overflow-hidden rounded-lg shadow-[0_30px_80px_-20px_rgba(0,0,0,0.8)] ring-1 ring-white/10"
+            className="overflow-hidden rounded-[6px] shadow-[0_40px_90px_-28px_oklch(0_0_0/85%)] ring-1 ring-white/12"
             style={{ width: CW * scale, height: CH * scale }}
           >
             <ThumbCanvas
@@ -468,7 +471,7 @@ export default function App() {
             />
           </div>
 
-          <div className="pointer-events-none absolute bottom-4 left-4 hidden font-mono text-[11px] uppercase tracking-wider text-muted-foreground/80 md:block">
+          <div className="readout pointer-events-none absolute bottom-4 left-4 hidden text-[10.5px] uppercase tracking-[0.16em] text-muted-foreground/65 md:block">
             {CW} × {CH} · {Math.round(scale * 100)}%
           </div>
 
@@ -521,7 +524,7 @@ export default function App() {
 function DrawerClose({ label, onClose }: { label: string; onClose: () => void }) {
   return (
     <div className="flex items-center justify-between md:hidden">
-      <span className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">{label}</span>
+      <span className="font-mono text-[10.5px] font-medium uppercase tracking-[0.2em] text-muted-foreground">{label}</span>
       <Button variant="ghost" size="icon-sm" className="text-muted-foreground hover:text-foreground" onClick={onClose} aria-label="Chiudi pannello">
         <X />
       </Button>
