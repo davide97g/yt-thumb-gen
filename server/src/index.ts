@@ -121,10 +121,15 @@ async function requireUser(c: any, next: () => Promise<void>) {
 }
 
 // ── projects ────────────────────────────────────────────────────────────────
+//
+// Timestamps go out as epoch ms. The ::float8 cast matters: `extract(epoch …)` is
+// numeric, and postgres.js maps numeric to a *string* to protect precision, so the
+// client would receive "1753…" and `new Date(that)` yields Invalid Date. float8
+// arrives as a real JS number.
 app.get("/api/projects", async (c) => {
   const user = c.get("user") as User;
   const rows = await sql`
-    SELECT id, name, extract(epoch from updated_at) * 1000 AS "updatedAt"
+    SELECT id, name, (extract(epoch from updated_at) * 1000)::float8 AS "updatedAt"
     FROM projects WHERE user_id = ${user.id} ORDER BY updated_at DESC`;
   return c.json(rows);
 });
@@ -132,7 +137,7 @@ app.get("/api/projects", async (c) => {
 app.get("/api/projects/:id", async (c) => {
   const user = c.get("user") as User;
   const rows = await sql`
-    SELECT id, name, doc, extract(epoch from updated_at) * 1000 AS "updatedAt"
+    SELECT id, name, doc, (extract(epoch from updated_at) * 1000)::float8 AS "updatedAt"
     FROM projects WHERE id = ${c.req.param("id")} AND user_id = ${user.id}`;
   if (!rows[0]) return c.json({ error: "not found" }, 404);
   return c.json(rows[0]);
@@ -144,7 +149,7 @@ app.post("/api/projects", async (c) => {
   if (typeof name !== "string" || typeof doc !== "object" || doc === null) return c.json({ error: "bad request" }, 400);
   const [row] = await sql`
     INSERT INTO projects (user_id, name, doc) VALUES (${user.id}, ${name}, ${sql.json(doc)})
-    RETURNING id, name, extract(epoch from updated_at) * 1000 AS "updatedAt"`;
+    RETURNING id, name, (extract(epoch from updated_at) * 1000)::float8 AS "updatedAt"`;
   return c.json(row);
 });
 
@@ -157,7 +162,7 @@ app.put("/api/projects/:id", async (c) => {
       doc = coalesce(${doc === undefined ? null : sql.json(doc)}, doc),
       updated_at = now()
     WHERE id = ${c.req.param("id")} AND user_id = ${user.id}
-    RETURNING id, name, extract(epoch from updated_at) * 1000 AS "updatedAt"`;
+    RETURNING id, name, (extract(epoch from updated_at) * 1000)::float8 AS "updatedAt"`;
   if (!row) return c.json({ error: "not found" }, 404);
   return c.json(row);
 });
@@ -173,8 +178,8 @@ app.get("/api/starred", async (c) => {
   const user = c.get("user") as User;
   const rows = await sql`
     SELECT id, name, kind, source_project_id AS "sourceProjectId", source_project_name AS "sourceProjectName",
-      extract(epoch from updated_at) * 1000 AS "updatedAt",
-      extract(epoch from coalesce(last_used_at, updated_at)) * 1000 AS "lastUsedAt"
+      (extract(epoch from updated_at) * 1000)::float8 AS "updatedAt",
+      (extract(epoch from coalesce(last_used_at, updated_at)) * 1000)::float8 AS "lastUsedAt"
     FROM starred_items WHERE user_id = ${user.id} ORDER BY coalesce(last_used_at, updated_at) DESC`;
   return c.json(rows);
 });
@@ -183,8 +188,8 @@ app.get("/api/starred/:id", async (c) => {
   const user = c.get("user") as User;
   const rows = await sql`
     SELECT id, name, kind, layer, source_project_id AS "sourceProjectId", source_project_name AS "sourceProjectName",
-      extract(epoch from updated_at) * 1000 AS "updatedAt",
-      extract(epoch from coalesce(last_used_at, updated_at)) * 1000 AS "lastUsedAt"
+      (extract(epoch from updated_at) * 1000)::float8 AS "updatedAt",
+      (extract(epoch from coalesce(last_used_at, updated_at)) * 1000)::float8 AS "lastUsedAt"
     FROM starred_items WHERE id = ${c.req.param("id")} AND user_id = ${user.id}`;
   if (!rows[0]) return c.json({ error: "not found" }, 404);
   return c.json(rows[0]);
@@ -200,7 +205,7 @@ app.post("/api/starred", async (c) => {
     INSERT INTO starred_items (user_id, name, kind, layer, source_project_id, source_project_name, last_used_at)
     VALUES (${user.id}, ${name}, ${kind}, ${sql.json(layer)}, ${typeof sourceProjectId === "string" ? sourceProjectId : null}, ${typeof sourceProjectName === "string" ? sourceProjectName : null}, now())
     RETURNING id, name, kind, source_project_id AS "sourceProjectId", source_project_name AS "sourceProjectName",
-      extract(epoch from updated_at) * 1000 AS "updatedAt", extract(epoch from last_used_at) * 1000 AS "lastUsedAt"`;
+      (extract(epoch from updated_at) * 1000)::float8 AS "updatedAt", (extract(epoch from last_used_at) * 1000)::float8 AS "lastUsedAt"`;
   return c.json(row);
 });
 
@@ -211,7 +216,7 @@ app.put("/api/starred/:id", async (c) => {
   const [row] = await sql`
     UPDATE starred_items SET name = ${name}, updated_at = now()
     WHERE id = ${c.req.param("id")} AND user_id = ${user.id}
-    RETURNING id, name, kind, extract(epoch from updated_at) * 1000 AS "updatedAt"`;
+    RETURNING id, name, kind, (extract(epoch from updated_at) * 1000)::float8 AS "updatedAt"`;
   if (!row) return c.json({ error: "not found" }, 404);
   return c.json(row);
 });
