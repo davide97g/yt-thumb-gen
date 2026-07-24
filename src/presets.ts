@@ -120,7 +120,8 @@ function bar(pct: number, fill: string): ShapeLayer {
 }
 
 function doc(background: ThumbDoc["background"], layers: Layer[]): ThumbDoc {
-  return { background, layers };
+  // Templates are authored in 1280×720; other formats seed via adaptDocToFormat.
+  return { format: "youtube", background, layers };
 }
 
 const SERIF: FontKey = "georgia";

@@ -7,8 +7,6 @@ import {
 } from "lucide-react";
 import { alignBoxes, distributeBoxes, type AlignEdge, type Placed } from "../lib/layout";
 import {
-  CANVAS_H,
-  CANVAS_W,
   FONT_LABELS,
   FONTS,
   defaultEffect,
@@ -23,7 +21,9 @@ import {
   newShapeLayer,
   newEffectLayer,
   newDrawLayer,
+  FORMATS,
   type Action,
+  type FormatKey,
   type DrawCap,
   type DrawLayer,
   type Background,
@@ -73,6 +73,8 @@ type InspectorProps = {
   cropMode: CropMode;
   setCropMode: (m: CropMode) => void;
   onFontPreview: (f: FontKey | null) => void;
+  cw: number; // live canvas size (per-doc format)
+  ch: number;
 };
 
 /** Measure a selected layer's rendered box (canvas units) straight from the DOM. */
@@ -114,7 +116,7 @@ function AlignSection({ selectedIds, layers, dispatch }: { selectedIds: string[]
   );
 }
 
-export function Inspector({ selected, selectedIds, layers, dispatch, onError, cropMode, setCropMode, onFontPreview }: InspectorProps) {
+export function Inspector({ selected, selectedIds, layers, dispatch, onError, cropMode, setCropMode, onFontPreview, cw, ch }: InspectorProps) {
   if (!selected) {
     return (
       <Section title="Proprietà">
@@ -134,8 +136,8 @@ export function Inspector({ selected, selectedIds, layers, dispatch, onError, cr
         {selected.type === "image" && <ImageProps layer={selected} set={set} onError={onError} cropMode={cropMode} setCropMode={setCropMode} />}
         {selected.type === "emoji" && <EmojiProps layer={selected} set={set} />}
         {selected.type === "emojifx" && <EmojiFxProps layer={selected} set={set} layers={layers} />}
-        {selected.type === "shape" && <ShapeProps layer={selected} set={set} />}
-        {selected.type === "effect" && <EffectProps layer={selected} set={set} />}
+        {selected.type === "shape" && <ShapeProps layer={selected} set={set} cw={cw} ch={ch} />}
+        {selected.type === "effect" && <EffectProps layer={selected} set={set} cw={cw} ch={ch} />}
         {selected.type === "draw" && <DrawProps layer={selected} set={set} />}
       </Section>
     </>
@@ -440,14 +442,14 @@ function EmojiFxProps({ layer, set, layers }: { layer: EmojiFxLayer; set: Setter
   );
 }
 
-function ShapeProps({ layer, set }: { layer: ShapeLayer; set: Setter }) {
+function ShapeProps({ layer, set, cw, ch }: { layer: ShapeLayer; set: Setter; cw: number; ch: number }) {
   const D = newShapeLayer(layer.kind);
   return (
     <>
       <SelectField label="Tipo" value={layer.kind} options={SHAPE_OPTIONS} onChange={(kind) => set({ kind })} />
       <ColorRow label="Colore" value={layer.fill} defaultValue={D.fill} onChange={(fill) => set({ fill })} />
-      <SliderRow label="Larghezza" min={20} max={1280} value={layer.w} defaultValue={D.w} onChange={(w) => set({ w })} />
-      <SliderRow label="Altezza" min={6} max={720} value={layer.h} defaultValue={D.h} onChange={(h) => set({ h })} />
+      <SliderRow label="Larghezza" min={20} max={cw} value={layer.w} defaultValue={D.w} onChange={(w) => set({ w })} />
+      <SliderRow label="Altezza" min={6} max={ch} value={layer.h} defaultValue={D.h} onChange={(h) => set({ h })} />
       {layer.kind === "rect" && <SliderRow label="Arrotonda" min={0} max={220} value={layer.radius} defaultValue={D.radius} onChange={(radius) => set({ radius })} />}
       <SliderRow label="Rotazione" min={-180} max={180} value={layer.rotation} defaultValue={D.rotation} display={`${layer.rotation}°`} onChange={(rotation) => set({ rotation })} />
       {layer.kind === "bar" && (
@@ -605,7 +607,7 @@ function EffectControls({ effect, set }: { effect: BgEffect; set: (patch: { effe
   );
 }
 
-function EffectProps({ layer, set }: { layer: EffectLayer; set: Setter }) {
+function EffectProps({ layer, set, cw, ch }: { layer: EffectLayer; set: Setter; cw: number; ch: number }) {
   const D = newEffectLayer();
   return (
     <Section title="Effetto">
@@ -613,12 +615,24 @@ function EffectProps({ layer, set }: { layer: EffectLayer; set: Setter }) {
         variant="secondary"
         size="sm"
         className="w-full"
-        onClick={() => set({ x: 0, y: 0, w: CANVAS_W, h: CANVAS_H, rotation: 0, radius: 0 })}
+        onClick={() => set({ x: 0, y: 0, w: cw, h: ch, rotation: 0, radius: 0 })}
       >
         <Maximize /> Schermo intero
       </Button>
       <EffectControls effect={layer.effect} set={set} />
       <SliderRow label="Arrotonda" min={0} max={400} value={layer.radius} defaultValue={D.radius} onChange={(radius) => set({ radius })} />
+    </Section>
+  );
+}
+
+const FORMAT_OPTIONS = Object.values(FORMATS).map((f) => ({ value: f.key, label: f.label }));
+
+/** Doc-level canvas format switcher. Switching translates layers by the canvas-center
+ *  delta (see the `setFormat` reducer case) — one discrete undo entry. */
+export function FormatSection({ format, dispatch }: { format: FormatKey; dispatch: Dispatch<Action> }) {
+  return (
+    <Section title="Formato">
+      <SelectField label="Formato canvas" value={format} options={FORMAT_OPTIONS} onChange={(f) => dispatch({ type: "setFormat", format: f })} />
     </Section>
   );
 }

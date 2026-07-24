@@ -1,7 +1,7 @@
 import { useEffect, useReducer, useRef, useState } from "react";
 import { Download, Layers, LogOut, Maximize2, PanelsTopLeft, Redo2, SlidersHorizontal, Undo2, X } from "lucide-react";
-import { CANVAS_H, CANVAS_W, ThumbCanvas, type CropMode } from "./components/ThumbCanvas";
-import { Inspector, BackgroundInspector } from "./components/Inspector";
+import { ThumbCanvas, type CropMode } from "./components/ThumbCanvas";
+import { Inspector, BackgroundInspector, FormatSection } from "./components/Inspector";
 import { LayerList } from "./components/LayerList";
 import { SavesPanel } from "./components/SavesPanel";
 import { ManageStarredDialog, StarredCommandDialog, StarredPanel } from "./components/StarredPanel";
@@ -15,7 +15,7 @@ import { Input } from "./components/ui/input";
 import { exportThumb } from "./lib/export";
 import { loadImageFile } from "./lib/loadImageFile";
 import { getProject, getWorking, renameConfig, saveConfig, setProject, setWorking, starLayer } from "./lib/storage";
-import { historyReducer, initHistory, newImageLayer, primaryId, type AppState, type FontKey, type Layer, type ThumbDoc } from "./state";
+import { FORMATS, canvasSize, historyReducer, initHistory, newImageLayer, primaryId, type AppState, type FontKey, type Layer, type ThumbDoc } from "./state";
 import { TEMPLATES } from "./presets";
 import { useIsMobile } from "./lib/useIsMobile";
 import { cn } from "./lib/utils";
@@ -58,6 +58,8 @@ export default function App() {
   const savedDocRef = useRef<ThumbDoc>(initial.doc);
 
   const { doc, selectedIds } = hist.present;
+  const { w: CW, h: CH } = canvasSize(doc.format);
+  const fmt = FORMATS[doc.format];
   const dirty = hydrated && doc !== savedDocRef.current;
 
   const primary = primaryId(hist.present);
@@ -229,11 +231,11 @@ export default function App() {
     const ro = new ResizeObserver(() => {
       const padX = isMobile ? 24 : 80;
       const padY = isMobile ? 96 : 150;
-      setScale(Math.max(0.1, Math.min((el.clientWidth - padX) / CANVAS_W, (el.clientHeight - padY) / CANVAS_H)));
+      setScale(Math.max(0.1, Math.min((el.clientWidth - padX) / CW, (el.clientHeight - padY) / CH)));
     });
     ro.observe(el);
     return () => ro.disconnect();
-  }, [isMobile]);
+  }, [isMobile, CW, CH]);
 
   async function onExport() {
     if (!canvasRef.current) return;
@@ -242,7 +244,7 @@ export default function App() {
     // Let `exporting` render commit first so the selection outline is hidden in capture.
     await new Promise<void>((r) => requestAnimationFrame(() => r()));
     try {
-      const { warning } = await exportThumb(canvasRef.current, fileName);
+      const { warning } = await exportThumb(canvasRef.current, fileName, { w: CW, h: CH, maxBytes: fmt.maxBytes, platform: fmt.platform });
       if (warning) setMessage(warning);
     } catch (err) {
       setMessage(`Export fallito: ${err instanceof Error ? err.message : String(err)}`);
@@ -293,7 +295,7 @@ export default function App() {
           </span>
           <div className="leading-tight">
             <div className="text-sm font-semibold tracking-tight">Thumb Studio</div>
-            <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">YouTube · 1280×720</div>
+            <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">{fmt.platform} · {CW}×{CH}</div>
           </div>
         </div>
 
@@ -450,7 +452,7 @@ export default function App() {
         <main ref={previewRef} className="stage relative flex min-w-0 flex-1 items-center justify-center overflow-hidden p-3 md:p-8">
           <div
             className="overflow-hidden rounded-lg shadow-[0_30px_80px_-20px_rgba(0,0,0,0.8)] ring-1 ring-white/10"
-            style={{ width: CANVAS_W * scale, height: CANVAS_H * scale }}
+            style={{ width: CW * scale, height: CH * scale }}
           >
             <ThumbCanvas
               doc={viewDoc}
@@ -467,7 +469,7 @@ export default function App() {
           </div>
 
           <div className="pointer-events-none absolute bottom-4 left-4 hidden font-mono text-[11px] uppercase tracking-wider text-muted-foreground/80 md:block">
-            1280 × 720 · {Math.round(scale * 100)}%
+            {CW} × {CH} · {Math.round(scale * 100)}%
           </div>
 
           {(isMobile || !chromeHidden) && (
@@ -490,7 +492,8 @@ export default function App() {
             )}
           >
             <DrawerClose label="Proprietà" onClose={() => setMobileRight(false)} />
-            <Inspector selected={selected} selectedIds={selectedIds} layers={doc.layers} dispatch={dispatch} onError={setMessage} cropMode={cropMode} setCropMode={setCropMode} onFontPreview={setFontPreview} />
+            <FormatSection format={doc.format} dispatch={dispatch} />
+            <Inspector selected={selected} selectedIds={selectedIds} layers={doc.layers} dispatch={dispatch} onError={setMessage} cropMode={cropMode} setCropMode={setCropMode} onFontPreview={setFontPreview} cw={CW} ch={CH} />
             <BackgroundInspector background={doc.background} dispatch={dispatch} onError={setMessage} />
           </aside>
         )}

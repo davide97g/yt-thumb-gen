@@ -3,6 +3,7 @@ import {
   HISTORY_LIMIT,
   historyReducer,
   initHistory,
+  migrateDoc,
   newTextLayer,
   primaryId,
   type AppState,
@@ -14,6 +15,7 @@ import {
 } from "./state";
 
 const emptyDoc: ThumbDoc = {
+  format: "youtube",
   background: { mode: "solid", from: "#000", to: "#000", image: null, overlay: 0 },
   layers: [],
 };
@@ -231,4 +233,35 @@ test("ring placements stay within radius (x) and radius*tilt (y) of center, plus
 test("empty glyphs falls back to a default so placements are never blank", () => {
   const l = { ...newEmojiFxLayer(), glyphs: [] as string[], count: 4 };
   expect(layoutEmojiFx(l, CENTER).every((p) => p.glyph.length > 0)).toBe(true);
+});
+
+// ── setFormat ───────────────────────────────────────────────────────────────
+
+test("setFormat translates all layers by the canvas-center delta and is one undo entry", () => {
+  let h = initHistory(start());
+  const a = newTextLayer();
+  h = historyReducer(h, { type: "addLayer", layer: a });
+  const before = h.present.doc.layers[0];
+
+  h = historyReducer(h, { type: "setFormat", format: "shorts" }); // 1280×720 → 1080×1920
+  const after = h.present.doc.layers[0];
+  expect(h.present.doc.format).toBe("shorts");
+  expect(after.x).toBe(before.x + (1080 - 1280) / 2);
+  expect(after.y).toBe(before.y + (1920 - 720) / 2);
+
+  h = historyReducer(h, { type: "undo" }); // single undo restores format AND positions
+  expect(h.present.doc.format).toBe("youtube");
+  expect(h.present.doc.layers[0].x).toBe(before.x);
+  expect(h.present.doc.layers[0].y).toBe(before.y);
+});
+
+test("setFormat to the same format is a no-op that adds no history entry", () => {
+  let h = initHistory(start());
+  h = historyReducer(h, { type: "setFormat", format: "youtube" });
+  expect(h.past.length).toBe(0);
+});
+
+test("migrateDoc backfills format on pre-feature docs", () => {
+  const legacy = { background: emptyDoc.background, layers: [] } as unknown as ThumbDoc;
+  expect(migrateDoc(legacy).format).toBe("youtube");
 });

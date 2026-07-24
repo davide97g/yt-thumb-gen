@@ -1,5 +1,5 @@
-import { Fragment, useLayoutEffect, useState, type CSSProperties, type Dispatch, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
-import { CANVAS_H, CANVAS_W, FONTS, FONT_WEIGHT, drawPad, layoutEmojiFx, newDrawLayer, resolveBgBorder, type Action, type DrawCap, type DrawLayer, type EmojiFxLayer, type ImageLayer, type Layer, type LayerPatch, type TextLayer, type ThumbDoc } from "../state";
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type Dispatch, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
+import { CANVAS_H, CANVAS_W, FONTS, FONT_WEIGHT, canvasSize, drawPad, layoutEmojiFx, newDrawLayer, resolveBgBorder, type Action, type DrawCap, type DrawLayer, type EmojiFxLayer, type ImageLayer, type Layer, type LayerPatch, type TextLayer, type ThumbDoc } from "../state";
 import { smoothPath, type Pt } from "../lib/smoothPath";
 import { boxesIntersect, resolveSnap, type Box } from "../lib/layout";
 import { ClaudeLogo, ClaudeWordmark } from "./brand";
@@ -116,7 +116,37 @@ type Props = {
 };
 
 export function ThumbCanvas({ doc, scale, selectedIds, exporting, cropMode, setCropMode, drawMode, setDrawMode, canvasRef, dispatch }: Props) {
+  const { w: CW, h: CH } = canvasSize(doc.format); // live canvas size (per-doc format)
   const primary = selectedIds[selectedIds.length - 1] ?? null;
+
+  // Inline text edit (double-click a text layer). Ephemeral — never in the doc / export.
+  const [editingId, setEditingId] = useState<string | null>(null);
+
+  // Drop edit mode if the layer vanishes, is hidden, or is no longer selected.
+  useEffect(() => {
+    if (!editingId) return;
+    const l = doc.layers.find((x) => x.id === editingId);
+    if (!l || l.type !== "text" || !l.visible || !selectedIds.includes(editingId)) setEditingId(null);
+  }, [doc.layers, selectedIds, editingId]);
+
+  // Export freezes the canvas — leave edit mode so we don't remount the editor afterward.
+  useEffect(() => {
+    if (exporting) setEditingId(null);
+  }, [exporting]);
+
+  // Click outside the editing layer (inspector, other chrome, empty canvas) exits edit mode.
+  // Capture phase so we run even when the target stops propagation; skip if the click is
+  // inside the layer so caret placement still works.
+  useEffect(() => {
+    if (!editingId) return;
+    const onPointerDown = (e: PointerEvent) => {
+      const root = canvasRef.current?.querySelector(`[data-layer-id="${editingId}"]`);
+      if (root && e.target instanceof Node && root.contains(e.target)) return;
+      setEditingId(null);
+    };
+    window.addEventListener("pointerdown", onPointerDown, true);
+    return () => window.removeEventListener("pointerdown", onPointerDown, true);
+  }, [editingId, canvasRef]);
 
   // Ephemeral snap guides shown only during a drag (never during export).
   const [guides, setGuides] = useState<{ vx: number | null; hy: number | null }>({ vx: null, hy: null });
@@ -175,6 +205,12 @@ export function ThumbCanvas({ doc, scale, selectedIds, exporting, cropMode, setC
   /** pointerdown on a layer: select it (unless already selected), then stream a
    *  snapped drag over the whole current selection. */
   function startDrag(e: ReactPointerEvent, id: string) {
+    // While editing this text layer, let the caret handle the click — no drag.
+    if (editingId === id) {
+      e.stopPropagation();
+      return;
+    }
+
     e.stopPropagation();
     e.preventDefault();
 
@@ -209,8 +245,8 @@ export function ThumbCanvas({ doc, scale, selectedIds, exporting, cropMode, setC
     const start = { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
 
     const setIds = new Set(dragIds);
-    const xLines = [0, CANVAS_W / 2, CANVAS_W];
-    const yLines = [0, CANVAS_H / 2, CANVAS_H];
+    const xLines = [0, CW / 2, CW];
+    const yLines = [0, CH / 2, CH];
     for (const l of doc.layers) {
       if (setIds.has(l.id) || !l.visible) continue;
       const b = layerBox(l.id);
@@ -296,8 +332,8 @@ export function ThumbCanvas({ doc, scale, selectedIds, exporting, cropMode, setC
       ref={canvasRef}
       onPointerDown={startMarquee}
       style={{
-        width: CANVAS_W,
-        height: CANVAS_H,
+        width: CW,
+        height: CH,
         transform: `scale(${scale})`,
         transformOrigin: "top left",
         position: "relative",
@@ -332,29 +368,45 @@ export function ThumbCanvas({ doc, scale, selectedIds, exporting, cropMode, setC
         if (layer.type === "emojifx") return null; // rendered around its target below / as orphan
         // Crop only applies to the selected image, and never during PNG capture.
         const layerCrop = !exporting && layer.id === primary ? cropMode : null;
+        const editing = !exporting && editingId === layer.id;
         const node = (
           <div
             key={layer.id}
             data-lbox
             data-layer-id={layer.id}
             onPointerDown={(e) => startDrag(e, layer.id)}
-            onDoubleClick={(e) => { e.stopPropagation(); dispatch({ type: "select", ids: [layer.id] }); }}
+            onDoubleClick={(e) => {
+              e.stopPropagation();
+              dispatch({ type: "select", ids: [layer.id] });
+              if (layer.type === "text") setEditingId(layer.id);
+            }}
             style={{
               position: "absolute",
               left: layer.x,
               top: layer.y,
               opacity: layer.type === "image" ? (layer.opacity ?? 100) / 100 : undefined,
               transform: layer.rotation ? `rotate(${layer.rotation}deg)` : undefined,
-              cursor: "grab",
+              cursor: editing ? "text" : "grab",
               touchAction: "none",
             }}
           >
-            <LayerContent layer={layer} cropMode={layerCrop} />
-            {!exporting && selectedIds.includes(layer.id) && (
+            <LayerContent
+              layer={layer}
+              cropMode={layerCrop}
+              editing={editing}
+              onTextChange={(text) => dispatch({ type: "updateLayer", id: layer.id, patch: { text } })}
+              onEditEnd={() => setEditingId(null)}
+            />
+            {!exporting && editing && (
+              <div style={{ position: "absolute", inset: -3 / scale, border: `${1.5 / scale}px dashed ${SELECT_COLOR}`, pointerEvents: "none", boxSizing: "border-box" }} />
+            )}
+            {!exporting && !editing && selectedIds.includes(layer.id) && (
               selectedIds.length === 1 ? (
                 <SelectionFrame
                   layer={layer}
                   scale={scale}
+                  cw={CW}
+                  ch={CH}
                   cropMode={layerCrop}
                   onCropDone={() => setCropMode(null)}
                   canvasRef={canvasRef}
@@ -380,7 +432,7 @@ export function ThumbCanvas({ doc, scale, selectedIds, exporting, cropMode, setC
       })}
 
       {orphanFx.map((fx) => (
-        <EmojiFxGroup key={fx.id} fx={fx} center={{ cx: CANVAS_W / 2, cy: CANVAS_H / 2 }} half="all" />
+        <EmojiFxGroup key={fx.id} fx={fx} center={{ cx: CW / 2, cy: CH / 2 }} half="all" />
       ))}
 
       <GlobalGrade bg={bg} />
@@ -389,16 +441,18 @@ export function ThumbCanvas({ doc, scale, selectedIds, exporting, cropMode, setC
       {drawMode && (
         <DrawOverlay
           scale={scale}
+          w={CW}
+          h={CH}
           canvasRef={canvasRef}
           onStroke={(points) => { if (points.length >= 2) dispatch({ type: "addLayer", layer: newDrawLayer(points) }); setDrawMode(false); }}
         />
       )}
 
       {!exporting && guides.vx != null && (
-        <div style={{ position: "absolute", left: guides.vx, top: 0, width: 1.5 / scale, height: CANVAS_H, background: SELECT_COLOR, pointerEvents: "none", zIndex: 60 }} />
+        <div style={{ position: "absolute", left: guides.vx, top: 0, width: 1.5 / scale, height: CH, background: SELECT_COLOR, pointerEvents: "none", zIndex: 60 }} />
       )}
       {!exporting && guides.hy != null && (
-        <div style={{ position: "absolute", top: guides.hy, left: 0, height: 1.5 / scale, width: CANVAS_W, background: SELECT_COLOR, pointerEvents: "none", zIndex: 60 }} />
+        <div style={{ position: "absolute", top: guides.hy, left: 0, height: 1.5 / scale, width: CW, background: SELECT_COLOR, pointerEvents: "none", zIndex: 60 }} />
       )}
       {marquee && (
         <div style={{ position: "absolute", left: marquee.x, top: marquee.y, width: marquee.w, height: marquee.h, border: `${1 / scale}px solid ${SELECT_COLOR}`, background: `${SELECT_COLOR}22`, pointerEvents: "none", zIndex: 60 }} />
@@ -410,7 +464,7 @@ export function ThumbCanvas({ doc, scale, selectedIds, exporting, cropMode, setC
 /** Full-canvas capture surface shown while the draw tool is active: collects pointer
  *  positions (converted to 1280×720 space), previews a live smoothed stroke, and on
  *  release hands the raw points back to become a DrawLayer. One press = one stroke. */
-function DrawOverlay({ scale, canvasRef, onStroke }: { scale: number; canvasRef: RefObject<HTMLDivElement | null>; onStroke: (points: Pt[]) => void }) {
+function DrawOverlay({ scale, w, h, canvasRef, onStroke }: { scale: number; w: number; h: number; canvasRef: RefObject<HTMLDivElement | null>; onStroke: (points: Pt[]) => void }) {
   const [pts, setPts] = useState<Pt[]>([]);
   function start(e: ReactPointerEvent) {
     e.stopPropagation();
@@ -433,7 +487,7 @@ function DrawOverlay({ scale, canvasRef, onStroke }: { scale: number; canvasRef:
   return (
     <div onPointerDown={start} style={{ position: "absolute", inset: 0, cursor: "crosshair", touchAction: "none", zIndex: 50 }}>
       {pts.length > 1 && (
-        <svg width={CANVAS_W} height={CANVAS_H} style={{ position: "absolute", inset: 0, pointerEvents: "none", overflow: "visible" }}>
+        <svg width={w} height={h} style={{ position: "absolute", inset: 0, pointerEvents: "none", overflow: "visible" }}>
           <path d={smoothPath(pts, 40)} fill="none" stroke="#ff3b3b" strokeWidth={8} strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       )}
@@ -446,9 +500,9 @@ function DrawOverlay({ scale, canvasRef, onStroke }: { scale: number; canvasRef:
  *  invariant) centre; the top knob rotates it. Handles counter-scale by `scale` so
  *  they stay a constant on-screen size regardless of canvas zoom. */
 function SelectionFrame({
-  layer, scale, cropMode, onCropDone, canvasRef, dispatch,
+  layer, scale, cw, ch, cropMode, onCropDone, canvasRef, dispatch,
 }: {
-  layer: Layer; scale: number; cropMode: CropMode; onCropDone: () => void;
+  layer: Layer; scale: number; cw: number; ch: number; cropMode: CropMode; onCropDone: () => void;
   canvasRef: RefObject<HTMLDivElement | null>; dispatch: Dispatch<Action>;
 }) {
   // In crop mode the normal scale/rotate handles are replaced by crop tooling.
@@ -490,7 +544,7 @@ function SelectionFrame({
     let fMin = 0.05, fMax = 40;
     if (base.type === "image") { fMin = 0.2 / base.scale; fMax = 3 / base.scale; }
     else if (base.type === "draw") { fMin = 0.2 / base.scale; fMax = 6 / base.scale; }
-    else if (base.type === "shape" || base.type === "effect") { fMin = Math.max(20 / base.w, 6 / base.h); fMax = Math.min(1280 / base.w, 720 / base.h); }
+    else if (base.type === "shape" || base.type === "effect") { fMin = Math.max(20 / base.w, 6 / base.h); fMax = Math.min(cw / base.w, ch / base.h); }
     else { const lo = base.type === "emoji" ? 40 : 24, hi = base.type === "emoji" ? 360 : 220; fMin = lo / base.size; fMax = hi / base.size; }
     drag((ev) => {
       const p = toCanvas(s.rect, ev.clientX, ev.clientY);
@@ -654,10 +708,29 @@ function CropFrame({
   );
 }
 
-function LayerContent({ layer, cropMode }: { layer: Layer; cropMode: CropMode }) {
+function LayerContent({
+  layer,
+  cropMode,
+  editing,
+  onTextChange,
+  onEditEnd,
+}: {
+  layer: Layer;
+  cropMode: CropMode;
+  editing?: boolean;
+  onTextChange?: (text: string) => void;
+  onEditEnd?: () => void;
+}) {
   switch (layer.type) {
     case "text":
-      return <TextContent layer={layer} />;
+      return (
+        <TextContent
+          layer={layer}
+          editing={editing}
+          onChange={onTextChange}
+          onExit={onEditEnd}
+        />
+      );
 
     case "emoji":
       return <div style={{ fontSize: layer.size, lineHeight: 1 }}>{layer.glyph}</div>;
@@ -771,12 +844,25 @@ function DrawContent({ layer }: { layer: DrawLayer }) {
   );
 }
 
-/** Text layer, including its optional React Bits effect (gradient / shiny / glitch). */
-function TextContent({ layer }: { layer: TextLayer }) {
+/** Text layer, including its optional React Bits effect (gradient / shiny / glitch).
+ *  Double-click enters `editing` mode: an uncontrolled contentEditable so the caret
+ *  stays put while `updateLayer` streams keystrokes (coalesced by history). */
+function TextContent({
+  layer,
+  editing,
+  onChange,
+  onExit,
+}: {
+  layer: TextLayer;
+  editing?: boolean;
+  onChange?: (text: string) => void;
+  onExit?: () => void;
+}) {
   const fx = layer.fx;
   // gradient/shiny "fill" the glyphs via background-clip:text, so they own `background` and
   // suppress the pill. Their movement is a CSS animation (frozen to one frame on PNG export).
-  const clip = fx?.kind === "gradient" || fx?.kind === "shiny";
+  // While editing, force a solid fill so the caret and typed text stay visible.
+  const clip = !editing && (fx?.kind === "gradient" || fx?.kind === "shiny");
   const style: CSSProperties = {
     display: "inline-block",
     opacity: (layer.opacity ?? 100) / 100,
@@ -794,6 +880,17 @@ function TextContent({ layer }: { layer: TextLayer }) {
     padding: layer.bg.enabled && !clip ? `${layer.bg.padY}px ${layer.bg.padX}px` : undefined,
     borderRadius: layer.bg.enabled && !clip ? layer.bg.radius : undefined,
   };
+
+  if (editing) {
+    return (
+      <InlineTextEditor
+        layer={layer}
+        style={style}
+        onChange={onChange!}
+        onExit={onExit!}
+      />
+    );
+  }
 
   if (fx?.kind === "gradient") {
     const angle = fx.direction === "horizontal" ? "to right" : fx.direction === "vertical" ? "to bottom" : "to bottom right";
@@ -833,6 +930,80 @@ function TextContent({ layer }: { layer: TextLayer }) {
   }
 
   return <div style={style}>{layer.text}</div>;
+}
+
+/** Uncontrolled contentEditable seeded once on mount — React must not rewrite children
+ *  on each keystroke or the caret jumps. Esc / ⌘↩ exits; click-outside is handled by
+ *  ThumbCanvas (capture listener). Blur alone also exits (e.g. Tab into the inspector). */
+function InlineTextEditor({
+  layer,
+  style,
+  onChange,
+  onExit,
+}: {
+  layer: TextLayer;
+  style: CSSProperties;
+  onChange: (text: string) => void;
+  onExit: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  // Snapshot of whether the text had a trailing newline when editing began — browsers
+  // often append an extra \n to contentEditable, which we only strip if we added it.
+  const hadTrailingNl = useRef(layer.text.endsWith("\n"));
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.textContent = layer.text;
+    el.focus();
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    range.collapse(false);
+    const sel = window.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+    // Only re-seed when a new editing session starts (same layer id = remount via keying on editing).
+  }, [layer.id]);
+
+  function readText(el: HTMLDivElement): string {
+    const raw = el.innerText;
+    if (raw.endsWith("\n") && !hadTrailingNl.current) return raw.slice(0, -1);
+    return raw;
+  }
+
+  function onKeyDown(e: ReactKeyboardEvent) {
+    e.stopPropagation(); // keep App shortcuts (delete layer, undo, …) out while typing
+    if (e.key === "Escape" || ((e.metaKey || e.ctrlKey) && e.key === "Enter")) {
+      e.preventDefault();
+      onExit();
+    }
+  }
+
+  return (
+    <div
+      ref={ref}
+      contentEditable
+      suppressContentEditableWarning
+      spellCheck={false}
+      onPointerDown={(e) => e.stopPropagation()}
+      onInput={(e) => {
+        const next = readText(e.currentTarget);
+        hadTrailingNl.current = next.endsWith("\n");
+        onChange(next);
+      }}
+      onBlur={onExit}
+      onKeyDown={onKeyDown}
+      style={{
+        ...style,
+        outline: "none",
+        cursor: "text",
+        userSelect: "text",
+        WebkitUserSelect: "text",
+        minWidth: "1ch",
+        caretColor: layer.color,
+      }}
+    />
+  );
 }
 
 function ImageContent({ layer, cropMode }: { layer: ImageLayer; cropMode: CropMode }) {

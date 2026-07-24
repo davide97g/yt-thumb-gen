@@ -5,8 +5,35 @@
 // space) and individually selectable/draggable. Presets are no longer a mode you
 // live in — they're templates (see presets.ts) that seed a fresh layer list.
 
+// Authoring space: templates and layer factories are written in 1280×720
+// coordinates. The live canvas size comes from the doc's `format` instead
+// (see FORMATS / canvasSize below).
 export const CANVAS_W = 1280;
 export const CANVAS_H = 720;
+
+export type FormatKey = "youtube" | "shorts" | "ig-post" | "ig-reel" | "linkedin";
+
+export type FormatSpec = {
+  key: FormatKey;
+  label: string; // select label (Italian UI)
+  platform: string; // header readout
+  w: number;
+  h: number;
+  aspect: string;
+  maxBytes?: number; // hard export size limit; only YouTube rejects oversized PNGs
+};
+
+export const FORMATS: Record<FormatKey, FormatSpec> = {
+  youtube: { key: "youtube", label: "YouTube (16:9)", platform: "YouTube", w: 1280, h: 720, aspect: "16:9", maxBytes: 2 * 1024 * 1024 },
+  shorts: { key: "shorts", label: "Shorts (9:16)", platform: "YouTube Shorts", w: 1080, h: 1920, aspect: "9:16" },
+  "ig-post": { key: "ig-post", label: "Post IG (4:5)", platform: "Instagram", w: 1080, h: 1350, aspect: "4:5" },
+  "ig-reel": { key: "ig-reel", label: "Reel IG (9:16)", platform: "Instagram Reels", w: 1080, h: 1920, aspect: "9:16" },
+  linkedin: { key: "linkedin", label: "LinkedIn (4:5)", platform: "LinkedIn", w: 1080, h: 1350, aspect: "4:5" },
+};
+
+export const DEFAULT_FORMAT: FormatKey = "youtube";
+
+export const canvasSize = (f: FormatKey) => ({ w: FORMATS[f].w, h: FORMATS[f].h });
 
 export type FontKey =
   | "archivo"
@@ -407,6 +434,7 @@ export function defaultFx(kind: TextFx["kind"]): TextFx {
 }
 
 export type ThumbDoc = {
+  format: FormatKey; // canvas size preset; dims via canvasSize()
   background: Background;
   layers: Layer[]; // back → front
 };
@@ -615,8 +643,9 @@ export function newDrawLayer(points: { x: number; y: number }[]): DrawLayer {
   };
 }
 
-/** Upgrade a loaded doc in place: convert draw layers saved before the rawW/scale schema
- *  (they stored vw/vh/w/h with a 16px pad baked into points) to the current shape. */
+/** Upgrade a loaded doc in place: backfill `format` on docs saved before multi-format,
+ *  and convert draw layers saved before the rawW/scale schema (they stored vw/vh/w/h
+ *  with a 16px pad baked into points) to the current shape. */
 export function migrateDoc(doc: ThumbDoc): ThumbDoc {
   const OLD_PAD = 16;
   const layers = doc.layers.map((l) => {
@@ -630,7 +659,7 @@ export function migrateDoc(doc: ThumbDoc): ThumbDoc {
       scale: old.w / old.vw,
     } as DrawLayer;
   });
-  return { ...doc, layers };
+  return { ...doc, format: doc.format ?? DEFAULT_FORMAT, layers };
 }
 
 // ── Reducer ───────────────────────────────────────────────────────────────────
@@ -648,7 +677,8 @@ export type Action =
   | { type: "reorder"; id: string; dir: -1 | 1 } // move one step in z-order
   | { type: "group"; ids: string[] }
   | { type: "ungroup"; ids: string[] }
-  | { type: "updateBackground"; patch: Partial<Background> };
+  | { type: "updateBackground"; patch: Partial<Background> }
+  | { type: "setFormat"; format: FormatKey }; // switch canvas format; layers translate by center delta
 
 function mapLayer(doc: ThumbDoc, id: string, fn: (l: Layer) => Layer): ThumbDoc {
   return { ...doc, layers: doc.layers.map((l) => (l.id === id ? fn(l) : l)) };
@@ -723,6 +753,21 @@ export function reducer(state: AppState, action: Action): AppState {
     }
     case "updateBackground":
       return { ...state, doc: { ...state.doc, background: { ...state.doc.background, ...action.patch } } };
+    case "setFormat": {
+      if (action.format === state.doc.format) return state; // no-op → historyReducer drops it
+      const from = canvasSize(state.doc.format);
+      const to = canvasSize(action.format);
+      const dx = (to.w - from.w) / 2;
+      const dy = (to.h - from.h) / 2;
+      return {
+        ...state,
+        doc: {
+          ...state.doc,
+          format: action.format,
+          layers: state.doc.layers.map((l) => ({ ...l, x: l.x + dx, y: l.y + dy })),
+        },
+      };
+    }
   }
 }
 

@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { FilePlus, Save } from "lucide-react";
-import type { ThumbDoc } from "../state";
+import { DEFAULT_FORMAT, FORMATS, type FormatKey, type ThumbDoc } from "../state";
+import { adaptDocToFormat } from "../lib/adapt";
 import { saveConfig } from "../lib/storage";
-import { SwitchRow } from "./controls";
+import { SelectField, SwitchRow } from "./controls";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 
@@ -22,6 +23,7 @@ export function NewProjectDialog({ doc, projectName, projectId, onClose, onCreat
   const [prevName, setPrevName] = useState(projectName);
   const [newName, setNewName] = useState("Nuovo progetto");
   const [clone, setClone] = useState(false);
+  const [format, setFormat] = useState<FormatKey>(DEFAULT_FORMAT);
   const [busy, setBusy] = useState(false);
 
   async function savePrevious() {
@@ -41,8 +43,8 @@ export function NewProjectDialog({ doc, projectName, projectId, onClose, onCreat
     setBusy(true);
     try {
       const fresh: ThumbDoc = clone
-        ? structuredClone(doc)
-        : { background: { mode: "gradient", from: "#0d1b13", to: "#04070a", image: null, overlay: 0 }, layers: [] };
+        ? adaptDocToFormat(structuredClone(doc), format) // scale + recenter into the chosen format
+        : { format, background: { mode: "gradient", from: "#0d1b13", to: "#04070a", image: null, overlay: 0 }, layers: [] };
       const saved = await saveConfig(newName, structuredClone(fresh));
       onCreated(fresh, saved.name, saved.id, saved.updatedAt);
       onClose();
@@ -91,6 +93,7 @@ export function NewProjectDialog({ doc, projectName, projectId, onClose, onCreat
               <span className="text-sm text-muted-foreground">Nome del progetto</span>
               <Input value={newName} autoFocus onChange={(e) => setNewName(e.target.value)} onKeyDown={submitOnEnter(() => void create())} />
             </label>
+            <SelectField label="Formato" value={format} options={Object.values(FORMATS).map((f) => ({ value: f.key, label: f.label }))} onChange={setFormat} />
             <SwitchRow label="Clona il progetto attuale" checked={clone} onChange={setClone} />
             <div className="flex justify-end gap-2">
               <Button variant="ghost" size="sm" onClick={() => setStep(1)} disabled={busy}>Indietro</Button>
