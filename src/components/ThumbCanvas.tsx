@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type Dispatch, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
-import { CANVAS_H, CANVAS_W, FONTS, FONT_WEIGHT, canvasSize, drawPad, layoutEmojiFx, newDrawLayer, resolveBgBorder, type Action, type DrawCap, type DrawLayer, type EmojiFxLayer, type ImageLayer, type Layer, type LayerPatch, type TextLayer, type ThumbDoc } from "../state";
+import { CANVAS_H, CANVAS_W, FONTS, FONT_WEIGHT, SIZE_LIMITS, canvasSize, drawPad, layoutEmojiFx, newDrawLayer, resolveBgBorder, type Action, type DrawCap, type DrawLayer, type EmojiFxLayer, type ImageLayer, type Layer, type LayerPatch, type TextLayer, type ThumbDoc } from "../state";
 import { smoothPath, type Pt } from "../lib/smoothPath";
 import { boxesIntersect, resolveSnap, type Box } from "../lib/layout";
 import { ClaudeLogo, ClaudeWordmark } from "./brand";
@@ -405,8 +405,6 @@ export function ThumbCanvas({ doc, scale, selectedIds, exporting, cropMode, setC
                 <SelectionFrame
                   layer={layer}
                   scale={scale}
-                  cw={CW}
-                  ch={CH}
                   cropMode={layerCrop}
                   onCropDone={() => setCropMode(null)}
                   canvasRef={canvasRef}
@@ -500,9 +498,9 @@ function DrawOverlay({ scale, w, h, canvasRef, onStroke }: { scale: number; w: n
  *  invariant) centre; the top knob rotates it. Handles counter-scale by `scale` so
  *  they stay a constant on-screen size regardless of canvas zoom. */
 function SelectionFrame({
-  layer, scale, cw, ch, cropMode, onCropDone, canvasRef, dispatch,
+  layer, scale, cropMode, onCropDone, canvasRef, dispatch,
 }: {
-  layer: Layer; scale: number; cw: number; ch: number; cropMode: CropMode; onCropDone: () => void;
+  layer: Layer; scale: number; cropMode: CropMode; onCropDone: () => void;
   canvasRef: RefObject<HTMLDivElement | null>; dispatch: Dispatch<Action>;
 }) {
   // In crop mode the normal scale/rotate handles are replaced by crop tooling.
@@ -539,13 +537,18 @@ function SelectionFrame({
     const p0 = toCanvas(s.rect, e.clientX, e.clientY);
     const startDist = Math.hypot(p0.x - s.cx, p0.y - s.cy) || 1;
     const base = layer;
-    // Bound the scale factor so the resized value stays within the matching
-    // Inspector slider's range — canvas and slider then never disagree.
-    let fMin = 0.05, fMax = 40;
-    if (base.type === "image") { fMin = 0.2 / base.scale; fMax = 3 / base.scale; }
-    else if (base.type === "draw") { fMin = 0.2 / base.scale; fMax = 6 / base.scale; }
-    else if (base.type === "shape" || base.type === "effect") { fMin = Math.max(20 / base.w, 6 / base.h); fMax = Math.min(cw / base.w, ch / base.h); }
-    else { const lo = base.type === "emoji" ? 40 : 24, hi = base.type === "emoji" ? 360 : 220; fMin = lo / base.size; fMax = hi / base.size; }
+    // Bound the scale factor by the same SIZE_LIMITS the matching Inspector slider uses —
+    // canvas and slider then never disagree. The limits are near-unbounded by design.
+    let fMin: number, fMax: number;
+    if (base.type === "image") { [fMin, fMax] = factors(SIZE_LIMITS.imageScale, base.scale); }
+    else if (base.type === "draw") { [fMin, fMax] = factors(SIZE_LIMITS.drawScale, base.scale); }
+    else if (base.type === "shape" || base.type === "effect") {
+      fMin = Math.max(SIZE_LIMITS.boxW[0] / base.w, SIZE_LIMITS.boxH[0] / base.h);
+      fMax = Math.min(SIZE_LIMITS.boxW[1] / base.w, SIZE_LIMITS.boxH[1] / base.h);
+    } else {
+      const lim = base.type === "emoji" ? SIZE_LIMITS.emojiSize : base.type === "emojifx" ? SIZE_LIMITS.emojiFxSize : SIZE_LIMITS.textSize;
+      [fMin, fMax] = factors(lim, base.size);
+    }
     drag((ev) => {
       const p = toCanvas(s.rect, ev.clientX, ev.clientY);
       const f = Math.min(fMax, Math.max(fMin, Math.hypot(p.x - s.cx, p.y - s.cy) / startDist));
@@ -592,6 +595,9 @@ function SelectionFrame({
     </div>
   );
 }
+
+/** A [min, max] size limit turned into the allowed resize factors for the layer's current value. */
+const factors = ([lo, hi]: readonly [number, number], current: number): [number, number] => [lo / current, hi / current];
 
 const MIN_CROP = 0.06; // keep at least this fraction of each dimension visible
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));

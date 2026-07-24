@@ -94,9 +94,27 @@ export function SwitchRow({ label, checked, onChange, defaultValue }: { label: s
   );
 }
 
+/** Track resolution for `curve="log"` rows: the Radix slider works in integer positions
+ *  0…LOG_TICKS, mapped onto [min, max] geometrically. */
+const LOG_TICKS = 1000;
+
 export function SliderRow({
-  label, min, max, value, onChange, step = 1, display, defaultValue,
-}: { label: string; min: number; max: number; value: number; onChange: (v: number) => void; step?: number; display?: string; defaultValue?: number }) {
+  label, min, max, value, onChange, step = 1, display, defaultValue, curve,
+}: {
+  label: string; min: number; max: number; value: number; onChange: (v: number) => void;
+  step?: number; display?: string; defaultValue?: number;
+  // "log": each track pixel is a constant *percentage* change, so a huge max stays usable —
+  // fine control around the middle, exponentially bigger/smaller steps at the extremes.
+  curve?: "log";
+}) {
+  const log = curve === "log" && min > 0 && max > min;
+  const ratio = Math.log(max / min);
+  const quantize = (v: number) => {
+    const q = Math.round(v / step) * step;
+    return step < 1 ? Math.round(q * 1e6) / 1e6 : q;
+  };
+  const toPos = (v: number) => Math.round((Math.log(Math.min(max, Math.max(min, v)) / min) / ratio) * LOG_TICKS);
+  const fromPos = (p: number) => quantize(Math.min(max, Math.max(min, min * Math.exp((p / LOG_TICKS) * ratio))));
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between">
@@ -106,7 +124,11 @@ export function SliderRow({
           {defaultValue !== undefined && value !== defaultValue && <ResetButton onReset={() => onChange(defaultValue)} />}
         </div>
       </div>
-      <SliderBase min={min} max={max} step={step} value={[value]} onValueChange={(v) => onChange(v[0])} />
+      {log ? (
+        <SliderBase min={0} max={LOG_TICKS} step={1} value={[toPos(value)]} onValueChange={(v) => onChange(fromPos(v[0]))} />
+      ) : (
+        <SliderBase min={min} max={max} step={step} value={[value]} onValueChange={(v) => onChange(v[0])} />
+      )}
     </div>
   );
 }

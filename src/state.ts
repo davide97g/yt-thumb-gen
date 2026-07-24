@@ -173,6 +173,19 @@ export type TextFx =
   // React Bits "Glitch Text": RGB-split duplicates jittering via clip-path (uses the .rb-glitch CSS class).
   | { kind: "glitch"; speed: number; color1: string; color2: string; enableShadows: boolean };
 
+/** Size limits, shared by the Inspector sliders and the canvas resize handles so the two never
+ *  disagree. Intentionally near-unbounded (a layer may dwarf the canvas); the sliders use a log
+ *  curve so the wide range stays usable, and the per-slider reset button restores the default. */
+export const SIZE_LIMITS = {
+  textSize: [4, 4000],
+  emojiSize: [8, 4000],
+  emojiFxSize: [8, 2000],
+  imageScale: [0.02, 50],
+  drawScale: [0.02, 50],
+  boxW: [4, 20000], // shape + effect box width
+  boxH: [4, 20000],
+} as const satisfies Record<string, readonly [number, number]>;
+
 /** A run of text. Today's title lines, badge, and episode pill are all Text layers. */
 export type TextLayer = LayerBase & {
   type: "text";

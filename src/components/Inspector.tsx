@@ -22,6 +22,7 @@ import {
   newEffectLayer,
   newDrawLayer,
   FORMATS,
+  SIZE_LIMITS,
   type Action,
   type FormatKey,
   type DrawCap,
@@ -136,7 +137,7 @@ export function Inspector({ selected, selectedIds, layers, dispatch, onError, cr
         {selected.type === "image" && <ImageProps layer={selected} set={set} onError={onError} cropMode={cropMode} setCropMode={setCropMode} />}
         {selected.type === "emoji" && <EmojiProps layer={selected} set={set} />}
         {selected.type === "emojifx" && <EmojiFxProps layer={selected} set={set} layers={layers} />}
-        {selected.type === "shape" && <ShapeProps layer={selected} set={set} cw={cw} ch={ch} />}
+        {selected.type === "shape" && <ShapeProps layer={selected} set={set} />}
         {selected.type === "effect" && <EffectProps layer={selected} set={set} cw={cw} ch={ch} />}
         {selected.type === "draw" && <DrawProps layer={selected} set={set} />}
       </Section>
@@ -154,7 +155,7 @@ function TextProps({ layer, set, onFontPreview }: { layer: TextLayer; set: Sette
         <Textarea rows={2} value={layer.text} onChange={(e) => set({ text: e.target.value })} />
       </Field>
       <SelectField label="Font" value={layer.font} options={FONT_OPTIONS} onChange={(font) => set({ font })} onPreview={onFontPreview} />
-      <SliderRow label="Dimensione" min={6} max={220} value={layer.size} defaultValue={D.size} onChange={(size) => set({ size })} />
+      <SliderRow label="Dimensione" min={SIZE_LIMITS.textSize[0]} max={SIZE_LIMITS.textSize[1]} curve="log" value={layer.size} defaultValue={D.size} onChange={(size) => set({ size })} />
       <ColorRow label="Colore" value={layer.color} defaultValue={D.color} onChange={(color) => set({ color })} />
       <SelectField label="Allineamento" value={layer.align} options={ALIGN_OPTIONS} onChange={(align) => set({ align })} />
       <SliderRow label="Interlinea" min={0.8} max={2} step={0.05} value={layer.lineHeight} defaultValue={D.lineHeight} display={layer.lineHeight.toFixed(2)} onChange={(lineHeight) => set({ lineHeight })} />
@@ -338,7 +339,7 @@ function ImageProps({ layer, set, onError, cropMode, setCropMode }: { layer: Ima
           )}
         </div>
       )}
-      <SliderRow label="Scala" min={0.2} max={3} step={0.05} value={layer.scale} defaultValue={D.scale} display={layer.scale.toFixed(2)} onChange={(scale) => set({ scale })} />
+      <SliderRow label="Scala" min={SIZE_LIMITS.imageScale[0]} max={SIZE_LIMITS.imageScale[1]} step={0.01} curve="log" value={layer.scale} defaultValue={D.scale} display={layer.scale.toFixed(2)} onChange={(scale) => set({ scale })} />
       <SliderRow label="Rotazione" min={-180} max={180} value={layer.rotation} defaultValue={D.rotation} display={`${layer.rotation}°`} onChange={(rotation) => set({ rotation })} />
       <SliderRow label="Trasparenza" min={0} max={100} value={layer.opacity ?? 100} defaultValue={D.opacity} display={`${layer.opacity ?? 100}%`} onChange={(opacity) => set({ opacity })} />
       {!layer.brand && layer.src && (
@@ -388,7 +389,7 @@ function EmojiProps({ layer, set }: { layer: EmojiLayer; set: Setter }) {
       <Field label="Emoji">
         <Input value={layer.glyph} onChange={(e) => set({ glyph: e.target.value })} />
       </Field>
-      <SliderRow label="Dimensione" min={40} max={360} value={layer.size} defaultValue={D.size} onChange={(size) => set({ size })} />
+      <SliderRow label="Dimensione" min={SIZE_LIMITS.emojiSize[0]} max={SIZE_LIMITS.emojiSize[1]} curve="log" value={layer.size} defaultValue={D.size} onChange={(size) => set({ size })} />
       <SliderRow label="Rotazione" min={-180} max={180} value={layer.rotation} defaultValue={D.rotation} display={`${layer.rotation}°`} onChange={(rotation) => set({ rotation })} />
     </>
   );
@@ -427,7 +428,7 @@ function EmojiFxProps({ layer, set, layers }: { layer: EmojiFxLayer; set: Setter
         ))}
       </div>
       <SliderRow label="Numero" min={3} max={80} value={layer.count} defaultValue={D.count} onChange={(count) => set({ count })} />
-      <SliderRow label="Dimensione" min={20} max={220} value={layer.size} defaultValue={D.size} onChange={(size) => set({ size })} />
+      <SliderRow label="Dimensione" min={SIZE_LIMITS.emojiFxSize[0]} max={SIZE_LIMITS.emojiFxSize[1]} curve="log" value={layer.size} defaultValue={D.size} onChange={(size) => set({ size })} />
       <SliderRow label="Varianza" min={0} max={100} value={layer.sizeJitter} defaultValue={D.sizeJitter} display={`${layer.sizeJitter}%`} onChange={(sizeJitter) => set({ sizeJitter })} />
       <SliderRow label="Raggio" min={80} max={640} value={layer.radius} defaultValue={D.radius} onChange={(radius) => set({ radius })} />
       {layer.pattern === "ring" && (
@@ -442,14 +443,14 @@ function EmojiFxProps({ layer, set, layers }: { layer: EmojiFxLayer; set: Setter
   );
 }
 
-function ShapeProps({ layer, set, cw, ch }: { layer: ShapeLayer; set: Setter; cw: number; ch: number }) {
+function ShapeProps({ layer, set }: { layer: ShapeLayer; set: Setter }) {
   const D = newShapeLayer(layer.kind);
   return (
     <>
       <SelectField label="Tipo" value={layer.kind} options={SHAPE_OPTIONS} onChange={(kind) => set({ kind })} />
       <ColorRow label="Colore" value={layer.fill} defaultValue={D.fill} onChange={(fill) => set({ fill })} />
-      <SliderRow label="Larghezza" min={20} max={cw} value={layer.w} defaultValue={D.w} onChange={(w) => set({ w })} />
-      <SliderRow label="Altezza" min={6} max={ch} value={layer.h} defaultValue={D.h} onChange={(h) => set({ h })} />
+      <SliderRow label="Larghezza" min={SIZE_LIMITS.boxW[0]} max={SIZE_LIMITS.boxW[1]} curve="log" value={layer.w} defaultValue={D.w} onChange={(w) => set({ w })} />
+      <SliderRow label="Altezza" min={SIZE_LIMITS.boxH[0]} max={SIZE_LIMITS.boxH[1]} curve="log" value={layer.h} defaultValue={D.h} onChange={(h) => set({ h })} />
       {layer.kind === "rect" && <SliderRow label="Arrotonda" min={0} max={220} value={layer.radius} defaultValue={D.radius} onChange={(radius) => set({ radius })} />}
       <SliderRow label="Rotazione" min={-180} max={180} value={layer.rotation} defaultValue={D.rotation} display={`${layer.rotation}°`} onChange={(rotation) => set({ rotation })} />
       {layer.kind === "bar" && (
