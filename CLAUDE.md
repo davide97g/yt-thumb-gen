@@ -77,6 +77,14 @@ Renders each layer as an absolutely-positioned element inside a node that is `tr
 
 `THUMBDOC_VALIDATE=warn|enforce` gates rejection. **Validation on `PUT /api/projects/:id` is gated on `doc !== undefined`** — that endpoint doubles as rename, which sends `{ name }` only.
 
+### Campaigns — one message across several platforms
+
+A `campaigns` row plus a nullable `projects.campaign_id`: a **folder**, not a tag, so a design belongs to at most one campaign. `ON DELETE SET NULL` is deliberate — deleting a campaign must never destroy the designs in it; they fall back to "Senza campagna" in the archive.
+
+The value is in `adaptDocToFormats` (`src/lib/adapt.ts`) + the `generate_campaign_set` MCP tool: compose once, then save one project per requested format. **`adaptDocToFormats` deep-clones each variant** because `adaptDocToFormat` only shallow-copies layers — without it, `bg`/`crop`/`points` would alias between designs that are supposed to be independent. `src/lib/adapt.test.ts` guards that.
+
+`PUT /api/projects/:id` treats `campaignId` as tri-state: key absent = leave alone, `null` = unfile, id = file. `coalesce` can't express "set to null", so the column is only touched when the key is present. Campaign ownership is re-checked server-side (`resolveCampaign`) so a project can't be filed into another user's campaign.
+
 ### Agent access — `mcp/`, API tokens, `?project=` deep link
 
 `mcp/` is a local stdio MCP server that talks to the deployed API. It **imports `src/state.ts` and `src/presets.ts` directly** rather than duplicating them, so the agent gets the real layer factories and the real validator — nothing to keep in sync. It pre-validates locally so schema mistakes cost no round trip. Registered in `.mcp.json`; the token comes from `${THUMB_API_TOKEN}` in the shell, never committed. The authoring rules live in `.claude/skills/thumb-studio/`.

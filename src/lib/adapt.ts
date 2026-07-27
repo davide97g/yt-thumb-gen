@@ -30,3 +30,15 @@ export function adaptDocToFormat(doc: ThumbDoc, target: FormatKey): ThumbDoc {
   });
   return { ...doc, format: target, layers };
 }
+
+/** One design, every platform: the set of adaptations behind a campaign. Order and
+ *  duplicates in `targets` are ignored — the result is one entry per distinct format,
+ *  in the order given. Each entry carries fresh layer objects, so the caller can save
+ *  them as independent projects that then diverge. */
+export function adaptDocToFormats(doc: ThumbDoc, targets: FormatKey[]): { format: FormatKey; doc: ThumbDoc }[] {
+  // structuredClone matters: adaptDocToFormat only shallow-copies each layer, so nested
+  // values (`bg`, `crop`, `points`, `background`) would otherwise stay shared between the
+  // variants and the master. These are about to become separate projects — they must not
+  // alias each other.
+  return [...new Set(targets)].map((format) => ({ format, doc: structuredClone(adaptDocToFormat(doc, format)) }));
+}

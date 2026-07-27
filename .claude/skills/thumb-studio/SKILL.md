@@ -1,6 +1,6 @@
 ---
 name: thumb-studio
-description: Design social/marketing graphics in Thumb Studio — YouTube thumbnails, Shorts covers, Instagram posts and reels, LinkedIn cards. Use when asked to create, restyle, or adapt a thumbnail, cover, or social graphic, or to work with a saved Thumb Studio project. Requires the thumb-studio MCP server.
+description: Design social/marketing graphics in Thumb Studio — YouTube thumbnails, Shorts covers, Instagram posts and reels, LinkedIn cards — and ship one message across every platform as a campaign. Use when asked to create, restyle, or adapt a thumbnail, cover, or social graphic, to build a multi-platform campaign, or to work with a saved Thumb Studio project. Requires the thumb-studio MCP server.
 ---
 
 # Thumb Studio
@@ -54,6 +54,35 @@ to fill, or delete them. Never invent a `src`: a fabricated URL or data URL will
 
 **Colour.** Pick one accent and repeat it — heading, pill, brand mark. Templates already carry a
 coherent palette; change the hue, keep the relationships.
+
+## Campaigns — one message, every platform
+
+A campaign is a folder of designs that usually start as the same idea rescaled per platform. A
+project belongs to at most one campaign.
+
+**When the user wants more than one platform, use `generate_campaign_set`.** Compose the design
+*once*, in the format it suits best, then hand it over with the list of targets:
+
+```
+generate_campaign_set(name: "Lancio autunno", doc: <master>, formats: ["youtube","ig-reel","linkedin"])
+```
+
+It creates the campaign, rescales the document into each format, and saves one project per
+format. Report the per-format links it returns.
+
+Things worth knowing:
+
+- **The variants are independent from the moment they're saved.** Editing one does not update the
+  others. If the headline changes, either regenerate the set or update each design.
+- Rescaling is *contain* — it fits the whole 16:9 composition inside a 9:16 frame, which leaves
+  large empty bands. It's a correct starting point, not a finished vertical design. Say so, and
+  offer to rework the tall formats properly (bigger type, stacked layout) rather than pretending
+  the auto-fit is done.
+- Designs are named `<campaign> — <format label>`; the archive strips that prefix when showing
+  them inside their group. Keep the convention.
+- `delete_campaign` deletes only the folder — its designs survive, ungrouped. Deleting the
+  designs is a separate, per-project action.
+- Use `create_campaign` + `set_project_campaign` only to organise designs that already exist.
 
 ## Editing an existing project
 

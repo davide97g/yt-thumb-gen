@@ -45,6 +45,23 @@ export async function initSchema(): Promise<void> {
       created_at   timestamptz NOT NULL DEFAULT now(),
       PRIMARY KEY (id, user_id)
     )`;
+  // Campaigns: one message shipped across several platforms. A campaign owns a set of
+  // projects that usually start as the same design adapted per format. Membership is a
+  // folder, not a tag — a project belongs to at most one campaign.
+  await sql`
+    CREATE TABLE IF NOT EXISTS campaigns (
+      id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id    uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      name       text NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )`;
+  // SET NULL, not CASCADE: deleting a campaign must never destroy the designs in it. They
+  // fall back to the ungrouped list.
+  await sql`
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS campaign_id uuid
+      REFERENCES campaigns(id) ON DELETE SET NULL`;
+
   // Personal API tokens: a non-browser credential so agents (the MCP server) can reach the
   // same API without a session cookie. Only the SHA-256 hash is stored — unlike
   // `sessions.token`, these are long-lived, so the plaintext must not be recoverable from
@@ -80,6 +97,8 @@ export async function initSchema(): Promise<void> {
   await sql`ALTER TABLE starred_items ADD COLUMN IF NOT EXISTS last_used_at timestamptz`;
   await sql`UPDATE starred_items SET last_used_at = coalesce(last_used_at, updated_at) WHERE last_used_at IS NULL`;
   await sql`CREATE INDEX IF NOT EXISTS api_tokens_user_idx ON api_tokens(user_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS campaigns_user_idx ON campaigns(user_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS projects_campaign_idx ON projects(campaign_id)`;
   await sql`CREATE INDEX IF NOT EXISTS projects_user_idx ON projects(user_id)`;
   await sql`CREATE INDEX IF NOT EXISTS starred_user_idx ON starred_items(user_id)`;
   await sql`CREATE INDEX IF NOT EXISTS starred_last_used_idx ON starred_items(user_id, last_used_at DESC)`;

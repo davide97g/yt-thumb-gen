@@ -150,6 +150,8 @@ app.use("/api/blobs/*", requireUser);
 app.use("/api/blobs", requireUser);
 app.use("/api/starred/*", requireUser);
 app.use("/api/starred", requireUser);
+app.use("/api/campaigns/*", requireUser);
+app.use("/api/campaigns", requireUser);
 // Token management is cookie-only on purpose: a token must not be able to mint another
 // token, so a leaked token cannot be used to entrench itself.
 app.use("/api/tokens/*", requireCookieUser);
@@ -178,7 +180,8 @@ async function requireCookieUser(c: any, next: () => Promise<void>) {
 app.get("/api/projects", async (c) => {
   const user = c.get("user") as User;
   const rows = await sql`
-    SELECT id, name, (extract(epoch from updated_at) * 1000)::float8 AS "updatedAt"
+    SELECT id, name, campaign_id AS "campaignId", doc->>'format' AS format,
+      (extract(epoch from updated_at) * 1000)::float8 AS "updatedAt"
     FROM projects WHERE user_id = ${user.id} ORDER BY updated_at DESC`;
   return c.json(rows);
 });
@@ -186,40 +189,59 @@ app.get("/api/projects", async (c) => {
 app.get("/api/projects/:id", async (c) => {
   const user = c.get("user") as User;
   const rows = await sql`
-    SELECT id, name, doc, (extract(epoch from updated_at) * 1000)::float8 AS "updatedAt"
+    SELECT id, name, doc, campaign_id AS "campaignId", (extract(epoch from updated_at) * 1000)::float8 AS "updatedAt"
     FROM projects WHERE id = ${c.req.param("id")} AND user_id = ${user.id}`;
   if (!rows[0]) return c.json({ error: "not found" }, 404);
   return c.json(rows[0]);
 });
 
+/** Resolves a caller-supplied campaign id to something safe to store. Returns `false` when
+ *  the campaign isn't the caller's, so a project can never be filed into someone else's. */
+async function resolveCampaign(userId: string, value: unknown): Promise<string | null | false> {
+  if (value === null) return null;
+  if (typeof value !== "string" || !value) return false;
+  const rows = await sql`SELECT id FROM campaigns WHERE id = ${value} AND user_id = ${userId}`;
+  return rows[0] ? value : false;
+}
+
 app.post("/api/projects", async (c) => {
   const user = c.get("user") as User;
-  const { name, doc } = await c.req.json().catch(() => ({}));
+  const { name, doc, campaignId } = await c.req.json().catch(() => ({}));
   if (typeof name !== "string" || typeof doc !== "object" || doc === null) return c.json({ error: "bad request" }, 400);
   const rejected = docProblems("POST /projects", validateDoc(doc));
   if (rejected) return rejected;
+  const campaign = campaignId === undefined ? null : await resolveCampaign(user.id, campaignId);
+  if (campaign === false) return c.json({ error: "Campagna non trovata" }, 404);
   const [row] = await sql`
-    INSERT INTO projects (user_id, name, doc) VALUES (${user.id}, ${name}, ${sql.json(doc)})
-    RETURNING id, name, (extract(epoch from updated_at) * 1000)::float8 AS "updatedAt"`;
+    INSERT INTO projects (user_id, name, doc, campaign_id)
+    VALUES (${user.id}, ${name}, ${sql.json(doc)}, ${campaign})
+    RETURNING id, name, campaign_id AS "campaignId", (extract(epoch from updated_at) * 1000)::float8 AS "updatedAt"`;
   return c.json({ ...row, warnings: docWarnings(doc) });
 });
 
 app.put("/api/projects/:id", async (c) => {
   const user = c.get("user") as User;
-  const { name, doc } = await c.req.json().catch(() => ({}));
+  const body = await c.req.json().catch(() => ({}));
+  const { name, doc } = body;
   // Gate on `doc !== undefined`: this endpoint doubles as rename, which sends { name } only
   // (see renameConfig in src/lib/storage.ts). Validating unconditionally would break it.
   if (doc !== undefined) {
     const rejected = docProblems("PUT /projects", validateDoc(doc));
     if (rejected) return rejected;
   }
+  // Tri-state: key absent = leave the campaign alone, null = unfile, id = file. `coalesce`
+  // can't express "set to null", so the column is only touched when the key is present.
+  const hasCampaign = "campaignId" in body;
+  const campaign = hasCampaign ? await resolveCampaign(user.id, body.campaignId) : null;
+  if (campaign === false) return c.json({ error: "Campagna non trovata" }, 404);
   const [row] = await sql`
     UPDATE projects SET
       name = coalesce(${name ?? null}, name),
       doc = coalesce(${doc === undefined ? null : sql.json(doc)}, doc),
+      campaign_id = ${hasCampaign ? campaign : sql`campaign_id`},
       updated_at = now()
     WHERE id = ${c.req.param("id")} AND user_id = ${user.id}
-    RETURNING id, name, (extract(epoch from updated_at) * 1000)::float8 AS "updatedAt"`;
+    RETURNING id, name, campaign_id AS "campaignId", (extract(epoch from updated_at) * 1000)::float8 AS "updatedAt"`;
   if (!row) return c.json({ error: "not found" }, 404);
   return c.json(row);
 });
@@ -227,6 +249,65 @@ app.put("/api/projects/:id", async (c) => {
 app.delete("/api/projects/:id", async (c) => {
   const user = c.get("user") as User;
   await sql`DELETE FROM projects WHERE id = ${c.req.param("id")} AND user_id = ${user.id}`;
+  return c.json({ ok: true });
+});
+
+// ── campaigns (a folder of designs: one message across several platforms) ────
+app.get("/api/campaigns", async (c) => {
+  const user = c.get("user") as User;
+  const rows = await sql`
+    SELECT c.id, c.name,
+      (extract(epoch from c.updated_at) * 1000)::float8 AS "updatedAt",
+      count(p.id)::int AS "designCount"
+    FROM campaigns c LEFT JOIN projects p ON p.campaign_id = c.id
+    WHERE c.user_id = ${user.id}
+    GROUP BY c.id ORDER BY c.updated_at DESC`;
+  return c.json(rows);
+});
+
+app.get("/api/campaigns/:id", async (c) => {
+  const user = c.get("user") as User;
+  const id = c.req.param("id");
+  const rows = await sql`
+    SELECT id, name, (extract(epoch from updated_at) * 1000)::float8 AS "updatedAt"
+    FROM campaigns WHERE id = ${id} AND user_id = ${user.id}`;
+  if (!rows[0]) return c.json({ error: "not found" }, 404);
+  // Metadata only, like the project list — the docs are fetched one at a time.
+  const designs = await sql`
+    SELECT id, name, doc->>'format' AS format,
+      (extract(epoch from updated_at) * 1000)::float8 AS "updatedAt"
+    FROM projects WHERE campaign_id = ${id} AND user_id = ${user.id}
+    ORDER BY updated_at DESC`;
+  return c.json({ ...rows[0], designs });
+});
+
+app.post("/api/campaigns", async (c) => {
+  const user = c.get("user") as User;
+  const { name } = await c.req.json().catch(() => ({}));
+  if (typeof name !== "string" || !name.trim()) return c.json({ error: "bad request" }, 400);
+  const [row] = await sql`
+    INSERT INTO campaigns (user_id, name) VALUES (${user.id}, ${name.trim()})
+    RETURNING id, name, (extract(epoch from updated_at) * 1000)::float8 AS "updatedAt"`;
+  return c.json({ ...row, designCount: 0 });
+});
+
+app.put("/api/campaigns/:id", async (c) => {
+  const user = c.get("user") as User;
+  const { name } = await c.req.json().catch(() => ({}));
+  if (typeof name !== "string" || !name.trim()) return c.json({ error: "bad request" }, 400);
+  const [row] = await sql`
+    UPDATE campaigns SET name = ${name.trim()}, updated_at = now()
+    WHERE id = ${c.req.param("id")} AND user_id = ${user.id}
+    RETURNING id, name, (extract(epoch from updated_at) * 1000)::float8 AS "updatedAt"`;
+  if (!row) return c.json({ error: "not found" }, 404);
+  return c.json(row);
+});
+
+// Deleting a campaign never deletes its designs — `projects.campaign_id` is ON DELETE SET
+// NULL, so they simply return to the ungrouped list.
+app.delete("/api/campaigns/:id", async (c) => {
+  const user = c.get("user") as User;
+  await sql`DELETE FROM campaigns WHERE id = ${c.req.param("id")} AND user_id = ${user.id}`;
   return c.json({ ok: true });
 });
 

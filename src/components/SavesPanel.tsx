@@ -1,16 +1,24 @@
-import { useEffect, useState } from "react";
-import { FileDown, FileUp, FolderOpen, Trash2 } from "lucide-react";
-import type { ThumbDoc } from "../state";
+import { useEffect, useMemo, useState } from "react";
+import { ChevronRight, FileDown, FileUp, FolderOpen, FolderPlus, Layers3, Pencil, Trash2 } from "lucide-react";
+import { FORMATS, type ThumbDoc } from "../state";
 import {
+  type CampaignMeta,
   type ConfigMeta,
+  createCampaign,
+  deleteCampaign,
   deleteConfig,
   exportConfigFile,
   importConfigFile,
+  listCampaigns,
   listConfigs,
   loadConfig,
+  renameCampaign,
+  setProjectCampaign,
 } from "../lib/storage";
 import { Hint, Section, UploadButton } from "./controls";
 import { Button } from "./ui/button";
+import { Input } from "./ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { cn, relTime } from "@/lib/utils";
 
 type Props = {
@@ -22,14 +30,48 @@ type Props = {
   refreshKey?: number;
 };
 
-/** The project library: every named save, newest first. The live project (if it
- *  was loaded from here) is pinned visually and shows its current name. */
+const UNGROUPED = "__none__"; // Radix Select has no concept of a null value
+
+/** The project library, grouped by campaign. A campaign is a folder: a project belongs to
+ *  at most one, and deleting a campaign keeps its designs (they fall back to "Senza
+ *  campagna"). The live project, if it came from here, is pinned visually. */
 export function SavesPanel({ doc, projectId, projectName, onLoad, onError, refreshKey }: Props) {
   const [configs, setConfigs] = useState<ConfigMeta[]>([]);
+  const [campaigns, setCampaigns] = useState<CampaignMeta[]>([]);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [creating, setCreating] = useState(false);
+  const [draftName, setDraftName] = useState("");
+  const [renaming, setRenaming] = useState<string | null>(null);
 
-  const refresh = () => listConfigs().then(setConfigs).catch(() => onError("Impossibile leggere l'archivio."));
+  const refresh = () =>
+    Promise.all([listConfigs(), listCampaigns()])
+      .then(([c, g]) => { setConfigs(c); setCampaigns(g); })
+      .catch(() => onError("Impossibile leggere l'archivio."));
   useEffect(() => { void refresh(); }, [refreshKey]);
+
+  // One pass over the list: each campaign's designs, then whatever is left over.
+  const groups = useMemo(() => {
+    const byCampaign = new Map<string, ConfigMeta[]>();
+    const loose: ConfigMeta[] = [];
+    for (const c of configs) {
+      if (c.campaignId) {
+        const list = byCampaign.get(c.campaignId);
+        list ? list.push(c) : byCampaign.set(c.campaignId, [c]);
+      } else {
+        loose.push(c);
+      }
+    }
+    return { byCampaign, loose };
+  }, [configs]);
+
+  function toggle(id: string) {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
 
   async function onDelete(id: string) {
     await deleteConfig(id);
@@ -73,60 +115,244 @@ export function SavesPanel({ doc, projectId, projectName, onLoad, onError, refre
     }
   }
 
+  async function onCreateCampaign() {
+    const name = draftName.trim();
+    if (!name) return;
+    try {
+      await createCampaign(name);
+      setDraftName("");
+      setCreating(false);
+      await refresh();
+    } catch {
+      onError("Creazione campagna non riuscita.");
+    }
+  }
+
+  async function onRenameCampaign(id: string) {
+    const name = draftName.trim();
+    if (!name) return;
+    try {
+      await renameCampaign(id, name);
+      setRenaming(null);
+      setDraftName("");
+      await refresh();
+    } catch {
+      onError("Rinomina non riuscita.");
+    }
+  }
+
+  async function onDeleteCampaign(id: string) {
+    try {
+      await deleteCampaign(id);
+      await refresh();
+    } catch {
+      onError("Eliminazione campagna non riuscita.");
+    }
+  }
+
+  async function onMove(id: string, campaignId: string | null) {
+    setBusyId(id);
+    try {
+      await setProjectCampaign(id, campaignId);
+      await refresh();
+    } catch {
+      onError("Spostamento non riuscito.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  function ProjectRow({ c, campaignName }: { c: ConfigMeta; campaignName?: string }) {
+    const active = c.id === projectId;
+    // Inside a campaign every design is named "<campaign> — <format>", which truncates to an
+    // identical stub on every row. Drop the prefix there; the group header already says it.
+    const prefixed = !!campaignName && c.name.startsWith(`${campaignName} — `);
+    const shown = active ? projectName : prefixed ? c.name.slice(campaignName!.length + 3) : c.name;
+    // Don't repeat the format when stripping already left the name showing it.
+    const fmt = !prefixed && c.format && FORMATS[c.format] ? `${FORMATS[c.format].label} · ` : "";
+    const meta = active ? "In uso" : `${fmt}${relTime(c.updatedAt)}`;
+    return (
+      <div
+        className={cn(
+          "group flex items-center gap-0.5 rounded-md transition-colors",
+          active ? "layer-accent bg-accent/50" : "hover:bg-accent/40"
+        )}
+      >
+        <button
+          type="button"
+          className="flex min-w-0 flex-1 items-center gap-2.5 px-2 py-1.5 text-left disabled:opacity-60"
+          title={active ? "Progetto attuale" : "Carica"}
+          disabled={busyId === c.id}
+          onClick={() => void onOpen(c)}
+        >
+          <FolderOpen className={cn("size-4 shrink-0", active ? "text-primary" : "text-muted-foreground")} />
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm leading-tight">{shown}</span>
+            <span className="block truncate text-[11px] leading-tight text-muted-foreground">{meta}</span>
+          </span>
+        </button>
+
+        <Select
+          value={c.campaignId ?? UNGROUPED}
+          onValueChange={(v) => void onMove(c.id, v === UNGROUPED ? null : v)}
+        >
+          <SelectTrigger
+            className="size-7 shrink-0 justify-center border-0 bg-transparent p-0 opacity-100 shadow-none transition-opacity hover:bg-accent md:opacity-0 md:group-hover:opacity-100"
+            aria-label={`Sposta ${c.name} in una campagna`}
+            title="Sposta in campagna"
+          >
+            <Layers3 className="size-4 text-muted-foreground" />
+            <SelectValue className="hidden" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={UNGROUPED}>Senza campagna</SelectItem>
+            {campaigns.map((g) => (
+              <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="size-7 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
+          title="Esporta JSON"
+          disabled={busyId === c.id}
+          onClick={() => void onExport(c)}
+        >
+          <FileDown />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="size-7 opacity-100 transition-opacity hover:text-destructive md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
+          title="Elimina"
+          onClick={() => void onDelete(c.id)}
+        >
+          <Trash2 />
+        </Button>
+      </div>
+    );
+  }
+
+  const empty = configs.length === 0 && campaigns.length === 0;
+
   return (
-    <Section title="Archivio">
-      {configs.length > 0 ? (
-        <div className="space-y-0.5">
-          {configs.map((c) => {
-            const active = c.id === projectId;
+    <Section
+      title="Archivio"
+      action={
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="size-7 text-muted-foreground hover:text-foreground"
+          title="Nuova campagna"
+          aria-label="Nuova campagna"
+          onClick={() => { setCreating((v) => !v); setDraftName(""); setRenaming(null); }}
+        >
+          <FolderPlus />
+        </Button>
+      }
+    >
+      {creating && (
+        <div className="flex gap-1.5 pb-1">
+          <Input
+            className="h-8"
+            autoFocus
+            value={draftName}
+            placeholder="Nome campagna"
+            onChange={(e) => setDraftName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") { e.preventDefault(); void onCreateCampaign(); }
+              if (e.key === "Escape") setCreating(false);
+            }}
+          />
+          <Button size="sm" className="h-8" onClick={() => void onCreateCampaign()} disabled={!draftName.trim()}>
+            Crea
+          </Button>
+        </div>
+      )}
+
+      {empty ? (
+        <Hint>Nessun progetto in archivio. <span className="text-foreground">Salva</span> per archiviare quello attuale.</Hint>
+      ) : (
+        <div className="space-y-1.5">
+          {campaigns.map((g) => {
+            const designs = groups.byCampaign.get(g.id) ?? [];
+            const open = !collapsed.has(g.id);
             return (
-              <div
-                key={c.id}
-                className={cn(
-                  "group flex items-center gap-0.5 rounded-md transition-colors",
-                  active ? "layer-accent bg-accent/50" : "hover:bg-accent/40"
+              <div key={g.id} className="space-y-0.5">
+                {renaming === g.id ? (
+                  <div className="flex gap-1.5">
+                    <Input
+                      className="h-8"
+                      autoFocus
+                      value={draftName}
+                      onChange={(e) => setDraftName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") { e.preventDefault(); void onRenameCampaign(g.id); }
+                        if (e.key === "Escape") setRenaming(null);
+                      }}
+                    />
+                    <Button size="sm" className="h-8" onClick={() => void onRenameCampaign(g.id)}>Salva</Button>
+                  </div>
+                ) : (
+                  <div className="group flex items-center gap-0.5">
+                    <button
+                      type="button"
+                      className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-1.5 py-1 text-left hover:bg-accent/40"
+                      onClick={() => toggle(g.id)}
+                      aria-expanded={open}
+                    >
+                      <ChevronRight className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform", open && "rotate-90")} />
+                      <span className="min-w-0 flex-1 truncate font-mono text-[10.5px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                        {g.name}
+                      </span>
+                      <span className="shrink-0 font-mono text-[10px] text-muted-foreground/70">{designs.length}</span>
+                    </button>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className="size-7 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100"
+                      title="Rinomina campagna"
+                      onClick={() => { setRenaming(g.id); setDraftName(g.name); setCreating(false); }}
+                    >
+                      <Pencil />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className="size-7 opacity-100 transition-opacity hover:text-destructive md:opacity-0 md:group-hover:opacity-100"
+                      title="Elimina campagna (i progetti restano)"
+                      onClick={() => void onDeleteCampaign(g.id)}
+                    >
+                      <Trash2 />
+                    </Button>
+                  </div>
                 )}
-              >
-                <button
-                  type="button"
-                  className="flex min-w-0 flex-1 items-center gap-2.5 px-2 py-1.5 text-left disabled:opacity-60"
-                  title={active ? "Progetto attuale" : "Carica"}
-                  disabled={busyId === c.id}
-                  onClick={() => void onOpen(c)}
-                >
-                  <FolderOpen className={cn("size-4 shrink-0", active ? "text-primary" : "text-muted-foreground")} />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm leading-tight">{active ? projectName : c.name}</span>
-                    <span className="block truncate text-[11px] leading-tight text-muted-foreground">
-                      {active ? "In uso" : relTime(c.updatedAt)}
-                    </span>
-                  </span>
-                </button>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  className="size-7 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
-                  title="Esporta JSON"
-                  disabled={busyId === c.id}
-                  onClick={() => void onExport(c)}
-                >
-                  <FileDown />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  className="size-7 opacity-100 transition-opacity hover:text-destructive md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
-                  title="Elimina"
-                  onClick={() => void onDelete(c.id)}
-                >
-                  <Trash2 />
-                </Button>
+
+                {open &&
+                  (designs.length > 0 ? (
+                    <div className="space-y-0.5 border-l border-border/60 pl-1.5">
+                      {designs.map((c) => <ProjectRow key={c.id} c={c} campaignName={g.name} />)}
+                    </div>
+                  ) : (
+                    <p className="pl-5 text-[11px] text-muted-foreground">Vuota.</p>
+                  ))}
               </div>
             );
           })}
+
+          {groups.loose.length > 0 && (
+            <div className="space-y-0.5">
+              {campaigns.length > 0 && (
+                <div className="px-1.5 pt-1 font-mono text-[10.5px] font-medium uppercase tracking-[0.16em] text-muted-foreground/70">
+                  Senza campagna
+                </div>
+              )}
+              {groups.loose.map((c) => <ProjectRow key={c.id} c={c} />)}
+            </div>
+          )}
         </div>
-      ) : (
-        <Hint>Nessun progetto in archivio. <span className="text-foreground">Salva</span> per archiviare quello attuale.</Hint>
       )}
 
       <div className="flex flex-col gap-2 pt-1">

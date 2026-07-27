@@ -10,7 +10,7 @@
 //     URLs. So the DB row stays small and images survive a cache clear / move machines.
 // Plus JSON file export/import (unchanged) so a project can leave the account entirely.
 
-import type { EmojiFxLayer, Layer, LayerType, ThumbDoc } from "../state";
+import type { EmojiFxLayer, FormatKey, Layer, LayerType, ThumbDoc } from "../state";
 import { apiGet, apiSend } from "./api";
 import { dehydrateDoc, dehydrateLayer, hydrateDoc, hydrateLayer } from "./blobs";
 
@@ -22,7 +22,14 @@ const WORKING_KEY = "working";
 const PROJECT_KEY = "project";
 
 /** Lightweight archive-list row (no doc) — what the backend returns for a list. */
-export type ConfigMeta = { id: string; name: string; updatedAt: number };
+export type ConfigMeta = {
+  id: string;
+  name: string;
+  updatedAt: number;
+  campaignId: string | null;
+  /** Read straight out of the stored doc, so the archive can label rows without fetching each one. */
+  format?: FormatKey | null;
+};
 /** A full project including its (hydrated) doc. */
 export type SavedConfig = ConfigMeta & { doc: ThumbDoc };
 
@@ -92,14 +99,28 @@ export function listConfigs(): Promise<ConfigMeta[]> {
 
 /** Fetches one archived project and re-hydrates its images from R2. */
 export async function loadConfig(id: string): Promise<SavedConfig> {
-  const row = await apiGet<{ id: string; name: string; updatedAt: number; doc: ThumbDoc }>(`/projects/${id}`);
-  return { id: row.id, name: row.name, updatedAt: row.updatedAt, doc: await hydrateDoc(row.doc) };
+  const row = await apiGet<{ id: string; name: string; updatedAt: number; campaignId: string | null; doc: ThumbDoc }>(
+    `/projects/${id}`
+  );
+  return {
+    id: row.id,
+    name: row.name,
+    updatedAt: row.updatedAt,
+    campaignId: row.campaignId ?? null,
+    doc: await hydrateDoc(row.doc),
+  };
 }
 
 /** Upserts a project: pass an existing `id` to overwrite it, or omit it to archive a new
  *  one. Offloads inline images to R2 before sending. Returns the archive metadata. */
-export async function saveConfig(name: string, doc: ThumbDoc, id?: string): Promise<ConfigMeta> {
-  const payload = { name: name.trim() || "Senza nome", doc: await dehydrateDoc(doc) };
+export async function saveConfig(name: string, doc: ThumbDoc, id?: string, campaignId?: string | null): Promise<ConfigMeta> {
+  // `campaignId` is only sent when the caller passes it: on PUT the key's absence means
+  // "leave the campaign alone", which is what an ordinary save should do.
+  const payload = {
+    name: name.trim() || "Senza nome",
+    doc: await dehydrateDoc(doc),
+    ...(campaignId === undefined ? {} : { campaignId }),
+  };
   return id ? apiSend<ConfigMeta>("PUT", `/projects/${id}`, payload) : apiSend<ConfigMeta>("POST", "/projects", payload);
 }
 
@@ -110,6 +131,38 @@ export function renameConfig(id: string, name: string): Promise<ConfigMeta> {
 
 export function deleteConfig(id: string): Promise<void> {
   return apiSend<{ ok: true }>("DELETE", `/projects/${id}`).then(() => undefined);
+}
+
+// ── Campaigns (a folder of designs: one message across several platforms) ─────
+
+export type CampaignMeta = { id: string; name: string; updatedAt: number; designCount: number };
+export type CampaignDesign = { id: string; name: string; format: string; updatedAt: number };
+export type Campaign = Omit<CampaignMeta, "designCount"> & { designs: CampaignDesign[] };
+
+export function listCampaigns(): Promise<CampaignMeta[]> {
+  return apiGet<CampaignMeta[]>("/campaigns");
+}
+
+export function loadCampaign(id: string): Promise<Campaign> {
+  return apiGet<Campaign>(`/campaigns/${id}`);
+}
+
+export function createCampaign(name: string): Promise<CampaignMeta> {
+  return apiSend<CampaignMeta>("POST", "/campaigns", { name });
+}
+
+export function renameCampaign(id: string, name: string): Promise<CampaignMeta> {
+  return apiSend<CampaignMeta>("PUT", `/campaigns/${id}`, { name });
+}
+
+/** Deletes the campaign only — its designs survive, ungrouped. */
+export function deleteCampaign(id: string): Promise<void> {
+  return apiSend<{ ok: true }>("DELETE", `/campaigns/${id}`).then(() => undefined);
+}
+
+/** Files a project into a campaign, or pass null to pull it back out. */
+export function setProjectCampaign(id: string, campaignId: string | null): Promise<ConfigMeta> {
+  return apiSend<ConfigMeta>("PUT", `/projects/${id}`, { campaignId });
 }
 
 // ── Personal API tokens (for the MCP server / scripts) ────────────────────────

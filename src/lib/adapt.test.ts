@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { newShapeLayer, newTextLayer, type ThumbDoc } from "../state";
-import { adaptDocToFormat } from "./adapt";
+import { adaptDocToFormat, adaptDocToFormats } from "./adapt";
 
 const doc = (layers: ThumbDoc["layers"]): ThumbDoc => ({
   format: "youtube",
@@ -36,4 +36,33 @@ test("adapt to the same format is the identity", () => {
   expect(l.x).toBe(123);
   expect(l.y).toBe(45);
   expect(l.size).toBe(96);
+});
+
+test("a campaign set yields one entry per distinct format, in order", () => {
+  const set = adaptDocToFormats(doc([newTextLayer()]), ["ig-reel", "youtube", "ig-reel", "linkedin"]);
+  expect(set.map((s) => s.format)).toEqual(["ig-reel", "youtube", "linkedin"]);
+  for (const s of set) expect(s.doc.format).toBe(s.format);
+});
+
+test("campaign variants are independent documents", () => {
+  const source = doc([newTextLayer()]);
+  const [a, b] = adaptDocToFormats(source, ["youtube", "shorts"]);
+
+  // Editing one variant must not reach the others or the master — each is saved as its
+  // own project and diverges from there. Nested values count: adaptDocToFormat only
+  // shallow-copies layers, so `bg` would alias without an explicit clone.
+  const A = a.doc.layers[0] as ReturnType<typeof newTextLayer>;
+  A.text = "cambiato";
+  A.bg.color = "#123456";
+  a.doc.background.from = "#00ff00";
+
+  const B = b.doc.layers[0] as ReturnType<typeof newTextLayer>;
+  expect(B.text).not.toBe("cambiato");
+  expect(B.bg.color).not.toBe("#123456");
+  expect(b.doc.background.from).not.toBe("#00ff00");
+
+  const M = source.layers[0] as ReturnType<typeof newTextLayer>;
+  expect(M.text).not.toBe("cambiato");
+  expect(M.bg.color).not.toBe("#123456");
+  expect(source.background.from).not.toBe("#00ff00");
 });
