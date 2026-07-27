@@ -91,6 +91,12 @@ The value is in `adaptDocToFormats` (`src/lib/adapt.ts`) + the `generate_campaig
 
 The hosted endpoint is its own compose service, **built from the repo root** (`mcp/Dockerfile`) because unlike the api it genuinely needs `src/` as well as `server/src/`. It is stateless (`sessionIdGenerator: undefined`), holds no secrets, and never validates a token itself — it forwards the caller's bearer to `api`, which stays the single authority on auth. nginx routes `/api/mcp` to it; that works because nginx picks the **longest** matching prefix, so it wins over `/api/`. Don't add an explicit close after `handleRequest` — the body may still be streaming, and Hono's `executionCtx` is Workers-only and throws on Bun.
 
+**A `doc` argument must publish `type: "object"`** — that's `docInput()` in `mcp/src/tools.ts`, and
+it's load-bearing. With a bare `z.unknown()` the property carried no type in the generated JSON
+Schema, and clients that infer argument types from it (Claude Code among them) sent the whole
+document as a JSON *string*; every call died on `document must be an object`. The `preprocess` in
+front still parses a stringified doc, for clients that stringify regardless.
+
 The authoring rules live in `.claude/skills/thumb-studio/`.
 
 Auth: `currentUser()` accepts the session cookie **or** `Authorization: Bearer tsk_…` backed by `api_tokens` (SHA-256 hash stored, never the plaintext). `/api/tokens*` is guarded by `requireCookieUser` — **a token must never be able to mint another token.**

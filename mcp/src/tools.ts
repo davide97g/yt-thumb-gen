@@ -42,6 +42,37 @@ const text = (value: unknown) => ({
 });
 const fail = (message: string) => ({ ...text(message), isError: true });
 
+/**
+ * Schema for a `doc` argument.
+ *
+ * The inner `looseObject` is what makes the published JSON Schema say `type: "object"` — with a
+ * bare `z.unknown()` the property carried no type at all, and clients that infer argument types
+ * from the schema (Claude Code among them) sent the whole document as a JSON *string*, which then
+ * failed preflight with "document must be an object". The `preprocess` keeps accepting a
+ * stringified document from clients that stringify anyway.
+ */
+export const docInput = (description: string) =>
+  z
+    .preprocess(
+      (v) => {
+        if (typeof v !== "string") return v;
+        try {
+          return JSON.parse(v);
+        } catch {
+          return v; // rejected below — the message says what to send
+        }
+      },
+      z.looseObject(
+        {},
+        {
+          error:
+            "must be a ThumbDoc object — { format, background, layers } — or a JSON string of one. " +
+            "Call get_doc_schema for the contract.",
+        }
+      )
+    )
+    .describe(description);
+
 /** Validates with the same code the server runs, so a malformed doc costs no round trip. */
 function preflight(doc: unknown): string | null {
   const errors = validateDoc(doc);
@@ -205,7 +236,7 @@ export function registerTools(srv: McpServer, api: Api): void {
         "come back immediately. Returns the id and a URL that opens it in the editor.",
       inputSchema: {
         name: z.string().min(1).describe("Project name shown in the editor"),
-        doc: z.unknown().describe("A complete ThumbDoc: { format, background, layers }"),
+        doc: docInput("A complete ThumbDoc: { format, background, layers }"),
       },
     },
     async ({ name, doc }) => {
@@ -228,7 +259,7 @@ export function registerTools(srv: McpServer, api: Api): void {
       inputSchema: {
         id: z.string().describe("Project id"),
         name: z.string().min(1).optional().describe("New name"),
-        doc: z.unknown().optional().describe("Replacement ThumbDoc"),
+        doc: docInput("Replacement ThumbDoc").optional(),
       },
     },
     async ({ id, name, doc }) => {
@@ -369,7 +400,7 @@ export function registerTools(srv: McpServer, api: Api): void {
         "Each design is independent afterwards — editing one does not change the others.",
       inputSchema: {
         name: z.string().min(1).describe("Campaign name; also the base for each design's name"),
-        doc: z.unknown().describe("The master ThumbDoc. Its own `format` is the one it was composed for."),
+        doc: docInput("The master ThumbDoc. Its own `format` is the one it was composed for."),
         formats: z
           .array(z.enum(formatKeys))
           .min(1)
