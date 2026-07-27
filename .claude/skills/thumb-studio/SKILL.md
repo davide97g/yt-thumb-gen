@@ -93,5 +93,8 @@ asked; the user's other layers are their work, not yours. Rename by passing `nam
 
 ## Setup
 
-The MCP server needs `THUMB_API_TOKEN` in the environment. The user mints one in the editor via
-the key icon in the header (Token API). If a tool reports a missing token, point them there.
+The tools reach Thumb Studio with a personal API token. The user gets a ready-made snippet from
+**Aggiungi MCP** in the editor header — it covers Claude Code, Codex, Cursor and raw JSON, and
+points at the hosted endpoint (`/api/mcp`), so nothing needs installing. If a tool reports a
+missing or rejected token, send them there; tokens are shown once, so a lost one is replaced,
+not recovered.

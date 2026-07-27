@@ -1,5 +1,5 @@
 import { useEffect, useReducer, useRef, useState } from "react";
-import { Download, KeyRound, Layers, LogOut, Maximize2, PanelsTopLeft, Redo2, SlidersHorizontal, Undo2, X } from "lucide-react";
+import { Download, KeyRound, Layers, LogOut, Maximize2, PanelsTopLeft, Plug, Redo2, SlidersHorizontal, Undo2, X } from "lucide-react";
 import { ThumbCanvas, type CropMode } from "./components/ThumbCanvas";
 import { Inspector, BackgroundInspector, FormatSection } from "./components/Inspector";
 import { LayerList } from "./components/LayerList";
@@ -8,6 +8,7 @@ import { ManageStarredDialog, StarredCommandDialog, StarredPanel } from "./compo
 import { ProjectHeader } from "./components/ProjectHeader";
 import { NewProjectDialog } from "./components/NewProjectDialog";
 import { TokensDialog } from "./components/TokensDialog";
+import { AddMcpDialog } from "./components/AddMcpDialog";
 import { useAuth } from "./components/AuthGate";
 import { Toolbar } from "./components/Toolbar";
 import { Field, Section } from "./components/controls";
@@ -41,6 +42,7 @@ export default function App() {
   const [cmdkOpen, setCmdkOpen] = useState(false);
   const [manageStarredOpen, setManageStarredOpen] = useState(false);
   const [tokensOpen, setTokensOpen] = useState(false);
+  const [mcpOpen, setMcpOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [fileName, setFileName] = useState("thumb.png");
@@ -375,6 +377,16 @@ export default function App() {
             <span className="hidden sm:inline">{exporting ? "Esporto…" : "Esporta PNG"}</span>
           </Button>
           <Button
+            variant="outline"
+            size="sm"
+            className="h-8"
+            onClick={() => setMcpOpen(true)}
+            title="Collega un agente via MCP"
+          >
+            <Plug />
+            <span className="hidden sm:inline">Aggiungi MCP</span>
+          </Button>
+          <Button
             variant="ghost"
             size="icon-sm"
             className="text-muted-foreground hover:text-foreground"
@@ -546,6 +558,7 @@ export default function App() {
       )}
 
       {tokensOpen && <TokensDialog onClose={() => setTokensOpen(false)} />}
+      {mcpOpen && <AddMcpDialog onClose={() => setMcpOpen(false)} />}
     </div>
   );
 }

@@ -3,10 +3,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "bun run src/index.ts"
+    "start": "bun run src/http.ts",
+    "stdio": "bun run src/stdio.ts",
+    "dev": "bun --watch run src/http.ts"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.12.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "ajv": "^8.20.0",
+    "hono": "^4.6.14",
     "zod": "^4.4.3"
   },
   "devDependencies": {

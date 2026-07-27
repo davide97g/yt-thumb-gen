@@ -4,11 +4,11 @@
 // session cookie) and its ApiError throws away everything but `error`. Here the 422
 // `details` array and the 200 `warnings` array are the whole point — they are what the
 // agent reads to correct itself.
+//
+// The token is bound per client rather than read from the environment, because the remote
+// HTTP transport serves many callers and has to use each request's own bearer.
 
-const BASE = (process.env.THUMB_API_URL ?? "https://thumb.davideghiotto.it").replace(/\/+$/, "");
-const TOKEN = process.env.THUMB_API_TOKEN;
-
-export const apiBase = BASE;
+export const DEFAULT_BASE = "https://thumb.davideghiotto.it";
 
 export class ApiError extends Error {
   constructor(
@@ -26,31 +26,46 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
-  if (!TOKEN) {
-    throw new ApiError(0, "THUMB_API_TOKEN is not set — mint one in Thumb Studio (Impostazioni → Token API).");
-  }
-  const res = await fetch(`${BASE}/api${path}`, {
-    method,
-    headers: {
-      authorization: `Bearer ${TOKEN}`,
-      ...(body === undefined ? {} : { "content-type": "application/json" }),
-    },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
+export type Api = {
+  baseUrl: string;
+  get<T>(path: string): Promise<T>;
+  post<T>(path: string, body?: unknown): Promise<T>;
+  put<T>(path: string, body?: unknown): Promise<T>;
+  delete<T>(path: string): Promise<T>;
+};
 
-  const isJson = res.headers.get("content-type")?.includes("application/json");
-  const payload = isJson ? await res.json().catch(() => null) : null;
+export function makeApi(token: string | undefined, baseUrl: string = DEFAULT_BASE): Api {
+  const base = baseUrl.replace(/\/+$/, "");
 
-  if (!res.ok) {
-    const message = (payload as any)?.error ?? `HTTP ${res.status}`;
-    const details = (payload as any)?.details;
-    throw new ApiError(res.status, message, Array.isArray(details) ? details : []);
+  async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+    if (!token) {
+      throw new ApiError(401, "No API token. Create one in Thumb Studio (key icon in the header) and use it as the bearer.");
+    }
+    const res = await fetch(`${base}/api${path}`, {
+      method,
+      headers: {
+        authorization: `Bearer ${token}`,
+        ...(body === undefined ? {} : { "content-type": "application/json" }),
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+
+    const isJson = res.headers.get("content-type")?.includes("application/json");
+    const payload = isJson ? await res.json().catch(() => null) : null;
+
+    if (!res.ok) {
+      const message = (payload as any)?.error ?? `HTTP ${res.status}`;
+      const details = (payload as any)?.details;
+      throw new ApiError(res.status, message, Array.isArray(details) ? details : []);
+    }
+    return payload as T;
   }
-  return payload as T;
+
+  return {
+    baseUrl: base,
+    get: (p) => request("GET", p),
+    post: (p, b) => request("POST", p, b),
+    put: (p, b) => request("PUT", p, b),
+    delete: (p) => request("DELETE", p),
+  };
 }
-
-export const apiGet = <T>(path: string) => request<T>("GET", path);
-export const apiPost = <T>(path: string, body?: unknown) => request<T>("POST", path, body);
-export const apiPut = <T>(path: string, body?: unknown) => request<T>("PUT", path, body);
-export const apiDelete = <T>(path: string) => request<T>("DELETE", path);

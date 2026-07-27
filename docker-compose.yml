@@ -37,6 +37,20 @@ services:
       postgres:
         condition: service_healthy
 
+  # Hosted MCP endpoint (nginx routes /api/mcp here, ahead of /api/). Built from the repo
+  # root because it needs the document model in src/ as well as server/src/. Holds no
+  # secrets and no state: it forwards the caller's bearer to `api`, which owns auth.
+  mcp:
+    build:
+      context: .
+      dockerfile: mcp/Dockerfile
+    restart: unless-stopped
+    environment:
+      THUMB_API_INTERNAL: http://api:3000
+      APP_URL: ${APP_URL:-http://localhost}
+    depends_on:
+      - api
+
   web:
     build:
       context: .
@@ -46,6 +60,7 @@ services:
       - "80"
     depends_on:
       - api
+      - mcp
     networks:
       # Dokploy's Traefik lives on this external network; without it the domain
       # router can never reach the container (symptom: Traefik default cert + 404).
