@@ -6,15 +6,19 @@
 // it client-side on load, which means those rows are still unmigrated in the database and
 // would start failing writes — for a field the caller never touched.
 //
-//   DATABASE_URL=postgres://… bun run scripts/validate-prod.ts
-//   DATABASE_URL=postgres://… bun run scripts/validate-prod.ts --fix-format
+// It lives inside server/ so it ships in the api image: production Postgres is not published
+// to the host, so the only way to reach it is from a container on the internal network.
 //
-// Without --fix-format nothing is written. With it, the one known backfill is applied.
+//   docker compose exec api bun run scripts/validate-prod.ts
+//   docker compose exec api bun run scripts/validate-prod.ts --fix-format
+//
+// DATABASE_URL is already set in that container. Without --fix-format nothing is written;
+// with it, the one known backfill is applied.
 
 // Reuses the server's own connection setup (and its DATABASE_URL requirement) so this audit
 // cannot drift from how the API actually reads the data.
-import { sql } from "../server/src/db";
-import { validateDoc, validateLayer } from "../server/src/validate";
+import { sql } from "../src/db";
+import { validateDoc, validateLayer } from "../src/validate";
 
 const fixFormat = process.argv.includes("--fix-format");
 
