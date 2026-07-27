@@ -1,0 +1,15 @@
+{
+  "name": "yt-thumb-gen-mcp",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "bun run src/index.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "bun-types": "^1.2.0"
+  }
+}

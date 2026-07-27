@@ -18,7 +18,12 @@ const buildTime = new Date().toISOString().slice(0, 16).replace("T", " ");
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
-  server: { port: 5174 },
+  // In production nginx proxies /api to the Bun service same-origin; this mirrors that for
+  // `bun run dev`. VITE_API_PROXY points at a locally running server/ (see its README).
+  server: {
+    port: 5174,
+    proxy: { "/api": { target: process.env.VITE_API_PROXY ?? "http://localhost:3000", changeOrigin: true } },
+  },
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
     __APP_COMMIT__: JSON.stringify(commit),

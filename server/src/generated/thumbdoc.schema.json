@@ -1,0 +1,1307 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$comment": "GENERATED FILE — do not edit. Source of truth is src/state.ts; regenerate with `bun run schema`.",
+  "$ref": "#/definitions/ThumbDoc",
+  "definitions": {
+    "ThumbDoc": {
+      "type": "object",
+      "properties": {
+        "format": {
+          "$ref": "#/definitions/FormatKey",
+          "description": "Canvas size preset; pixel dimensions via canvasSize()."
+        },
+        "background": {
+          "$ref": "#/definitions/Background"
+        },
+        "layers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Layer"
+          },
+          "description": "Painted back to front: index 0 is the bottom layer."
+        }
+      },
+      "required": [
+        "format",
+        "background",
+        "layers"
+      ],
+      "description": "A complete design document: a canvas format, a background, and a flat ordered list of layers. Array order IS paint order (index 0 is furthest back). There is no nesting — every layer carries its own absolute `x`/`y` in 1280×720 authoring space."
+    },
+    "FormatKey": {
+      "type": "string",
+      "enum": [
+        "youtube",
+        "shorts",
+        "ig-post",
+        "ig-reel",
+        "linkedin"
+      ]
+    },
+    "Background": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "gradient",
+            "solid",
+            "image",
+            "effect"
+          ]
+        },
+        "from": {
+          "type": "string",
+          "description": "Gradient start colour; also the fill when mode is \"solid\"."
+        },
+        "to": {
+          "type": "string",
+          "description": "Gradient end colour."
+        },
+        "image": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Custom background image: a `data:` URL at runtime, a `blob:<id>` ref at rest."
+        },
+        "imageZoom": {
+          "type": "number",
+          "description": "Zoom % for image mode, 100–200 (default 100 = cover)."
+        },
+        "imageX": {
+          "type": "number",
+          "description": "Horizontal nudge % for image mode, -25…25 (default 0)."
+        },
+        "imageY": {
+          "type": "number",
+          "description": "Vertical nudge % for image mode, -25…25 (default 0) — e.g. to crop out a status bar."
+        },
+        "overlay": {
+          "type": "number",
+          "description": "Darkness of the scrim over the background, 0–100. Raise it to keep text readable."
+        },
+        "effect": {
+          "$ref": "#/definitions/BgEffect",
+          "description": "Present when mode is \"effect\"."
+        },
+        "gradeTint": {
+          "type": "string",
+          "description": "Colour grade tint painted ON TOP of every layer, to make the composite cohesive."
+        },
+        "gradeAmount": {
+          "type": "number",
+          "description": "Tint strength, 0–100."
+        },
+        "gradeBlend": {
+          "type": "string",
+          "enum": [
+            "soft-light",
+            "overlay",
+            "multiply",
+            "screen",
+            "color"
+          ]
+        },
+        "gradeVignette": {
+          "type": "number",
+          "description": "Darkened edges, 0–100."
+        },
+        "gradeGrain": {
+          "type": "number",
+          "description": "Film grain, 0–100."
+        },
+        "border": {
+          "$ref": "#/definitions/BgBorder",
+          "description": "Full-canvas frame border painted on top of every layer. Absent = off."
+        }
+      },
+      "required": [
+        "mode",
+        "from",
+        "to",
+        "image",
+        "overlay"
+      ],
+      "description": "The canvas backdrop: a gradient, a flat colour, an image, or an animated effect."
+    },
+    "BgEffect": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "preset": {
+              "type": "string",
+              "const": "grainient"
+            },
+            "color1": {
+              "type": "string"
+            },
+            "color2": {
+              "type": "string"
+            },
+            "color3": {
+              "type": "string"
+            },
+            "timeSpeed": {
+              "type": "number"
+            },
+            "colorBalance": {
+              "type": "number"
+            },
+            "warpStrength": {
+              "type": "number"
+            },
+            "warpFrequency": {
+              "type": "number"
+            },
+            "warpSpeed": {
+              "type": "number"
+            },
+            "warpAmplitude": {
+              "type": "number"
+            },
+            "blendAngle": {
+              "type": "number"
+            },
+            "blendSoftness": {
+              "type": "number"
+            },
+            "rotationAmount": {
+              "type": "number"
+            },
+            "noiseScale": {
+              "type": "number"
+            },
+            "grainAmount": {
+              "type": "number"
+            },
+            "grainScale": {
+              "type": "number"
+            },
+            "grainAnimated": {
+              "type": "boolean"
+            },
+            "contrast": {
+              "type": "number"
+            },
+            "gamma": {
+              "type": "number"
+            },
+            "saturation": {
+              "type": "number"
+            },
+            "centerX": {
+              "type": "number"
+            },
+            "centerY": {
+              "type": "number"
+            },
+            "zoom": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "preset",
+            "color1",
+            "color2",
+            "color3",
+            "timeSpeed",
+            "colorBalance",
+            "warpStrength",
+            "warpFrequency",
+            "warpSpeed",
+            "warpAmplitude",
+            "blendAngle",
+            "blendSoftness",
+            "rotationAmount",
+            "noiseScale",
+            "grainAmount",
+            "grainScale",
+            "grainAnimated",
+            "contrast",
+            "gamma",
+            "saturation",
+            "centerX",
+            "centerY",
+            "zoom"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "preset": {
+              "type": "string",
+              "const": "aurora"
+            },
+            "color1": {
+              "type": "string"
+            },
+            "color2": {
+              "type": "string"
+            },
+            "color3": {
+              "type": "string"
+            },
+            "speed": {
+              "type": "number"
+            },
+            "blend": {
+              "type": "number"
+            },
+            "amplitude": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "preset",
+            "color1",
+            "color2",
+            "color3",
+            "speed",
+            "blend",
+            "amplitude"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "preset": {
+              "type": "string",
+              "const": "mesh"
+            },
+            "color1": {
+              "type": "string"
+            },
+            "color2": {
+              "type": "string"
+            },
+            "color3": {
+              "type": "string"
+            },
+            "bgColor": {
+              "type": "string"
+            },
+            "softness": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "preset",
+            "color1",
+            "color2",
+            "color3",
+            "bgColor",
+            "softness"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "preset": {
+              "type": "string",
+              "const": "dots"
+            },
+            "dotColor": {
+              "type": "string"
+            },
+            "bgColor": {
+              "type": "string"
+            },
+            "size": {
+              "type": "number"
+            },
+            "gap": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "preset",
+            "dotColor",
+            "bgColor",
+            "size",
+            "gap"
+          ]
+        }
+      ],
+      "description": "Animated background presets ported from React Bits. `grainient`/`aurora` are WebGL shaders (see EffectBackground.tsx); `mesh`/`dots` are pure CSS. Rendered only when Background.mode === \"effect\". Field names mirror the React Bits component props / Background Studio knobs 1:1."
+    },
+    "BgBorder": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "color": {
+          "type": "string"
+        },
+        "width": {
+          "type": "number",
+          "description": "Stroke thickness in px."
+        },
+        "radius": {
+          "type": "number",
+          "description": "Corner roundness of the inner edge, in px."
+        },
+        "style": {
+          "$ref": "#/definitions/BgBorderStyle"
+        },
+        "inset": {
+          "type": "number",
+          "description": "Gap between the canvas edge and the border box, in px."
+        },
+        "opacity": {
+          "type": "number",
+          "description": "Opacity, 0–100."
+        }
+      },
+      "required": [
+        "enabled",
+        "color",
+        "width",
+        "radius",
+        "style",
+        "inset",
+        "opacity"
+      ]
+    },
+    "BgBorderStyle": {
+      "type": "string",
+      "enum": [
+        "solid",
+        "dashed",
+        "dotted",
+        "double"
+      ]
+    },
+    "Layer": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/TextLayer"
+        },
+        {
+          "$ref": "#/definitions/ImageLayer"
+        },
+        {
+          "$ref": "#/definitions/EmojiLayer"
+        },
+        {
+          "$ref": "#/definitions/ShapeLayer"
+        },
+        {
+          "$ref": "#/definitions/EffectLayer"
+        },
+        {
+          "$ref": "#/definitions/DrawLayer"
+        },
+        {
+          "$ref": "#/definitions/EmojiFxLayer"
+        }
+      ]
+    },
+    "TextLayer": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "text"
+        },
+        "text": {
+          "type": "string",
+          "description": "The copy. Multi-line via \\n."
+        },
+        "font": {
+          "$ref": "#/definitions/FontKey"
+        },
+        "size": {
+          "type": "number",
+          "description": "Font size in px, in 1280×720 canvas space. Typical title: 90–140."
+        },
+        "color": {
+          "type": "string",
+          "description": "CSS colour, e.g. \"#ffffff\"."
+        },
+        "align": {
+          "type": "string",
+          "enum": [
+            "left",
+            "center",
+            "right"
+          ]
+        },
+        "lineHeight": {
+          "type": "number",
+          "description": "Line height multiplier, e.g. 1.02."
+        },
+        "opacity": {
+          "type": "number",
+          "description": "Opacity, 0–100."
+        },
+        "stroke": {
+          "type": "boolean",
+          "description": "Outline toggle."
+        },
+        "strokeWidth": {
+          "type": "number",
+          "description": "Outline thickness in px, 1280×720 space."
+        },
+        "strokeColor": {
+          "type": "string"
+        },
+        "shadow": {
+          "type": "boolean",
+          "description": "Hard drop shadow."
+        },
+        "bg": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "color": {
+              "type": "string"
+            },
+            "padX": {
+              "type": "number"
+            },
+            "padY": {
+              "type": "number"
+            },
+            "radius": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "enabled",
+            "color",
+            "padX",
+            "padY",
+            "radius"
+          ],
+          "description": "Optional background pill behind the text — turns a Text layer into a badge/pill."
+        },
+        "fx": {
+          "$ref": "#/definitions/TextFx",
+          "description": "Optional special effect; absent or kind \"none\" = plain fill."
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string",
+          "description": "Shown in the layer list."
+        },
+        "x": {
+          "type": "number",
+          "description": "Left edge, in 1280×720 canvas space."
+        },
+        "y": {
+          "type": "number",
+          "description": "Top edge, in 1280×720 canvas space."
+        },
+        "rotation": {
+          "type": "number",
+          "description": "Rotation in degrees."
+        },
+        "visible": {
+          "type": "boolean"
+        },
+        "groupId": {
+          "type": "string",
+          "description": "Shared across grouped layers; absent = ungrouped. ponytail: logical-only, no z-order reflow, no nesting."
+        }
+      },
+      "required": [
+        "align",
+        "bg",
+        "color",
+        "font",
+        "id",
+        "lineHeight",
+        "name",
+        "opacity",
+        "rotation",
+        "shadow",
+        "size",
+        "stroke",
+        "strokeColor",
+        "strokeWidth",
+        "text",
+        "type",
+        "visible",
+        "x",
+        "y"
+      ],
+      "description": "A run of text. Today's title lines, badge, and episode pill are all Text layers."
+    },
+    "FontKey": {
+      "type": "string",
+      "enum": [
+        "archivo",
+        "inter",
+        "georgia",
+        "mono",
+        "bebas",
+        "anton",
+        "oswald",
+        "leagueGothic",
+        "leagueSpartan",
+        "montserrat",
+        "poppins",
+        "robotoCondensed",
+        "luckiestGuy",
+        "bangers",
+        "sfpro",
+        "helvetica",
+        "segoe",
+        "crimsonPro",
+        "geistMono",
+        "libreBaskerville",
+        "lobster",
+        "spaceGrotesk",
+        "anthropicSans"
+      ]
+    },
+    "TextFx": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "none"
+            }
+          },
+          "required": [
+            "kind"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "gradient"
+            },
+            "colors": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 3,
+              "maxItems": 3
+            },
+            "speed": {
+              "type": "number"
+            },
+            "direction": {
+              "type": "string",
+              "enum": [
+                "horizontal",
+                "vertical",
+                "diagonal"
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "colors",
+            "speed",
+            "direction"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "shiny"
+            },
+            "color": {
+              "type": "string"
+            },
+            "shineColor": {
+              "type": "string"
+            },
+            "spread": {
+              "type": "number"
+            },
+            "speed": {
+              "type": "number"
+            },
+            "direction": {
+              "type": "string",
+              "enum": [
+                "left",
+                "right"
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "color",
+            "shineColor",
+            "spread",
+            "speed",
+            "direction"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "glitch"
+            },
+            "speed": {
+              "type": "number"
+            },
+            "color1": {
+              "type": "string"
+            },
+            "color2": {
+              "type": "string"
+            },
+            "enableShadows": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "kind",
+            "speed",
+            "color1",
+            "color2",
+            "enableShadows"
+          ]
+        }
+      ],
+      "description": "A pure-CSS text effect (React Bits-inspired). All variants render via background-clip or text-shadow so they're captured 1:1 by html-to-image on export. See ThumbCanvas."
+    },
+    "ImageLayer": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "image"
+        },
+        "src": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Image source: a `data:` URL at runtime, a `blob:<id>` ref at rest. Null while empty or when `brand` is set. Agents cannot upload bytes — use `brand`, or leave null."
+        },
+        "origSrc": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Pre-background-removal original, for \"Ripristina\". Same encoding as `src`."
+        },
+        "brand": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "logo",
+            "wordmark",
+            null
+          ],
+          "description": "Built-in Claude SVG mark; overrides `src` when set. Needs no upload."
+        },
+        "brandColor": {
+          "type": "string",
+          "description": "Fill colour for the brand mark."
+        },
+        "scale": {
+          "type": "number",
+          "description": "Size factor; 1 = base width (see BASE_IMG_W / brand bases in ThumbCanvas)."
+        },
+        "opacity": {
+          "type": "number",
+          "description": "Opacity, 0–100."
+        },
+        "flip": {
+          "type": "boolean",
+          "description": "Mirror horizontally."
+        },
+        "radius": {
+          "type": "number",
+          "description": "Corner radius in px."
+        },
+        "ring": {
+          "type": "boolean",
+          "description": "Solid border."
+        },
+        "ringColor": {
+          "type": "string"
+        },
+        "glow": {
+          "type": "boolean",
+          "description": "Glow tracing the cut-out alpha edge."
+        },
+        "glowStyle": {
+          "type": "string",
+          "enum": [
+            "glow",
+            "line"
+          ],
+          "description": "Soft glow vs. solid sticker outline."
+        },
+        "glowColor": {
+          "type": "string"
+        },
+        "glowSize": {
+          "type": "number"
+        },
+        "brightness": {
+          "type": "number",
+          "description": "Brightness via CSS filter, in % (100 = neutral). Absent reads as 100."
+        },
+        "contrast": {
+          "type": "number",
+          "description": "Contrast via CSS filter, in % (100 = neutral). Absent reads as 100."
+        },
+        "saturation": {
+          "type": "number",
+          "description": "Saturation via CSS filter, in % (100 = neutral). Absent reads as 100."
+        },
+        "crop": {
+          "type": "object",
+          "properties": {
+            "l": {
+              "type": "number"
+            },
+            "t": {
+              "type": "number"
+            },
+            "r": {
+              "type": "number"
+            },
+            "b": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "l",
+            "t",
+            "r",
+            "b"
+          ],
+          "description": "Non-destructive crop: edge insets as fractions 0–1 of the full image; absent = uncropped. `src` is never altered — this just hides parts of it."
+        },
+        "mask": {
+          "type": "object",
+          "properties": {
+            "points": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number"
+                  },
+                  "y": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ]
+              }
+            }
+          },
+          "required": [
+            "points"
+          ],
+          "description": "Lasso polygon in full-image fractions; absent = no lasso. `crop` holds its bbox."
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string",
+          "description": "Shown in the layer list."
+        },
+        "x": {
+          "type": "number",
+          "description": "Left edge, in 1280×720 canvas space."
+        },
+        "y": {
+          "type": "number",
+          "description": "Top edge, in 1280×720 canvas space."
+        },
+        "rotation": {
+          "type": "number",
+          "description": "Rotation in degrees."
+        },
+        "visible": {
+          "type": "boolean"
+        },
+        "groupId": {
+          "type": "string",
+          "description": "Shared across grouped layers; absent = ungrouped. ponytail: logical-only, no z-order reflow, no nesting."
+        }
+      },
+      "required": [
+        "brand",
+        "brandColor",
+        "flip",
+        "glow",
+        "glowColor",
+        "glowSize",
+        "glowStyle",
+        "id",
+        "name",
+        "opacity",
+        "origSrc",
+        "radius",
+        "ring",
+        "ringColor",
+        "rotation",
+        "scale",
+        "src",
+        "type",
+        "visible",
+        "x",
+        "y"
+      ],
+      "description": "An uploaded/captured photo, or a built-in Claude brand mark (logo/wordmark)."
+    },
+    "EmojiLayer": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "emoji"
+        },
+        "glyph": {
+          "type": "string",
+          "description": "The emoji character itself, e.g. \"🤯\"."
+        },
+        "size": {
+          "type": "number",
+          "description": "Rendered size in px, 1280×720 space."
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string",
+          "description": "Shown in the layer list."
+        },
+        "x": {
+          "type": "number",
+          "description": "Left edge, in 1280×720 canvas space."
+        },
+        "y": {
+          "type": "number",
+          "description": "Top edge, in 1280×720 canvas space."
+        },
+        "rotation": {
+          "type": "number",
+          "description": "Rotation in degrees."
+        },
+        "visible": {
+          "type": "boolean"
+        },
+        "groupId": {
+          "type": "string",
+          "description": "Shared across grouped layers; absent = ungrouped. ponytail: logical-only, no z-order reflow, no nesting."
+        }
+      },
+      "required": [
+        "glyph",
+        "id",
+        "name",
+        "rotation",
+        "size",
+        "type",
+        "visible",
+        "x",
+        "y"
+      ],
+      "description": "A single emoji / glyph."
+    },
+    "ShapeLayer": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "shape"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "rect",
+            "pill",
+            "bar"
+          ]
+        },
+        "fill": {
+          "type": "string"
+        },
+        "w": {
+          "type": "number",
+          "description": "Width in 1280×720 space."
+        },
+        "h": {
+          "type": "number",
+          "description": "Height in 1280×720 space."
+        },
+        "radius": {
+          "type": "number",
+          "description": "Corner radius. Ignored for \"pill\" (auto) and \"bar\"."
+        },
+        "pct": {
+          "type": "number",
+          "description": "\"bar\" only: watched fraction, 0–100."
+        },
+        "trackColor": {
+          "type": "string",
+          "description": "\"bar\" only: unwatched track colour."
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string",
+          "description": "Shown in the layer list."
+        },
+        "x": {
+          "type": "number",
+          "description": "Left edge, in 1280×720 canvas space."
+        },
+        "y": {
+          "type": "number",
+          "description": "Top edge, in 1280×720 canvas space."
+        },
+        "rotation": {
+          "type": "number",
+          "description": "Rotation in degrees."
+        },
+        "visible": {
+          "type": "boolean"
+        },
+        "groupId": {
+          "type": "string",
+          "description": "Shared across grouped layers; absent = ungrouped. ponytail: logical-only, no z-order reflow, no nesting."
+        }
+      },
+      "required": [
+        "fill",
+        "h",
+        "id",
+        "kind",
+        "name",
+        "pct",
+        "radius",
+        "rotation",
+        "trackColor",
+        "type",
+        "visible",
+        "w",
+        "x",
+        "y"
+      ],
+      "description": "A rectangle, pill, or the fake YouTube \"watched\" progress bar."
+    },
+    "EffectLayer": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "effect"
+        },
+        "w": {
+          "type": "number",
+          "description": "Box width in 1280×720 space."
+        },
+        "h": {
+          "type": "number",
+          "description": "Box height in 1280×720 space."
+        },
+        "radius": {
+          "type": "number",
+          "description": "Corner radius in px."
+        },
+        "effect": {
+          "$ref": "#/definitions/BgEffect",
+          "description": "Preset + params — same shape as a Background effect."
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string",
+          "description": "Shown in the layer list."
+        },
+        "x": {
+          "type": "number",
+          "description": "Left edge, in 1280×720 canvas space."
+        },
+        "y": {
+          "type": "number",
+          "description": "Top edge, in 1280×720 canvas space."
+        },
+        "rotation": {
+          "type": "number",
+          "description": "Rotation in degrees."
+        },
+        "visible": {
+          "type": "boolean"
+        },
+        "groupId": {
+          "type": "string",
+          "description": "Shared across grouped layers; absent = ungrouped. ponytail: logical-only, no z-order reflow, no nesting."
+        }
+      },
+      "required": [
+        "effect",
+        "h",
+        "id",
+        "name",
+        "radius",
+        "rotation",
+        "type",
+        "visible",
+        "w",
+        "x",
+        "y"
+      ],
+      "description": "A React Bits background effect dropped onto the canvas as a movable, resizable box."
+    },
+    "DrawLayer": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "draw"
+        },
+        "points": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ]
+          },
+          "description": "Stroke path, bbox-relative (0..rawW, 0..rawH) in 1280×720 units."
+        },
+        "rawW": {
+          "type": "number",
+          "description": "Raw stroke bbox width (no padding) — constant."
+        },
+        "rawH": {
+          "type": "number",
+          "description": "Raw stroke bbox height (no padding) — constant."
+        },
+        "scale": {
+          "type": "number",
+          "description": "Resize factor; 1 = drawn size."
+        },
+        "color": {
+          "type": "string"
+        },
+        "thickness": {
+          "type": "number",
+          "description": "Stroke width in 1280×720 units."
+        },
+        "lineStyle": {
+          "type": "string",
+          "enum": [
+            "solid",
+            "dashed",
+            "dotted"
+          ]
+        },
+        "smoothing": {
+          "type": "number",
+          "description": "0–100: how aggressively the captured polyline is simplified before splining."
+        },
+        "startCap": {
+          "$ref": "#/definitions/DrawCap"
+        },
+        "endCap": {
+          "$ref": "#/definitions/DrawCap"
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string",
+          "description": "Shown in the layer list."
+        },
+        "x": {
+          "type": "number",
+          "description": "Left edge, in 1280×720 canvas space."
+        },
+        "y": {
+          "type": "number",
+          "description": "Top edge, in 1280×720 canvas space."
+        },
+        "rotation": {
+          "type": "number",
+          "description": "Rotation in degrees."
+        },
+        "visible": {
+          "type": "boolean"
+        },
+        "groupId": {
+          "type": "string",
+          "description": "Shared across grouped layers; absent = ungrouped. ponytail: logical-only, no z-order reflow, no nesting."
+        }
+      },
+      "required": [
+        "color",
+        "endCap",
+        "id",
+        "lineStyle",
+        "name",
+        "points",
+        "rawH",
+        "rawW",
+        "rotation",
+        "scale",
+        "smoothing",
+        "startCap",
+        "thickness",
+        "type",
+        "visible",
+        "x",
+        "y"
+      ],
+      "description": "A freehand stroke. Points are bbox-relative (0..rawW, 0..rawH) in 1280×720 units. The rendered box pads the raw bbox by an amount derived from thickness + caps so the selection frame always hugs the *visible* ink (stroke + arrowheads), and `scale` resizes the whole thing like an image. x/y is the padded box's top-left."
+    },
+    "DrawCap": {
+      "type": "string",
+      "enum": [
+        "none",
+        "arrow",
+        "dot",
+        "tee"
+      ]
+    },
+    "EmojiFxLayer": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "emojifx"
+        },
+        "targetId": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Id of the image layer this wraps; null or missing = centered orphan fallback."
+        },
+        "pattern": {
+          "type": "string",
+          "enum": [
+            "ring",
+            "scatter",
+            "burst"
+          ]
+        },
+        "glyphs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Emoji set, distributed round-robin over `count`."
+        },
+        "count": {
+          "type": "number",
+          "description": "Number of emoji instances."
+        },
+        "size": {
+          "type": "number",
+          "description": "Base emoji size in px (1280×720 space); depth-scaled per emoji."
+        },
+        "sizeJitter": {
+          "type": "number",
+          "description": "Random size variance, 0–100."
+        },
+        "radius": {
+          "type": "number",
+          "description": "Ellipse radiusX (ring) / spread radius (scatter, burst), in canvas units."
+        },
+        "tilt": {
+          "type": "number",
+          "description": "0–1: radiusY = radius * tilt (flattens the ring into an orbit). Ring only."
+        },
+        "depth": {
+          "type": "number",
+          "description": "0–100: front-to-back scale & opacity contrast (the \"3D\" look)."
+        },
+        "spin": {
+          "type": "number",
+          "description": "Random per-emoji rotation amount, 0–100."
+        },
+        "seed": {
+          "type": "number",
+          "description": "Seeds the PRNG so the arrangement is stable across render/undo/save/export."
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string",
+          "description": "Shown in the layer list."
+        },
+        "x": {
+          "type": "number",
+          "description": "Left edge, in 1280×720 canvas space."
+        },
+        "y": {
+          "type": "number",
+          "description": "Top edge, in 1280×720 canvas space."
+        },
+        "rotation": {
+          "type": "number",
+          "description": "Rotation in degrees."
+        },
+        "visible": {
+          "type": "boolean"
+        },
+        "groupId": {
+          "type": "string",
+          "description": "Shared across grouped layers; absent = ungrouped. ponytail: logical-only, no z-order reflow, no nesting."
+        }
+      },
+      "required": [
+        "count",
+        "depth",
+        "glyphs",
+        "id",
+        "name",
+        "pattern",
+        "radius",
+        "rotation",
+        "seed",
+        "size",
+        "sizeJitter",
+        "spin",
+        "targetId",
+        "tilt",
+        "type",
+        "visible",
+        "x",
+        "y"
+      ],
+      "description": "A field of emojis (confetti / fireworks / sparkles / 3D orbit) wrapping a target image. Bound: it centers on `targetId`'s bbox and is rendered straddling that image (some emojis behind, some in front). `x`/`y` are only used for the orphan fallback."
+    }
+  }
+}

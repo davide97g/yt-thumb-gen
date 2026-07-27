@@ -148,16 +148,22 @@ export const FONT_LABELS: Record<FontKey, string> = {
 
 export type LayerType = "text" | "image" | "emoji" | "shape" | "effect" | "draw" | "emojifx";
 
-/** Fields shared by every layer. */
+/** Fields shared by every layer. `type` is deliberately absent: each concrete layer
+ *  declares its own literal, which keeps the union discriminated all the way into the
+ *  generated JSON Schema (a wide `type: LayerType` here would merge ambiguously). */
 type LayerBase = {
   id: string;
-  type: LayerType;
-  name: string; // shown in the layer list
-  x: number; // top-left, 1280×720 space
+  /** Shown in the layer list. */
+  name: string;
+  /** Left edge, in 1280×720 canvas space. */
+  x: number;
+  /** Top edge, in 1280×720 canvas space. */
   y: number;
-  rotation: number; // degrees
+  /** Rotation in degrees. */
+  rotation: number;
   visible: boolean;
-  groupId?: string; // shared across grouped layers; absent = ungrouped. ponytail: logical-only, no z-order reflow, no nesting.
+  /** Shared across grouped layers; absent = ungrouped. ponytail: logical-only, no z-order reflow, no nesting. */
+  groupId?: string;
 };
 
 /**
@@ -189,52 +195,79 @@ export const SIZE_LIMITS = {
 /** A run of text. Today's title lines, badge, and episode pill are all Text layers. */
 export type TextLayer = LayerBase & {
   type: "text";
-  text: string; // multi-line via \n
+  /** The copy. Multi-line via \n. */
+  text: string;
   font: FontKey;
-  size: number; // px in 1280×720 space
+  /** Font size in px, in 1280×720 canvas space. Typical title: 90–140. */
+  size: number;
+  /** CSS colour, e.g. "#ffffff". */
   color: string;
   align: "left" | "center" | "right";
+  /** Line height multiplier, e.g. 1.02. */
   lineHeight: number;
-  opacity: number; // 0–100
-  stroke: boolean; // outline toggle
-  strokeWidth: number; // outline thickness px (1280×720 space)
+  /** Opacity, 0–100. */
+  opacity: number;
+  /** Outline toggle. */
+  stroke: boolean;
+  /** Outline thickness in px, 1280×720 space. */
+  strokeWidth: number;
   strokeColor: string;
-  shadow: boolean; // hard drop shadow
+  /** Hard drop shadow. */
+  shadow: boolean;
   /** Optional background pill behind the text — turns a Text layer into a badge/pill. */
   bg: { enabled: boolean; color: string; padX: number; padY: number; radius: number };
-  fx?: TextFx; // optional special effect; absent/"none" = plain fill
+  /** Optional special effect; absent or kind "none" = plain fill. */
+  fx?: TextFx;
 };
 
 /** An uploaded/captured photo, or a built-in Claude brand mark (logo/wordmark). */
 export type ImageLayer = LayerBase & {
   type: "image";
-  src: string | null; // dataURL; null while empty or when `brand` is set
-  origSrc: string | null; // pre-background-removal original, for "Ripristina"
-  brand: "logo" | "wordmark" | null; // built-in Claude SVG mark; overrides src when set
-  brandColor: string; // fill colour for the brand mark
-  scale: number; // 1 = base width (see BASE_IMG_W / brand bases in ThumbCanvas)
-  opacity: number; // 0–100
+  /** Image source: a `data:` URL at runtime, a `blob:<id>` ref at rest. Null while empty
+   *  or when `brand` is set. Agents cannot upload bytes — use `brand`, or leave null. */
+  src: string | null;
+  /** Pre-background-removal original, for "Ripristina". Same encoding as `src`. */
+  origSrc: string | null;
+  /** Built-in Claude SVG mark; overrides `src` when set. Needs no upload. */
+  brand: "logo" | "wordmark" | null;
+  /** Fill colour for the brand mark. */
+  brandColor: string;
+  /** Size factor; 1 = base width (see BASE_IMG_W / brand bases in ThumbCanvas). */
+  scale: number;
+  /** Opacity, 0–100. */
+  opacity: number;
+  /** Mirror horizontally. */
   flip: boolean;
-  radius: number; // corner radius px
-  ring: boolean; // solid border
+  /** Corner radius in px. */
+  radius: number;
+  /** Solid border. */
+  ring: boolean;
   ringColor: string;
-  glow: boolean; // glow tracing the cut-out alpha edge
-  glowStyle: "glow" | "line"; // soft glow vs. solid sticker outline
+  /** Glow tracing the cut-out alpha edge. */
+  glow: boolean;
+  /** Soft glow vs. solid sticker outline. */
+  glowStyle: "glow" | "line";
   glowColor: string;
   glowSize: number;
-  // Light/colour tweaks via CSS filter, in % (100 = neutral). Optional → old docs read as 100.
+  /** Brightness via CSS filter, in % (100 = neutral). Absent reads as 100. */
   brightness?: number;
+  /** Contrast via CSS filter, in % (100 = neutral). Absent reads as 100. */
   contrast?: number;
+  /** Saturation via CSS filter, in % (100 = neutral). Absent reads as 100. */
   saturation?: number;
-  // Non-destructive crop. `src` is never altered — these just hide parts of it.
-  crop?: { l: number; t: number; r: number; b: number }; // edge insets, fractions 0–1 of the full image; absent = uncropped
-  mask?: { points: { x: number; y: number }[] }; // lasso polygon in full-image fractions; absent = no lasso. `crop` holds its bbox.
+  /** Non-destructive crop: edge insets as fractions 0–1 of the full image; absent =
+   *  uncropped. `src` is never altered — this just hides parts of it. */
+  crop?: { l: number; t: number; r: number; b: number };
+  /** Lasso polygon in full-image fractions; absent = no lasso. `crop` holds its bbox. */
+  mask?: { points: { x: number; y: number }[] };
 };
 
 /** A single emoji / glyph. */
 export type EmojiLayer = LayerBase & {
   type: "emoji";
+  /** The emoji character itself, e.g. "🤯". */
   glyph: string;
+  /** Rendered size in px, 1280×720 space. */
   size: number;
 };
 
@@ -243,17 +276,27 @@ export type EmojiLayer = LayerBase & {
  *  emojis behind, some in front). `x`/`y` are only used for the orphan fallback. */
 export type EmojiFxLayer = LayerBase & {
   type: "emojifx";
-  targetId: string | null; // image layer this wraps; null / missing = centered orphan fallback
+  /** Id of the image layer this wraps; null or missing = centered orphan fallback. */
+  targetId: string | null;
   pattern: "ring" | "scatter" | "burst";
-  glyphs: string[]; // multi-select set, distributed round-robin over `count`
-  count: number; // number of emoji instances
-  size: number; // base emoji px (1280×720 space); depth-scaled per emoji
-  sizeJitter: number; // 0–100 random size variance
-  radius: number; // ellipse radiusX (ring) / spread radius (scatter, burst), canvas units
-  tilt: number; // 0–1: radiusY = radius * tilt (flattens the ring into an orbit). ring only.
-  depth: number; // 0–100: front↔back scale & opacity contrast (the "3D" look)
-  spin: number; // 0–100 random per-emoji rotation amount
-  seed: number; // seeds the PRNG → arrangement stable across render/undo/save/export
+  /** Emoji set, distributed round-robin over `count`. */
+  glyphs: string[];
+  /** Number of emoji instances. */
+  count: number;
+  /** Base emoji size in px (1280×720 space); depth-scaled per emoji. */
+  size: number;
+  /** Random size variance, 0–100. */
+  sizeJitter: number;
+  /** Ellipse radiusX (ring) / spread radius (scatter, burst), in canvas units. */
+  radius: number;
+  /** 0–1: radiusY = radius * tilt (flattens the ring into an orbit). Ring only. */
+  tilt: number;
+  /** 0–100: front-to-back scale & opacity contrast (the "3D" look). */
+  depth: number;
+  /** Random per-emoji rotation amount, 0–100. */
+  spin: number;
+  /** Seeds the PRNG so the arrangement is stable across render/undo/save/export. */
+  seed: number;
 };
 
 /** A rectangle, pill, or the fake YouTube "watched" progress bar. */
@@ -261,20 +304,29 @@ export type ShapeLayer = LayerBase & {
   type: "shape";
   kind: "rect" | "pill" | "bar";
   fill: string;
+  /** Width in 1280×720 space. */
   w: number;
+  /** Height in 1280×720 space. */
   h: number;
-  radius: number; // corner radius (ignored for "pill" — auto — and "bar")
-  pct: number; // "bar" only: watched fraction 0–100
-  trackColor: string; // "bar" only: unwatched track colour
+  /** Corner radius. Ignored for "pill" (auto) and "bar". */
+  radius: number;
+  /** "bar" only: watched fraction, 0–100. */
+  pct: number;
+  /** "bar" only: unwatched track colour. */
+  trackColor: string;
 };
 
 /** A React Bits background effect dropped onto the canvas as a movable, resizable box. */
 export type EffectLayer = LayerBase & {
   type: "effect";
-  w: number; // box width in 1280×720 space
-  h: number; // box height
-  radius: number; // corner radius
-  effect: BgEffect; // preset + params — same shape as a Background effect
+  /** Box width in 1280×720 space. */
+  w: number;
+  /** Box height in 1280×720 space. */
+  h: number;
+  /** Corner radius in px. */
+  radius: number;
+  /** Preset + params — same shape as a Background effect. */
+  effect: BgEffect;
 };
 
 export type DrawCap = "none" | "arrow" | "dot" | "tee";
@@ -285,14 +337,20 @@ export type DrawCap = "none" | "arrow" | "dot" | "tee";
  *  resizes the whole thing like an image. x/y is the padded box's top-left. */
 export type DrawLayer = LayerBase & {
   type: "draw";
-  points: { x: number; y: number }[]; // bbox-relative, 1280×720 units
-  rawW: number; // raw stroke bbox width (no padding) — constant
-  rawH: number; // raw stroke bbox height — constant
-  scale: number; // resize factor (1 = drawn size)
+  /** Stroke path, bbox-relative (0..rawW, 0..rawH) in 1280×720 units. */
+  points: { x: number; y: number }[];
+  /** Raw stroke bbox width (no padding) — constant. */
+  rawW: number;
+  /** Raw stroke bbox height (no padding) — constant. */
+  rawH: number;
+  /** Resize factor; 1 = drawn size. */
+  scale: number;
   color: string;
-  thickness: number; // stroke width in 1280×720 units
+  /** Stroke width in 1280×720 units. */
+  thickness: number;
   lineStyle: "solid" | "dashed" | "dotted";
-  smoothing: number; // 0–100: how aggressively the captured polyline is simplified before splining
+  /** 0–100: how aggressively the captured polyline is simplified before splining. */
+  smoothing: number;
   startCap: DrawCap;
   endCap: DrawCap;
 };
@@ -352,23 +410,35 @@ export type BgEffect =
   | { preset: "mesh"; color1: string; color2: string; color3: string; bgColor: string; softness: number }
   | { preset: "dots"; dotColor: string; bgColor: string; size: number; gap: number };
 
+/** The canvas backdrop: a gradient, a flat colour, an image, or an animated effect. */
 export type Background = {
   mode: "gradient" | "solid" | "image" | "effect";
+  /** Gradient start colour; also the fill when mode is "solid". */
   from: string;
+  /** Gradient end colour. */
   to: string;
-  image: string | null; // dataURL for a custom background image
-  imageZoom?: number; // 100–200 zoom % for image mode (default 100 = cover)
-  imageX?: number; // -25…25 horizontal nudge % for image mode (default 0)
-  imageY?: number; // -25…25 vertical nudge % for image mode (default 0), to crop out e.g. a top status bar
-  overlay: number; // 0–100 darkness of the scrim over the background
-  effect?: BgEffect; // present when mode === "effect"
-  // Global colour grade painted ON TOP of every layer, to make the whole composite cohesive. All optional.
-  gradeTint?: string; // tint colour
-  gradeAmount?: number; // 0–100 tint strength
+  /** Custom background image: a `data:` URL at runtime, a `blob:<id>` ref at rest. */
+  image: string | null;
+  /** Zoom % for image mode, 100–200 (default 100 = cover). */
+  imageZoom?: number;
+  /** Horizontal nudge % for image mode, -25…25 (default 0). */
+  imageX?: number;
+  /** Vertical nudge % for image mode, -25…25 (default 0) — e.g. to crop out a status bar. */
+  imageY?: number;
+  /** Darkness of the scrim over the background, 0–100. Raise it to keep text readable. */
+  overlay: number;
+  /** Present when mode is "effect". */
+  effect?: BgEffect;
+  /** Colour grade tint painted ON TOP of every layer, to make the composite cohesive. */
+  gradeTint?: string;
+  /** Tint strength, 0–100. */
+  gradeAmount?: number;
   gradeBlend?: "soft-light" | "overlay" | "multiply" | "screen" | "color";
-  gradeVignette?: number; // 0–100 darkened edges
-  gradeGrain?: number; // 0–100 film grain
-  /** Full-canvas frame border painted on top of every layer. All optional — absent = off. */
+  /** Darkened edges, 0–100. */
+  gradeVignette?: number;
+  /** Film grain, 0–100. */
+  gradeGrain?: number;
+  /** Full-canvas frame border painted on top of every layer. Absent = off. */
   border?: BgBorder;
 };
 
@@ -377,11 +447,15 @@ export type BgBorderStyle = "solid" | "dashed" | "dotted" | "double";
 export type BgBorder = {
   enabled: boolean;
   color: string;
-  width: number; // px, thickness of the stroke
-  radius: number; // px, corner roundness of the inner edge
+  /** Stroke thickness in px. */
+  width: number;
+  /** Corner roundness of the inner edge, in px. */
+  radius: number;
   style: BgBorderStyle;
-  inset: number; // px, gap between the canvas edge and the border box
-  opacity: number; // 0–100
+  /** Gap between the canvas edge and the border box, in px. */
+  inset: number;
+  /** Opacity, 0–100. */
+  opacity: number;
 };
 
 /** Fresh defaults for the full-canvas border — thick black frame with rounded inner corners. */
@@ -446,10 +520,17 @@ export function defaultFx(kind: TextFx["kind"]): TextFx {
   }
 }
 
+/**
+ * A complete design document: a canvas format, a background, and a flat ordered list of
+ * layers. Array order IS paint order (index 0 is furthest back). There is no nesting —
+ * every layer carries its own absolute `x`/`y` in 1280×720 authoring space.
+ */
 export type ThumbDoc = {
-  format: FormatKey; // canvas size preset; dims via canvasSize()
+  /** Canvas size preset; pixel dimensions via canvasSize(). */
+  format: FormatKey;
   background: Background;
-  layers: Layer[]; // back → front
+  /** Painted back to front: index 0 is the bottom layer. */
+  layers: Layer[];
 };
 
 export type AppState = { doc: ThumbDoc; selectedIds: string[] };

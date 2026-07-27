@@ -1,5 +1,5 @@
 import { useEffect, useReducer, useRef, useState } from "react";
-import { Download, Layers, LogOut, Maximize2, PanelsTopLeft, Redo2, SlidersHorizontal, Undo2, X } from "lucide-react";
+import { Download, KeyRound, Layers, LogOut, Maximize2, PanelsTopLeft, Redo2, SlidersHorizontal, Undo2, X } from "lucide-react";
 import { ThumbCanvas, type CropMode } from "./components/ThumbCanvas";
 import { Inspector, BackgroundInspector, FormatSection } from "./components/Inspector";
 import { LayerList } from "./components/LayerList";
@@ -7,6 +7,7 @@ import { SavesPanel } from "./components/SavesPanel";
 import { ManageStarredDialog, StarredCommandDialog, StarredPanel } from "./components/StarredPanel";
 import { ProjectHeader } from "./components/ProjectHeader";
 import { NewProjectDialog } from "./components/NewProjectDialog";
+import { TokensDialog } from "./components/TokensDialog";
 import { useAuth } from "./components/AuthGate";
 import { Toolbar } from "./components/Toolbar";
 import { Field, Section } from "./components/controls";
@@ -14,7 +15,7 @@ import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
 import { exportThumb } from "./lib/export";
 import { loadImageFile } from "./lib/loadImageFile";
-import { getProject, getWorking, renameConfig, saveConfig, setProject, setWorking, starLayer } from "./lib/storage";
+import { getProject, getWorking, loadConfig, renameConfig, saveConfig, setProject, setWorking, starLayer } from "./lib/storage";
 import { FORMATS, canvasSize, historyReducer, initHistory, newImageLayer, primaryId, type AppState, type FontKey, type Layer, type ThumbDoc } from "./state";
 import { TEMPLATES } from "./presets";
 import { useIsMobile } from "./lib/useIsMobile";
@@ -39,6 +40,7 @@ export default function App() {
   const [starredKey, setStarredKey] = useState(0);
   const [cmdkOpen, setCmdkOpen] = useState(false);
   const [manageStarredOpen, setManageStarredOpen] = useState(false);
+  const [tokensOpen, setTokensOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [fileName, setFileName] = useState("thumb.png");
@@ -85,12 +87,29 @@ export default function App() {
 
   // Hydrate working canvas + its project identity once on mount (falls back to
   // the seeded template). The hydrated doc becomes the clean baseline.
+  //
+  // `?project=<id>` overrides that and opens a specific saved project instead. This is how
+  // a link handed back by the MCP server lands the agent's design in front of the user.
   useEffect(() => {
-    Promise.all([getWorking(), getProject()])
-      .then(([d, p]) => {
-        if (d) { savedDocRef.current = d; dispatch({ type: "loadDoc", doc: d }); }
-        if (p) { setProjectName(p.name); setProjectId(p.id); }
-      })
+    const wanted = new URLSearchParams(window.location.search).get("project");
+
+    const open = wanted
+      ? loadConfig(wanted).then((saved) => {
+          adoptProject(saved.doc, saved.name, saved.id, saved.updatedAt);
+          // Drop the param so a later reload restores the working canvas normally.
+          window.history.replaceState(null, "", window.location.pathname);
+        })
+      : Promise.reject(new Error("no deep link"));
+
+    // Falling back on failure matters: a stale or foreign id must not strand the editor.
+    open
+      .catch(() =>
+        Promise.all([getWorking(), getProject()]).then(([d, p]) => {
+          if (d) { savedDocRef.current = d; dispatch({ type: "loadDoc", doc: d }); }
+          if (p) { setProjectName(p.name); setProjectId(p.id); }
+          if (wanted) setMessage("Progetto non trovato.");
+        })
+      )
       .catch(() => {})
       .finally(() => setHydrated(true));
   }, []);
@@ -359,6 +378,16 @@ export default function App() {
             variant="ghost"
             size="icon-sm"
             className="text-muted-foreground hover:text-foreground"
+            onClick={() => setTokensOpen(true)}
+            title="Token API"
+            aria-label="Token API"
+          >
+            <KeyRound />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="text-muted-foreground hover:text-foreground"
             onClick={() => void logout()}
             title="Esci"
             aria-label="Esci"
@@ -515,6 +544,8 @@ export default function App() {
           onError={setMessage}
         />
       )}
+
+      {tokensOpen && <TokensDialog onClose={() => setTokensOpen(false)} />}
     </div>
   );
 }

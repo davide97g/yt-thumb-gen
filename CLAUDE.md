@@ -6,12 +6,23 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 bun install        # install deps (npm also works; bun.lock is the source of truth)
-bun run dev        # Vite dev server on http://localhost:5174
+bun run dev        # Vite dev server on http://localhost:5174 (proxies /api → VITE_API_PROXY)
 bun run build      # production build → dist/
-bun run check      # tsc --noEmit — the only check; run before every PR, must pass
+bun run schema     # regenerate server/src/generated/thumbdoc.schema.json from src/state.ts
+bun run test       # bun test
+bun run check      # tsc --noEmit + schema drift check + tests — the gate, must pass before every PR
 ```
 
-There is **no test suite, linter, or formatter** configured. `bun run check` (TypeScript) is the gate.
+There is **no linter or formatter** configured. `bun run check` is the gate: it runs TypeScript,
+asserts the generated JSON Schema is not stale, and runs `bun test`.
+
+`server/` and `mcp/` are separate packages with their own deps and tsconfigs — typecheck them
+explicitly (`bunx tsc --noEmit -p server`, `-p mcp`) after touching them; the root `check` does
+not. Root `bun test` reaches into `server/src/validate.ts`, which is why `ajv` is a root devDep
+too: it lets one `bun install` at the root run the whole suite.
+
+**Any change to the layer/document types in `src/state.ts` requires `bun run schema`** and
+committing the regenerated file, or `check` fails.
 
 Background-removal sidecar (optional, dev only — see `bgremove/README.md`):
 
@@ -25,7 +36,11 @@ Single-page React editor for YouTube thumbnails (fixed 1280×720). No router, no
 
 ### The document model is the core abstraction — `src/state.ts`
 
-A thumbnail is a `ThumbDoc` = a `background` + a **flat, ordered array of layers**. Array order *is* paint order (index 0 = back). There is no nesting/grouping; every layer holds its own `x, y` in 1280×720 coordinate space. Four layer types: `TextLayer` (also used for badges/pills via its `bg` field), `ImageLayer` (uploaded/webcam photo, or a built-in Claude brand mark selected by the `brand` field), `EmojiLayer`, `ShapeLayer` (`rect | pill | bar`, where `bar` is the fake YouTube watched-progress bar). Use the `newXxxLayer()` factories — don't hand-build layer objects.
+A thumbnail is a `ThumbDoc` = a `format` + a `background` + a **flat, ordered array of layers**. Array order *is* paint order (index 0 = back). There is no nesting; every layer holds its own `x, y` in 1280×720 authoring space (`groupId` is a logical grouping only). Seven layer types: `TextLayer` (also used for badges/pills via its `bg` field), `ImageLayer` (uploaded/webcam photo, or a built-in Claude brand mark selected by the `brand` field), `EmojiLayer`, `ShapeLayer` (`rect | pill | bar`, where `bar` is the fake YouTube watched-progress bar), `EffectLayer`, `DrawLayer`, `EmojiFxLayer`. Use the `newXxxLayer()` factories — don't hand-build layer objects.
+
+`LayerBase` deliberately does **not** declare `type`; each concrete layer declares its own literal. That keeps the union discriminated in the generated JSON Schema — don't move `type` back into the base.
+
+Field comments on layer types use `/** */`, not trailing `//`, because the generator only carries JSDoc blocks into the schema. That text is the agent-facing documentation of the format — keep it that way when adding fields.
 
 ### State = reducer wrapped in a history reducer — `src/state.ts`
 
@@ -53,6 +68,22 @@ Renders each layer as an absolutely-positioned element inside a node that is `tr
 ### Backend, accounts & blob storage — `server/` + `src/lib/blobs.ts`, `src/components/AuthGate.tsx`
 
 `server/` is a Bun + Hono API (Postgres + Cloudflare R2). Accounts are email+password with an httpOnly session cookie; **signup locks after the first user** unless `ALLOW_SIGNUP=true`. `AuthGate` wraps `<App/>` in `main.tsx` so the editor's mount/autosave effects never run until logged in. **Critical blob rule:** the doc keeps images as data URLs *at runtime* (so `html-to-image` export never hits cross-origin canvas taint); R2 offload happens only at the storage boundary — `dehydrateDoc` (data URL → `blob:<id>` ref, uploaded to R2) on save, `hydrateDoc` (ref → data URL, streamed back through our same-origin API) on load. Never make `ThumbCanvas`/`export.ts` consume remote image URLs directly.
+
+### The published document format — `scripts/gen-schema.ts` → `server/src/generated/thumbdoc.schema.json`
+
+`src/state.ts` is the single source of truth; the JSON Schema is **generated** from it and committed. It lands under `server/` because docker-compose builds the api with context `./server` — the image cannot see `src/`. Served publicly at `GET /api/schema`.
+
+`server/src/validate.ts` enforces it, and its design goal is *error quality*: `Layer` is a 7-branch `anyOf`, so validating the union wholesale buries the real problem under ~40 "must be equal to constant" lines. Instead it reads the discriminator (`type`, `preset`, `kind`) and runs only the matching branch, yielding `layers[3] (text): /size must be number`. A second, strict copy of the schema (`additionalProperties: false`) runs in parallel and reports unknown keys as non-fatal `warnings` — that's how a typo like `colour` becomes visible instead of silently ignored.
+
+`THUMBDOC_VALIDATE=warn|enforce` gates rejection. **Validation on `PUT /api/projects/:id` is gated on `doc !== undefined`** — that endpoint doubles as rename, which sends `{ name }` only.
+
+### Agent access — `mcp/`, API tokens, `?project=` deep link
+
+`mcp/` is a local stdio MCP server that talks to the deployed API. It **imports `src/state.ts` and `src/presets.ts` directly** rather than duplicating them, so the agent gets the real layer factories and the real validator — nothing to keep in sync. It pre-validates locally so schema mistakes cost no round trip. Registered in `.mcp.json`; the token comes from `${THUMB_API_TOKEN}` in the shell, never committed. The authoring rules live in `.claude/skills/thumb-studio/`.
+
+Auth: `currentUser()` accepts the session cookie **or** `Authorization: Bearer tsk_…` backed by `api_tokens` (SHA-256 hash stored, never the plaintext). `/api/tokens*` is guarded by `requireCookieUser` — **a token must never be able to mint another token.**
+
+`?project=<id>` on the editor URL opens that saved project instead of the IndexedDB working canvas, falling back gracefully if the id is stale. That's the loop-closer: the MCP server returns a link the user can open.
 
 ### Deployment — `Dockerfile` (web/nginx), `server/Dockerfile` (api), `docker-compose.yml`
 

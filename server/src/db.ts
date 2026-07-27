@@ -45,6 +45,20 @@ export async function initSchema(): Promise<void> {
       created_at   timestamptz NOT NULL DEFAULT now(),
       PRIMARY KEY (id, user_id)
     )`;
+  // Personal API tokens: a non-browser credential so agents (the MCP server) can reach the
+  // same API without a session cookie. Only the SHA-256 hash is stored — unlike
+  // `sessions.token`, these are long-lived, so the plaintext must not be recoverable from
+  // the DB. SHA-256 rather than argon2 because it is checked on every request and the token
+  // is 32 bytes of full entropy, so there is nothing to brute-force.
+  await sql`
+    CREATE TABLE IF NOT EXISTS api_tokens (
+      id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id      uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      name         text NOT NULL,
+      token_hash   text UNIQUE NOT NULL,
+      created_at   timestamptz NOT NULL DEFAULT now(),
+      last_used_at timestamptz
+    )`;
   // Starred elements: single layers (any type) saved out of a project into a per-user
   // collection, so they can be searched and re-inserted into any other project. The
   // layer JSON is stored dehydrated (images as blob:<id> refs, bytes in R2), same as
@@ -65,6 +79,7 @@ export async function initSchema(): Promise<void> {
   await sql`ALTER TABLE starred_items ADD COLUMN IF NOT EXISTS source_project_name text`;
   await sql`ALTER TABLE starred_items ADD COLUMN IF NOT EXISTS last_used_at timestamptz`;
   await sql`UPDATE starred_items SET last_used_at = coalesce(last_used_at, updated_at) WHERE last_used_at IS NULL`;
+  await sql`CREATE INDEX IF NOT EXISTS api_tokens_user_idx ON api_tokens(user_id)`;
   await sql`CREATE INDEX IF NOT EXISTS projects_user_idx ON projects(user_id)`;
   await sql`CREATE INDEX IF NOT EXISTS starred_user_idx ON starred_items(user_id)`;
   await sql`CREATE INDEX IF NOT EXISTS starred_last_used_idx ON starred_items(user_id, last_used_at DESC)`;

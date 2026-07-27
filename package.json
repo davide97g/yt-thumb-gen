@@ -7,7 +7,10 @@
   "scripts": {
     "dev": "vite --port 5174",
     "build": "vite build",
-    "check": "tsc --noEmit"
+    "schema": "bun run scripts/gen-schema.ts",
+    "schema:check": "bun run scripts/gen-schema.ts --check",
+    "test": "bun test",
+    "check": "tsc --noEmit && bun run schema:check && bun test"
   },
   "dependencies": {
     "@fontsource/anton": "^5.2.7",
@@ -47,7 +50,9 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
+    "ajv": "^8.20.0",
     "tailwindcss": "^4.2.2",
+    "ts-json-schema-generator": "^2.9.0",
     "typescript": "~6.0.2",
     "vite": "^8.0.4"
   }

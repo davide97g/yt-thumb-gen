@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "thumb-studio": {
+      "command": "bun",
+      "args": ["run", "mcp/src/index.ts"],
+      "env": {
+        "THUMB_API_URL": "https://thumb.davideghiotto.it",
+        "THUMB_API_TOKEN": "${THUMB_API_TOKEN}"
+      }
+    }
+  }
+}

@@ -112,6 +112,27 @@ export function deleteConfig(id: string): Promise<void> {
   return apiSend<{ ok: true }>("DELETE", `/projects/${id}`).then(() => undefined);
 }
 
+// ── Personal API tokens (for the MCP server / scripts) ────────────────────────
+//
+// Cookie-authenticated on purpose: a token can reach the rest of the API but must never be
+// able to mint another one, so this section only works from a logged-in browser.
+
+export type ApiToken = { id: string; name: string; createdAt: number; lastUsedAt: number | null };
+/** Only ever returned once, at creation. The server keeps just a hash. */
+export type NewApiToken = ApiToken & { token: string };
+
+export function listTokens(): Promise<ApiToken[]> {
+  return apiGet<ApiToken[]>("/tokens");
+}
+
+export function createToken(name: string): Promise<NewApiToken> {
+  return apiSend<NewApiToken>("POST", "/tokens", { name });
+}
+
+export function deleteToken(id: string): Promise<void> {
+  return apiSend<{ ok: true }>("DELETE", `/tokens/${id}`).then(() => undefined);
+}
+
 // ── Starred elements (per-user collection of single layers) ───────────────────
 //
 // Any layer can be starred out of a project into a global, searchable collection and

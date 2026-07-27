@@ -8,6 +8,7 @@ import { Hono } from "hono";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { initSchema, sql } from "./db";
 import { getBlob, putBlob } from "./r2";
+import { MODE, docWarnings, schema as docSchema, validateDoc, validateLayer } from "./validate";
 
 const APP_URL = process.env.APP_URL ?? "http://localhost";
 const SECURE = APP_URL.startsWith("https://");
@@ -45,7 +46,13 @@ function setSessionCookie(c: any, token: string) {
   });
 }
 
-async function currentUser(c: any): Promise<User | null> {
+const sha256 = async (s: string): Promise<string> =>
+  Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s))), (x) =>
+    x.toString(16).padStart(2, "0")
+  ).join("");
+
+/** Identity from the browser session cookie. */
+async function cookieUser(c: any): Promise<User | null> {
   const token = getCookie(c, COOKIE);
   if (!token) return null;
   const rows = await sql<User[]>`
@@ -55,6 +62,27 @@ async function currentUser(c: any): Promise<User | null> {
   return rows[0] ?? null;
 }
 
+/** Identity from an `Authorization: Bearer tsk_…` personal API token. nginx forwards the
+ *  header untouched, so this works the same behind the proxy as it does locally. */
+async function bearerUser(c: any): Promise<User | null> {
+  const header = c.req.header("authorization");
+  const raw = header?.match(/^Bearer\s+(.+)$/i)?.[1]?.trim();
+  if (!raw) return null;
+  const rows = await sql<User[]>`
+    SELECT u.id, u.email FROM api_tokens t
+    JOIN users u ON u.id = t.user_id
+    WHERE t.token_hash = ${await sha256(raw)}`;
+  const user = rows[0];
+  if (!user) return null;
+  // Best-effort usage stamp; never block the request on it.
+  sql`UPDATE api_tokens SET last_used_at = now() WHERE token_hash = ${await sha256(raw)}`.catch(() => {});
+  return user;
+}
+
+async function currentUser(c: any): Promise<User | null> {
+  return (await cookieUser(c)) ?? (await bearerUser(c));
+}
+
 async function signupOpen(): Promise<boolean> {
   if (ALLOW_SIGNUP) return true;
   const [{ count }] = await sql<{ count: string }[]>`SELECT count(*)::text AS count FROM users`;
@@ -62,6 +90,16 @@ async function signupOpen(): Promise<boolean> {
 }
 
 const emailOk = (e: unknown): e is string => typeof e === "string" && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e);
+
+// Runs the document contract. In `warn` mode a bad doc is logged and still stored, so the
+// rule can be observed against real traffic before it starts turning saves into failures;
+// in `enforce` mode it 422s. `details` is what an agent reads to correct itself.
+function docProblems(where: string, errors: string[]): Response | null {
+  if (errors.length === 0) return null;
+  console.warn(`[thumbdoc:${MODE}] ${where}`, errors.slice(0, 10));
+  if (MODE !== "enforce") return null;
+  return Response.json({ error: "Documento non valido", details: errors.slice(0, 50) }, { status: 422 });
+}
 
 // ── auth ─────────────────────────────────────────────────────────────────
 app.get("/api/auth/status", async (c) => c.json({ signupOpen: await signupOpen() }));
@@ -112,9 +150,20 @@ app.use("/api/blobs/*", requireUser);
 app.use("/api/blobs", requireUser);
 app.use("/api/starred/*", requireUser);
 app.use("/api/starred", requireUser);
+// Token management is cookie-only on purpose: a token must not be able to mint another
+// token, so a leaked token cannot be used to entrench itself.
+app.use("/api/tokens/*", requireCookieUser);
+app.use("/api/tokens", requireCookieUser);
 
 async function requireUser(c: any, next: () => Promise<void>) {
   const user = await currentUser(c);
+  if (!user) return c.json({ error: "unauthorized" }, 401);
+  c.set("user", user);
+  return next();
+}
+
+async function requireCookieUser(c: any, next: () => Promise<void>) {
+  const user = await cookieUser(c);
   if (!user) return c.json({ error: "unauthorized" }, 401);
   c.set("user", user);
   return next();
@@ -147,15 +196,23 @@ app.post("/api/projects", async (c) => {
   const user = c.get("user") as User;
   const { name, doc } = await c.req.json().catch(() => ({}));
   if (typeof name !== "string" || typeof doc !== "object" || doc === null) return c.json({ error: "bad request" }, 400);
+  const rejected = docProblems("POST /projects", validateDoc(doc));
+  if (rejected) return rejected;
   const [row] = await sql`
     INSERT INTO projects (user_id, name, doc) VALUES (${user.id}, ${name}, ${sql.json(doc)})
     RETURNING id, name, (extract(epoch from updated_at) * 1000)::float8 AS "updatedAt"`;
-  return c.json(row);
+  return c.json({ ...row, warnings: docWarnings(doc) });
 });
 
 app.put("/api/projects/:id", async (c) => {
   const user = c.get("user") as User;
   const { name, doc } = await c.req.json().catch(() => ({}));
+  // Gate on `doc !== undefined`: this endpoint doubles as rename, which sends { name } only
+  // (see renameConfig in src/lib/storage.ts). Validating unconditionally would break it.
+  if (doc !== undefined) {
+    const rejected = docProblems("PUT /projects", validateDoc(doc));
+    if (rejected) return rejected;
+  }
   const [row] = await sql`
     UPDATE projects SET
       name = coalesce(${name ?? null}, name),
@@ -170,6 +227,35 @@ app.put("/api/projects/:id", async (c) => {
 app.delete("/api/projects/:id", async (c) => {
   const user = c.get("user") as User;
   await sql`DELETE FROM projects WHERE id = ${c.req.param("id")} AND user_id = ${user.id}`;
+  return c.json({ ok: true });
+});
+
+// ── personal API tokens (cookie-only; see the guard above) ──────────────────
+app.get("/api/tokens", async (c) => {
+  const user = c.get("user") as User;
+  const rows = await sql`
+    SELECT id, name,
+      (extract(epoch from created_at) * 1000)::float8 AS "createdAt",
+      (extract(epoch from last_used_at) * 1000)::float8 AS "lastUsedAt"
+    FROM api_tokens WHERE user_id = ${user.id} ORDER BY created_at DESC`;
+  return c.json(rows);
+});
+
+// The plaintext token is returned exactly once, here. After this only its hash exists.
+app.post("/api/tokens", async (c) => {
+  const user = c.get("user") as User;
+  const { name } = await c.req.json().catch(() => ({}));
+  if (typeof name !== "string" || !name.trim()) return c.json({ error: "bad request" }, 400);
+  const token = `tsk_${newToken()}`;
+  const [row] = await sql`
+    INSERT INTO api_tokens (user_id, name, token_hash) VALUES (${user.id}, ${name.trim()}, ${await sha256(token)})
+    RETURNING id, name, (extract(epoch from created_at) * 1000)::float8 AS "createdAt"`;
+  return c.json({ ...row, token });
+});
+
+app.delete("/api/tokens/:id", async (c) => {
+  const user = c.get("user") as User;
+  await sql`DELETE FROM api_tokens WHERE id = ${c.req.param("id")} AND user_id = ${user.id}`;
   return c.json({ ok: true });
 });
 
@@ -201,6 +287,10 @@ app.post("/api/starred", async (c) => {
   if (typeof name !== "string" || typeof kind !== "string" || typeof layer !== "object" || layer === null) {
     return c.json({ error: "bad request" }, 400);
   }
+  // Starred items store a bare Layer, so they're held to the same contract as a layer inside
+  // a doc — otherwise the format would be only half-enforced.
+  const rejected = docProblems("POST /starred", validateLayer(layer, "layer", "lenient"));
+  if (rejected) return rejected;
   const [row] = await sql`
     INSERT INTO starred_items (user_id, name, kind, layer, source_project_id, source_project_name, last_used_at)
     VALUES (${user.id}, ${name}, ${kind}, ${sql.json(layer)}, ${typeof sourceProjectId === "string" ? sourceProjectId : null}, ${typeof sourceProjectName === "string" ? sourceProjectName : null}, now())
@@ -272,6 +362,11 @@ app.get("/api/blobs/:id", async (c) => {
   });
 });
 
+// The published document format. Public on purpose: it's a spec, not data. Anything that
+// authors a ThumbDoc (the MCP server, a script, a future client) validates against this.
+app.get("/api/schema", (c) => c.json(docSchema));
+
 app.get("/api/health", (c) => c.json({ ok: true }));
 
-export default { port: 3000, fetch: app.fetch, idleTimeout: 60 };
+// PORT is only for running the API alongside something else locally; Compose leaves it unset.
+export default { port: Number(process.env.PORT ?? 3000), fetch: app.fetch, idleTimeout: 60 };

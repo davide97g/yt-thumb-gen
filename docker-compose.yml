@@ -28,6 +28,7 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-thumb}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-thumb}
       APP_URL: ${APP_URL:-http://localhost}
       ALLOW_SIGNUP: ${ALLOW_SIGNUP:-false}
+      THUMBDOC_VALIDATE: ${THUMBDOC_VALIDATE:-warn}
       R2_ENDPOINT: ${R2_ENDPOINT}
       R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID}
       R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY}
