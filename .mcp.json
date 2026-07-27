@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "thumb-studio": {
+    "thumb-studio-stdio": {
       "command": "bun",
       "args": ["run", "mcp/src/stdio.ts"],
       "env": {
