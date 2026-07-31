@@ -163,7 +163,7 @@ One function, two backends chosen by build mode: **production** uses `@imgly/bac
 
 ### Export — `src/lib/export.ts`
 
-`html-to-image`'s `toPng` captures the canvas node at exactly 1280×720 (transform reset for the capture, then restored), triggers a download, and returns a warning string if the PNG exceeds YouTube's 2 MB limit.
+`html-to-image` captures the canvas node at exactly the doc's format size (transform reset for the capture, then restored) and triggers a download. When the platform has a hard limit and the PNG misses it, `fitToLimit` walks a JPEG quality ladder (0.92 → 0.55) and ships the best one that fits — "too big, simplify your background" was true and useless, since the fix is a file format, not a design change. The encoder is injected, so the ladder is unit-tested without a DOM; when even the floor is too big it returns the *smallest* attempt and the caller warns, because downloading something beats downloading nothing. `fileNameFor` keeps the extension honest.
 
 ## Conventions
 

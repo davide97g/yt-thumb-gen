@@ -319,8 +319,9 @@ export default function App() {
     // Let `exporting` render commit first so the selection outline is hidden in capture.
     await new Promise<void>((r) => requestAnimationFrame(() => r()));
     try {
-      const { warning } = await exportThumb(canvasRef.current, exportName, { w: CW, h: CH, maxBytes: fmt.maxBytes, platform: fmt.platform });
-      if (warning) setMessage(warning);
+      // `note` = it fitted, but as a JPEG; `warning` = it still doesn't fit.
+      const { warning, note } = await exportThumb(canvasRef.current, exportName, { w: CW, h: CH, maxBytes: fmt.maxBytes, platform: fmt.platform });
+      setMessage(warning ?? note ?? null);
     } catch (err) {
       setMessage(`Export failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
