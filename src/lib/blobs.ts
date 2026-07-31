@@ -46,7 +46,7 @@ async function fetchRef(ref: string, cache: Map<string, string>): Promise<string
   const hit = cache.get(ref);
   if (hit) return hit;
   const res = await fetch(`/api/blobs/${ref.slice(REF.length)}`, { credentials: "include" });
-  if (!res.ok) throw new Error(`Immagine non trovata (${res.status})`);
+  if (!res.ok) throw new Error(`Image not found (${res.status})`);
   const dataUrl = await blobToDataUrl(await res.blob());
   cache.set(ref, dataUrl);
   return dataUrl;

@@ -117,7 +117,7 @@ export async function saveConfig(name: string, doc: ThumbDoc, id?: string, campa
   // `campaignId` is only sent when the caller passes it: on PUT the key's absence means
   // "leave the campaign alone", which is what an ordinary save should do.
   const payload = {
-    name: name.trim() || "Senza nome",
+    name: name.trim() || "Untitled",
     doc: await dehydrateDoc(doc),
     ...(campaignId === undefined ? {} : { campaignId }),
   };
@@ -126,7 +126,7 @@ export async function saveConfig(name: string, doc: ThumbDoc, id?: string, campa
 
 /** Renames an archived project in place, leaving its doc untouched. */
 export function renameConfig(id: string, name: string): Promise<ConfigMeta> {
-  return apiSend<ConfigMeta>("PUT", `/projects/${id}`, { name: name.trim() || "Senza nome" });
+  return apiSend<ConfigMeta>("PUT", `/projects/${id}`, { name: name.trim() || "Untitled" });
 }
 
 export function deleteConfig(id: string): Promise<void> {
@@ -215,7 +215,7 @@ export function listStarred(): Promise<StarredMeta[]> {
 export async function starLayer(layer: Layer, name?: string, sourceProject?: Project): Promise<StarredMeta> {
   const clean = await dehydrateLayer(detachLayer(layer));
   const payload = {
-    name: (name ?? layer.name).trim() || "Senza nome", kind: layer.type, layer: clean,
+    name: (name ?? layer.name).trim() || "Untitled", kind: layer.type, layer: clean,
     sourceProjectId: sourceProject?.id ?? null, sourceProjectName: sourceProject?.name ?? null,
   };
   return apiSend<StarredMeta>("POST", "/starred", payload);
@@ -228,7 +228,7 @@ export async function loadStarred(id: string): Promise<StarredItem> {
 }
 
 export function renameStarred(id: string, name: string): Promise<StarredMeta> {
-  return apiSend<StarredMeta>("PUT", `/starred/${id}`, { name: name.trim() || "Senza nome" });
+  return apiSend<StarredMeta>("PUT", `/starred/${id}`, { name: name.trim() || "Untitled" });
 }
 
 export function deleteStarred(id: string): Promise<void> {
@@ -258,7 +258,7 @@ export function exportConfigFile(doc: ThumbDoc, name = "grocerai-thumb"): void {
 export async function importConfigFile(file: File): Promise<{ name?: string; doc: ThumbDoc }> {
   const parsed = JSON.parse(await file.text()) as Partial<ExportFile>;
   if (!parsed || parsed.app !== "grocerai-thumb" || !parsed.doc || !Array.isArray(parsed.doc.layers) || !parsed.doc.background) {
-    throw new Error("File non valido");
+    throw new Error("Invalid file");
   }
   return { name: parsed.name, doc: parsed.doc };
 }

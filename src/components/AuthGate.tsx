@@ -39,7 +39,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
   }
 
   if (status === "loading") {
-    return <div className="grid h-full place-items-center bg-background text-sm text-muted-foreground">Caricamento…</div>;
+    return <div className="grid h-full place-items-center bg-background text-sm text-muted-foreground">Loading…</div>;
   }
   if (status === "out" || !user) {
     return <AuthForm onAuthed={(u) => { setUser(u); setStatus("in"); }} />;
@@ -69,7 +69,7 @@ function AuthForm({ onAuthed }: { onAuthed: (u: User) => void }) {
       const u = await apiSend<User>("POST", `/auth/${mode}`, { email: email.trim(), password });
       onAuthed(u);
     } catch (err: any) {
-      setError(err?.message || "Errore");
+      setError(err?.message || "Error");
       setBusy(false);
     }
   }
@@ -84,7 +84,7 @@ function AuthForm({ onAuthed }: { onAuthed: (u: User) => void }) {
           <div className="leading-tight">
             <div className="text-sm font-semibold tracking-tight">Thumb Studio</div>
             <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-              {mode === "register" ? "Crea account" : "Accedi"}
+              {mode === "register" ? "Create account" : "Sign in"}
             </div>
           </div>
         </div>
@@ -108,7 +108,7 @@ function AuthForm({ onAuthed }: { onAuthed: (u: User) => void }) {
         {error && <p className="text-xs text-destructive">{error}</p>}
 
         <Button type="submit" className="w-full justify-center" disabled={busy}>
-          {busy ? "Attendere…" : mode === "register" ? "Registrati" : "Accedi"}
+          {busy ? "Please wait…" : mode === "register" ? "Sign up" : "Sign in"}
         </Button>
 
         {signupOpen && (
@@ -117,7 +117,7 @@ function AuthForm({ onAuthed }: { onAuthed: (u: User) => void }) {
             className="text-center text-xs text-muted-foreground hover:text-foreground"
             onClick={() => { setError(null); setMode((m) => (m === "login" ? "register" : "login")); }}
           >
-            {mode === "login" ? "Non hai un account? Registrati" : "Hai già un account? Accedi"}
+            {mode === "login" ? "No account yet? Sign up" : "Already have an account? Sign in"}
           </button>
         )}
       </form>

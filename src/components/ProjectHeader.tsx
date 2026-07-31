@@ -10,7 +10,7 @@ type Props = {
   dirty: boolean;
   /** epoch ms of the last save, or null if never archived */
   savedAt: number | null;
-  /** never archived → Salva archives it even when not dirty */
+  /** never archived → Save archives it even when not dirty */
   archived: boolean;
   /** archive id of the open project, or null before the first save — the shareable link */
   projectId: string | null;
@@ -20,10 +20,10 @@ type Props = {
 };
 
 /** Epoch ms → "14:32", or null if the value isn't a usable timestamp — the status line
- *  falls back to a plain "Salvato" rather than printing "Invalid Date". */
+ *  falls back to a plain "Saved" rather than printing "Invalid Date". */
 function time(ms: number): string | null {
   const d = new Date(Number(ms));
-  return Number.isFinite(d.getTime()) ? d.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" }) : null;
+  return Number.isFinite(d.getTime()) ? d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) : null;
 }
 
 /** The live project's identity card — name, save state, and the primary
@@ -70,11 +70,11 @@ export function ProjectHeader({ name, dirty, savedAt, archived, projectId, onRen
   const savedTime = savedAt === null ? null : time(savedAt);
   const status = canSave
     ? archived
-      ? "Modifiche non salvate"
-      : "Da salvare"
+      ? "Unsaved changes"
+      : "Not saved yet"
     : savedTime
-      ? `Salvato ${savedTime}`
-      : "Salvato";
+      ? `Saved ${savedTime}`
+      : "Saved";
 
   return (
     <div className="space-y-2.5">
@@ -83,7 +83,7 @@ export function ProjectHeader({ name, dirty, savedAt, archived, projectId, onRen
       <div className="layer-accent rounded-lg border border-border bg-secondary/35 p-3">
         <div className="flex items-center justify-between gap-2">
           <span className="font-mono text-[10.5px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
-            Progetto
+            Project
           </span>
           {!editing && (
             <span className="flex items-center gap-2">
@@ -92,8 +92,8 @@ export function ProjectHeader({ name, dirty, savedAt, archived, projectId, onRen
                   type="button"
                   onClick={() => void copyLink()}
                   className="text-muted-foreground/60 transition-colors hover:text-foreground"
-                  title={copied ? "Link copiato" : "Copia link del progetto"}
-                  aria-label="Copia link del progetto"
+                  title={copied ? "Link copied" : "Copy project link"}
+                  aria-label="Copy project link"
                 >
                   {copied ? <Check className="size-3.5 text-primary" /> : <Link2 className="size-3.5" />}
                 </button>
@@ -102,8 +102,8 @@ export function ProjectHeader({ name, dirty, savedAt, archived, projectId, onRen
                 type="button"
                 onClick={() => setEditing(true)}
                 className="text-muted-foreground/60 transition-colors hover:text-foreground"
-                title="Rinomina"
-                aria-label="Rinomina progetto"
+                title="Rename"
+                aria-label="Rename project"
               >
                 <Pencil className="size-3.5" />
               </button>
@@ -125,7 +125,7 @@ export function ProjectHeader({ name, dirty, savedAt, archived, projectId, onRen
               }}
               className="h-8"
             />
-            <Button size="icon-sm" className="size-8 shrink-0" onMouseDown={(e) => e.preventDefault()} onClick={commit} aria-label="Conferma nome">
+            <Button size="icon-sm" className="size-8 shrink-0" onMouseDown={(e) => e.preventDefault()} onClick={commit} aria-label="Confirm name">
               <Check />
             </Button>
           </div>
@@ -136,7 +136,7 @@ export function ProjectHeader({ name, dirty, savedAt, archived, projectId, onRen
             className="mt-1 block w-full truncate text-left text-base font-semibold leading-snug tracking-tight text-foreground transition-colors hover:text-foreground/75"
             title={name}
           >
-            {name || "Senza titolo"}
+            {name || "Untitled"}
           </button>
         )}
 
@@ -159,15 +159,15 @@ export function ProjectHeader({ name, dirty, savedAt, archived, projectId, onRen
               "shrink-0 text-xs font-medium transition-colors",
               canSave ? "text-primary hover:text-primary/80" : "cursor-default text-muted-foreground/40"
             )}
-            title="Salva nell'archivio (⌘S)"
+            title="Save to the archive (⌘S)"
           >
-            Salva
+            Save
           </button>
         </div>
       </div>
 
       <Button className="w-full justify-center" onClick={onNew}>
-        <FilePlus /> Nuovo progetto
+        <FilePlus /> New project
       </Button>
     </div>
   );

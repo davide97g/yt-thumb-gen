@@ -29,7 +29,7 @@ export function WebcamCapture({ onCapture, onClose }: Props) {
           void videoRef.current.play();
         }
       })
-      .catch(() => setError("Webcam non disponibile o permesso negato."));
+      .catch(() => setError("Webcam unavailable or permission denied."));
 
     return () => {
       cancelled = true;
@@ -56,17 +56,17 @@ export function WebcamCapture({ onCapture, onClose }: Props) {
         className="flex max-h-[90vh] w-[min(560px,90vw)] flex-col gap-3 rounded-xl border border-border bg-card p-4 shadow-xl"
         onPointerDown={(e) => e.stopPropagation()}
       >
-        <h3 className="text-sm font-semibold">📷 Scatta una foto</h3>
+        <h3 className="text-sm font-semibold">📷 Take a photo</h3>
         {error ? (
           <p className="text-sm text-destructive">{error}</p>
         ) : (
           <video ref={videoRef} playsInline muted className="max-h-[70vh] w-full rounded-lg bg-black object-contain" style={{ transform: "scaleX(-1)" }} />
         )}
         <div className="flex justify-end gap-2">
-          <Button variant="secondary" size="sm" onClick={onClose}>Annulla</Button>
+          <Button variant="secondary" size="sm" onClick={onClose}>Cancel</Button>
           {!error && (
             <Button size="sm" onClick={snap}>
-              <Camera /> Scatta
+              <Camera /> Capture
             </Button>
           )}
         </div>

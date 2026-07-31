@@ -15,7 +15,8 @@ export function defaultFileName(projectName: string): string {
     .replace(/[/\\:*?"<>|]+/g, "-") // characters no filesystem wants
     .replace(/\s+/g, "-")
     .replace(/^[.-]+|[.-]+$/g, "");
-  if (!slug || slug.toLowerCase() === "senza-titolo") return FALLBACK_NAME;
+  // "senza-titolo" stays in the list: projects saved before the UI moved to English.
+  if (!slug || ["untitled", "senza-titolo"].includes(slug.toLowerCase())) return FALLBACK_NAME;
   return slug.toLowerCase().endsWith(".png") ? slug : `${slug}.png`;
 }
 
@@ -34,7 +35,7 @@ export async function exportThumb(node: HTMLElement, fileName = FALLBACK_NAME, s
     a.click();
     if (size.maxBytes && bytes > size.maxBytes) {
       const limitMb = (size.maxBytes / 1024 / 1024).toFixed(0);
-      return { warning: `PNG da ${(bytes / 1024 / 1024).toFixed(1)} MB — oltre il limite ${size.platform} di ${limitMb} MB. Semplifica lo sfondo o riduci la foto.` };
+      return { warning: `${(bytes / 1024 / 1024).toFixed(1)} MB PNG — over the ${size.platform} limit of ${limitMb} MB. Simplify the background or shrink the photo.` };
     }
     return {};
   } finally {

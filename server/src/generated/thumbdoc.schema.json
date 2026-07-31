@@ -696,7 +696,7 @@
             "string",
             "null"
           ],
-          "description": "Pre-background-removal original, for \"Ripristina\". Same encoding as `src`."
+          "description": "Pre-background-removal original, for \"Restore\". Same encoding as `src`."
         },
         "brand": {
           "type": [

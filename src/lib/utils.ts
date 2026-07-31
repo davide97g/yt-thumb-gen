@@ -5,9 +5,9 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-const rtf = new Intl.RelativeTimeFormat("it", { numeric: "auto" });
+const rtf = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
 
-/** "3 minuti fa"-style relative timestamp for archive/collection rows. */
+/** "3 minutes ago"-style relative timestamp for archive/collection rows. */
 export function relTime(ts: number): string {
   const s = Math.round((ts - Date.now()) / 1000);
   const a = Math.abs(s);

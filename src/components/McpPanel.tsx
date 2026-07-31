@@ -14,7 +14,7 @@ type Provider = {
   snippet: (url: string, token: string) => string;
 };
 
-const TOKEN_PLACEHOLDER = "IL_TUO_TOKEN";
+const TOKEN_PLACEHOLDER = "YOUR_TOKEN";
 
 // Every provider gets the same two facts — the endpoint and a bearer token — in whatever
 // shape it expects. No provider needs the repo, a runtime, or an install.
@@ -23,7 +23,7 @@ const PROVIDERS: Provider[] = [
     id: "claude-code",
     label: "Claude Code",
     kind: "command",
-    hint: "Esegui il comando nel terminale.",
+    hint: "Run this command in your terminal.",
     snippet: (url, token) =>
       `claude mcp add --transport http thumb-studio ${url} --header "Authorization: Bearer ${token}"`,
   },
@@ -31,7 +31,7 @@ const PROVIDERS: Provider[] = [
     id: "codex",
     label: "Codex CLI",
     kind: "file",
-    hint: "Aggiungi a ~/.codex/config.toml",
+    hint: "Add to ~/.codex/config.toml",
     snippet: (url, token) =>
       `[mcp_servers.thumb-studio]\nurl = "${url}"\nhttp_headers = { Authorization = "Bearer ${token}" }`,
   },
@@ -39,7 +39,7 @@ const PROVIDERS: Provider[] = [
     id: "cursor",
     label: "Cursor",
     kind: "file",
-    hint: "Aggiungi a .cursor/mcp.json (o ~/.cursor/mcp.json)",
+    hint: "Add to .cursor/mcp.json (or ~/.cursor/mcp.json)",
     snippet: (url, token) =>
       JSON.stringify(
         { mcpServers: { "thumb-studio": { url, headers: { Authorization: `Bearer ${token}` } } } },
@@ -49,9 +49,9 @@ const PROVIDERS: Provider[] = [
   },
   {
     id: "json",
-    label: "Altro (JSON)",
+    label: "Other (JSON)",
     kind: "file",
-    hint: "Formato standard: VS Code, Windsurf, Zed e qualsiasi client MCP.",
+    hint: "Standard format: VS Code, Windsurf, Zed and any MCP client.",
     snippet: (url, token) =>
       JSON.stringify(
         { mcpServers: { "thumb-studio": { type: "http", url, headers: { Authorization: `Bearer ${token}` } } } },
@@ -77,7 +77,7 @@ export function McpPanel() {
   useEffect(() => {
     listTokens()
       .then(setTokens)
-      .catch(() => setError("Impossibile leggere i token."));
+      .catch(() => setError("Couldn't read the tokens."));
   }, []);
 
   const active = PROVIDERS.find((p) => p.id === provider)!;
@@ -93,7 +93,7 @@ export function McpPanel() {
       setCopied(false);
       setTokens(await listTokens());
     } catch {
-      setError("Creazione token non riuscita.");
+      setError("Couldn't create the token.");
     } finally {
       setBusy(false);
     }
@@ -101,7 +101,7 @@ export function McpPanel() {
 
   async function copy() {
     // Only claim success if the write actually happened — clipboard access is denied over
-    // plain HTTP and in some embedded browsers, and a false "Copiato" costs the user a
+    // plain HTTP and in some embedded browsers, and a false "Copied" costs the user a
     // silently empty paste.
     try {
       await navigator.clipboard.writeText(snippet);
@@ -109,7 +109,7 @@ export function McpPanel() {
       setError(null);
     } catch {
       setCopied(false);
-      setError("Copia non riuscita: seleziona il testo e copialo a mano.");
+      setError("Copy failed — select the text and copy it manually.");
     }
   }
 
@@ -117,11 +117,11 @@ export function McpPanel() {
     <div className="flex flex-col gap-4">
       <div className="space-y-1">
         <h3 className="flex items-center gap-2 text-sm font-semibold">
-          <Plug className="size-4 text-primary" /> Aggiungi Thumb Studio al tuo agente
+          <Plug className="size-4 text-primary" /> Add Thumb Studio to your agent
         </h3>
         <p className="text-sm text-muted-foreground">
-          Collega Claude, Codex o qualsiasi client MCP a questo account: potrà creare progetti e campagne al posto
-          tuo. Niente da installare — l’endpoint è già online.
+          Connect Claude, Codex or any MCP client to this account and it can create projects and campaigns for
+          you. Nothing to install — the endpoint is already online.
         </p>
       </div>
 
@@ -142,25 +142,25 @@ export function McpPanel() {
       {!fresh && (
         <div className="space-y-2 rounded-lg border border-border/70 bg-secondary/30 p-3">
           <p className="text-xs text-muted-foreground">
-            Serve un token. Creane uno adesso: comparirà già inserito nello snippet qui sotto.
+            You need a token. Create one now and it lands pre-filled in the snippet below.
           </p>
           <div className="flex gap-2">
             <Input
               className="h-8"
               value={name}
-              placeholder="Nome del token"
+              placeholder="Token name"
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter") { e.preventDefault(); void mint(); }
               }}
             />
             <Button size="sm" className="h-8" onClick={() => void mint()} disabled={busy}>
-              <Plus /> Crea token
+              <Plus /> Create token
             </Button>
           </div>
           {tokens && tokens.length > 0 && (
             <p className="text-[11px] text-muted-foreground">
-              Hai già {tokens.length} token, ma il valore si vede solo alla creazione: se l’hai perso, creane uno nuovo.
+              You already have {tokens.length} token(s), but the value is only shown at creation — if you lost it, create a new one.
             </p>
           )}
         </div>
@@ -170,7 +170,7 @@ export function McpPanel() {
         <div className="flex items-center justify-between gap-2">
           <span className="text-xs text-muted-foreground">{active.hint}</span>
           <Button variant="ghost" size="sm" onClick={() => void copy()}>
-            {copied ? <Check /> : <Copy />} {copied ? "Copiato" : "Copia"}
+            {copied ? <Check /> : <Copy />} {copied ? "Copied" : "Copy"}
           </Button>
         </div>
         {/* Wrap rather than scroll: the one-line commands carry a 64-char token, and a
@@ -181,13 +181,13 @@ export function McpPanel() {
         {!fresh && (
           <p className="flex items-start gap-1.5 text-[11px] text-muted-foreground">
             <TriangleAlert className="mt-px size-3.5 shrink-0 text-primary" />
-            Sostituisci <code className="font-mono">{TOKEN_PLACEHOLDER}</code> con un token valido, oppure creane uno
-            qui sopra per inserirlo automaticamente.
+            Replace <code className="font-mono">{TOKEN_PLACEHOLDER}</code> with a valid token, or create one above to
+            have it filled in automatically.
           </p>
         )}
         {fresh && (
           <p className="text-[11px] text-muted-foreground">
-            Il token è incluso nello snippet e non verrà più mostrato: copialo adesso. Vale quanto il tuo account.
+            The token is embedded in the snippet and won't be shown again — copy it now. It is as powerful as your account.
           </p>
         )}
       </div>

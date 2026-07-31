@@ -15,7 +15,7 @@ export type FormatKey = "youtube" | "shorts" | "ig-post" | "ig-reel" | "linkedin
 
 export type FormatSpec = {
   key: FormatKey;
-  label: string; // select label (Italian UI)
+  label: string; // select label
   platform: string; // header readout
   w: number;
   h: number;
@@ -226,7 +226,7 @@ export type ImageLayer = LayerBase & {
   /** Image source: a `data:` URL at runtime, a `blob:<id>` ref at rest. Null while empty
    *  or when `brand` is set. Agents cannot upload bytes — use `brand`, or leave null. */
   src: string | null;
-  /** Pre-background-removal original, for "Ripristina". Same encoding as `src`. */
+  /** Pre-background-removal original, for "Restore". Same encoding as `src`. */
   origSrc: string | null;
   /** Built-in Claude SVG mark; overrides `src` when set. Needs no upload. */
   brand: "logo" | "wordmark" | null;
@@ -546,12 +546,12 @@ export function newTextLayer(): TextLayer {
   return {
     id: uid(),
     type: "text",
-    name: "Testo",
+    name: "Text",
     x: 120,
     y: 120,
     rotation: 0,
     visible: true,
-    text: "NUOVO TESTO",
+    text: "NEW TEXT",
     font: "archivo",
     size: 96,
     color: "#ffffff",
@@ -570,7 +570,7 @@ export function newImageLayer(src: string | null = null): ImageLayer {
   return {
     id: uid(),
     type: "image",
-    name: "Immagine",
+    name: "Image",
     x: 820,
     y: 260,
     rotation: 0,
@@ -608,7 +608,7 @@ export function newEffectLayer(): EffectLayer {
   return {
     id: uid(),
     type: "effect",
-    name: "Effetto",
+    name: "Effect",
     x: 360,
     y: 220,
     rotation: 0,
@@ -640,10 +640,10 @@ export type PlacedEmoji = { glyph: string; x: number; y: number; size: number; r
 
 /** Emoji quick-fill sets for the inspector. */
 export const EMOJIFX_PRESETS: { label: string; glyphs: string[] }[] = [
-  { label: "Coriandoli", glyphs: ["🎉", "🎊", "✨"] },
-  { label: "Fuochi", glyphs: ["🎆", "🎇", "💥", "✨"] },
-  { label: "Scintille", glyphs: ["✨", "⭐", "💫", "🌟"] },
-  { label: "Cuori", glyphs: ["❤️", "💕", "💖", "💗"] },
+  { label: "Confetti", glyphs: ["🎉", "🎊", "✨"] },
+  { label: "Fireworks", glyphs: ["🎆", "🎇", "💥", "✨"] },
+  { label: "Sparkles", glyphs: ["✨", "⭐", "💫", "🌟"] },
+  { label: "Hearts", glyphs: ["❤️", "💕", "💖", "💗"] },
 ];
 
 /** Deterministically place a field of emojis around `center` (canvas coords, glyph centres).
@@ -687,7 +687,7 @@ export function newEmojiFxLayer(targetId: string | null = null): EmojiFxLayer {
   return {
     id: uid(),
     type: "emojifx",
-    name: "Effetto emoji",
+    name: "Emoji effect",
     x: 460,
     y: 260,
     rotation: 0,
@@ -708,9 +708,9 @@ export function newEmojiFxLayer(targetId: string | null = null): EmojiFxLayer {
 
 export function newShapeLayer(kind: ShapeLayer["kind"]): ShapeLayer {
   const base = { id: uid(), type: "shape" as const, rotation: 0, visible: true, radius: 16, pct: 72, trackColor: "rgba(255,255,255,.35)" };
-  if (kind === "bar") return { ...base, name: "Barra progresso", kind, fill: "#ff0000", x: 0, y: CANVAS_H - 14, w: CANVAS_W, h: 14 };
-  if (kind === "pill") return { ...base, name: "Pillola", kind, fill: "#e8633a", x: 120, y: 120, w: 280, h: 70, radius: 999 };
-  return { ...base, name: "Rettangolo", kind, fill: "#e8633a", x: 120, y: 120, w: 320, h: 200 };
+  if (kind === "bar") return { ...base, name: "Progress bar", kind, fill: "#ff0000", x: 0, y: CANVAS_H - 14, w: CANVAS_W, h: 14 };
+  if (kind === "pill") return { ...base, name: "Pill", kind, fill: "#e8633a", x: 120, y: 120, w: 280, h: 70, radius: 999 };
+  return { ...base, name: "Rectangle", kind, fill: "#e8633a", x: 120, y: 120, w: 320, h: 200 };
 }
 
 const DRAW_DEFAULTS = { color: "#ff3b3b", thickness: 8, lineStyle: "solid" as const, smoothing: 40, startCap: "none" as const, endCap: "arrow" as const };
@@ -724,7 +724,7 @@ export function newDrawLayer(points: { x: number; y: number }[]): DrawLayer {
   return {
     id: uid(),
     type: "draw",
-    name: "Disegno",
+    name: "Drawing",
     x: minX - pad, // padded box top-left = where the div sits
     y: minY - pad,
     rotation: 0,

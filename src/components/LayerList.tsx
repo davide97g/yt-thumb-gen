@@ -65,7 +65,7 @@ export function LayerList({ layers, selectedIds, dispatch, onStar }: Props) {
     listRef.current?.querySelector(`[data-layer-id="${id}"]`)?.scrollIntoView({ block: "nearest" });
   }, [selectionKey]);
 
-  if (layers.length === 0) return <Hint>Nessun livello. Aggiungine uno qui sopra o carica un modello.</Hint>;
+  if (layers.length === 0) return <Hint>No layers yet. Add one from the dock or load a template.</Hint>;
 
   const groupMates = (layer: Layer): string[] =>
     layer.groupId ? layers.filter((l) => l.groupId === layer.groupId).map((l) => l.id) : [layer.id];
@@ -216,7 +216,7 @@ export function LayerList({ layers, selectedIds, dispatch, onStar }: Props) {
               <span
                 data-drag-handle
                 className="shrink-0 cursor-grab touch-none px-0.5 text-muted-foreground/35 transition-colors group-hover/row:text-muted-foreground/70 active:cursor-grabbing"
-                title="Trascina per riordinare"
+                title="Drag to reorder"
                 aria-hidden
               >
                 <GripVertical className="size-3" />
@@ -225,14 +225,14 @@ export function LayerList({ layers, selectedIds, dispatch, onStar }: Props) {
                 variant="ghost"
                 size="icon-sm"
                 className="size-6 shrink-0 text-muted-foreground [&_svg]:size-3.5"
-                title={layer.visible ? "Nascondi" : "Mostra"}
+                title={layer.visible ? "Hide" : "Show"}
                 onClick={(e) => { e.stopPropagation(); dispatch({ type: "updateLayer", id: layer.id, patch: { visible: !layer.visible } }); }}
               >
                 {layer.visible ? <Eye /> : <EyeOff />}
               </Button>
               <span className="flex shrink-0 items-center gap-1">
                 <span className={active ? "text-primary" : "text-muted-foreground"}>{TYPE_ICON[layer.type]}</span>
-                {layer.groupId && <Link2 className="size-3 text-muted-foreground" aria-label="Raggruppato" />}
+                {layer.groupId && <Link2 className="size-3 text-muted-foreground" aria-label="Grouped" />}
               </span>
               {/* The name gets the whole remaining row at rest — the actions float over it
                   on hover instead of reserving a gutter, so nothing re-truncates mid-hover.
@@ -251,7 +251,7 @@ export function LayerList({ layers, selectedIds, dispatch, onStar }: Props) {
                     size="icon-sm"
                     className="size-6 [&_svg]:size-3.5"
                     disabled={front}
-                    title="Porta avanti"
+                    title="Bring forward"
                     onClick={(e) => { e.stopPropagation(); dispatch({ type: "reorder", id: layer.id, dir: 1 }); }}
                   >
                     <ChevronUp />
@@ -261,7 +261,7 @@ export function LayerList({ layers, selectedIds, dispatch, onStar }: Props) {
                     size="icon-sm"
                     className="size-6 [&_svg]:size-3.5"
                     disabled={back}
-                    title="Porta indietro"
+                    title="Send backward"
                     onClick={(e) => { e.stopPropagation(); dispatch({ type: "reorder", id: layer.id, dir: -1 }); }}
                   >
                     <ChevronDown />
@@ -272,7 +272,7 @@ export function LayerList({ layers, selectedIds, dispatch, onStar }: Props) {
                   variant="ghost"
                   size="icon-sm"
                   className="size-6 text-muted-foreground hover:text-amber-400 [&_svg]:size-3.5"
-                  title="Aggiungi ai preferiti"
+                  title="Add to favorites"
                   onClick={(e) => { e.stopPropagation(); onStar(layer); }}
                 >
                   <Star />
@@ -281,7 +281,7 @@ export function LayerList({ layers, selectedIds, dispatch, onStar }: Props) {
                   variant="ghost"
                   size="icon-sm"
                   className="size-6 text-muted-foreground [&_svg]:size-3.5"
-                  title="Duplica"
+                  title="Duplicate"
                   onClick={(e) => { e.stopPropagation(); dispatch({ type: "select", ids: [layer.id] }); dispatch({ type: "pasteLayer", layer }); }}
                 >
                   <Copy />
@@ -290,7 +290,7 @@ export function LayerList({ layers, selectedIds, dispatch, onStar }: Props) {
                   variant="ghost"
                   size="icon-sm"
                   className="size-6 text-muted-foreground hover:text-destructive [&_svg]:size-3.5"
-                  title="Elimina"
+                  title="Delete"
                   onClick={(e) => { e.stopPropagation(); dispatch({ type: "removeLayer", id: layer.id }); }}
                 >
                   <Trash2 />

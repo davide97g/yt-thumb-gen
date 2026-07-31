@@ -22,26 +22,26 @@ import { Input } from "./ui/input";
 import { cn, relTime } from "@/lib/utils";
 
 const KIND_LABELS: Record<LayerType, string> = {
-  text: "Testo",
-  image: "Immagine",
+  text: "Text",
+  image: "Image",
   emoji: "Emoji",
-  shape: "Forma",
-  effect: "Effetto",
-  draw: "Disegno",
-  emojifx: "Effetto emoji",
+  shape: "Shape",
+  effect: "Effect",
+  draw: "Drawing",
+  emojifx: "Emoji effect",
 };
 
-/** Compact "39 s fa"-style age — the rail rows are too narrow for the full relTime. */
+/** Compact "39 s ago"-style age — the rail rows are too narrow for the full relTime. */
 function shortTime(ts: number): string {
   const s = Math.max(1, Math.round((Date.now() - ts) / 1000));
-  if (s < 60) return `${s} s fa`;
-  if (s < 3600) return `${Math.round(s / 60)} min fa`;
-  if (s < 86400) return `${Math.round(s / 3600)} h fa`;
-  return `${Math.round(s / 86400)} g fa`;
+  if (s < 60) return `${s}s ago`;
+  if (s < 3600) return `${Math.round(s / 60)}min ago`;
+  if (s < 86400) return `${Math.round(s / 3600)}h ago`;
+  return `${Math.round(s / 86400)}d ago`;
 }
 
 /** Row subtitle: type + age, but skip the type when the name already is the type
- *  (a freshly starred "Immagine" would otherwise read "Immagine · Immagine"). */
+ *  (a freshly starred "Image" would otherwise read "Image · Image"). */
 function subtitle(m: StarredMeta): string {
   const age = shortTime(m.updatedAt);
   return m.name === KIND_LABELS[m.kind] ? age : `${KIND_LABELS[m.kind]} · ${age}`;
@@ -86,7 +86,7 @@ export function StarredPanel({ dispatch, onError, refreshKey, onChanged, onManag
         try { return [item.id, (await loadStarred(item.id)).layer] as const; } catch { return null; }
       }));
       setPreviews(new Map(layers.filter((row): row is readonly [string, Layer] => row !== null)));
-    } catch { onError("Impossibile leggere i preferiti."); }
+    } catch { onError("Couldn't read the favorites."); }
   };
   useEffect(() => { void refresh(); }, [refreshKey]);
 
@@ -106,7 +106,7 @@ export function StarredPanel({ dispatch, onError, refreshKey, onChanged, onManag
       void useStarred(m.id);
       onError("");
     } catch {
-      onError("Impossibile inserire l'elemento.");
+      onError("Couldn't insert the element.");
     } finally {
       setBusyId(null);
     }
@@ -118,18 +118,18 @@ export function StarredPanel({ dispatch, onError, refreshKey, onChanged, onManag
       setEditingId(null);
       await refresh();
     } catch {
-      onError("Impossibile rinominare l'elemento.");
+      onError("Couldn't rename the element.");
     }
   }
 
   async function onDelete(id: string) {
-    await deleteStarred(id).catch(() => onError("Impossibile eliminare l'elemento."));
+    await deleteStarred(id).catch(() => onError("Couldn't delete the element."));
     await refresh();
   }
 
   return (
     <Section
-      title="Preferiti"
+      title="Favorites"
       count={items.length}
       open={open}
       onToggle={onToggle}
@@ -141,16 +141,16 @@ export function StarredPanel({ dispatch, onError, refreshKey, onChanged, onManag
               variant="ghost"
               size="icon-sm"
               className="size-6 text-muted-foreground [&_svg]:size-3.5"
-              title="Cerca nei preferiti (⌘K)"
+              title="Search favorites (⌘K)"
               onClick={() => setSearchOpen(true)}
             >
               <Search />
             </Button>
           )}
-          <Button variant="ghost" size="icon-sm" className="size-6 text-muted-foreground [&_svg]:size-3.5" title="Importa da un altro progetto" onClick={() => setImportOpen(true)}>
+          <Button variant="ghost" size="icon-sm" className="size-6 text-muted-foreground [&_svg]:size-3.5" title="Import from another project" onClick={() => setImportOpen(true)}>
             <FolderInput />
           </Button>
-          <Button variant="ghost" size="icon-sm" className="size-6 text-muted-foreground [&_svg]:size-3.5" title="Gestisci preferiti" onClick={onManage}>
+          <Button variant="ghost" size="icon-sm" className="size-6 text-muted-foreground [&_svg]:size-3.5" title="Manage favorites" onClick={onManage}>
             <ListFilter />
           </Button>
         </div>
@@ -168,18 +168,18 @@ export function StarredPanel({ dispatch, onError, refreshKey, onChanged, onManag
             onChange={(e) => setQuery(e.target.value)}
             onBlur={() => { if (!query.trim()) closeSearch(); }}
             onKeyDown={(e) => { if (e.key === "Escape") closeSearch(); }}
-            placeholder="Cerca per nome o tipo…"
-            aria-label="Cerca nei preferiti"
+            placeholder="Search by name or type…"
+            aria-label="Search favorites"
           />
         </div>
       )}
 
       {items.length === 0 ? (
         <Hint>
-          Nessun preferito. Usa la <Star className="inline size-3 -translate-y-px" aria-label="stella" /> su un livello per salvarlo qui e riusarlo in altri progetti.
+          No favorites yet. Use the <Star className="inline size-3 -translate-y-px" aria-label="star" /> on a layer to save it here and reuse it in other projects.
         </Hint>
       ) : visible.length === 0 ? (
-        <Hint>Nessun risultato per «{query.trim()}».</Hint>
+        <Hint>No results for “{query.trim()}”.</Hint>
       ) : (
         <div className="space-y-0.5">
           {visible.map((m) => (
@@ -195,12 +195,12 @@ export function StarredPanel({ dispatch, onError, refreshKey, onChanged, onManag
                       if (e.key === "Enter") void onRename(m.id);
                       if (e.key === "Escape") setEditingId(null);
                     }}
-                    aria-label="Nuovo nome"
+                    aria-label="New name"
                   />
-                  <Button variant="ghost" size="icon-sm" className="size-7" title="Conferma" onClick={() => void onRename(m.id)}>
+                  <Button variant="ghost" size="icon-sm" className="size-7" title="Confirm" onClick={() => void onRename(m.id)}>
                     <Check />
                   </Button>
-                  <Button variant="ghost" size="icon-sm" className="size-7" title="Annulla" onClick={() => setEditingId(null)}>
+                  <Button variant="ghost" size="icon-sm" className="size-7" title="Cancel" onClick={() => setEditingId(null)}>
                     <X />
                   </Button>
                 </div>
@@ -209,7 +209,7 @@ export function StarredPanel({ dispatch, onError, refreshKey, onChanged, onManag
                   <button
                     type="button"
                     className="flex min-w-0 flex-1 items-center gap-2.5 px-2 py-1.5 text-left disabled:opacity-60"
-                    title="Inserisci nel progetto"
+                    title="Insert into the project"
                     disabled={busyId === m.id}
                     onClick={() => void onInsert(m)}
                   >
@@ -224,7 +224,7 @@ export function StarredPanel({ dispatch, onError, refreshKey, onChanged, onManag
                     variant="ghost"
                     size="icon-sm"
                     className="size-7 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
-                    title="Rinomina"
+                    title="Rename"
                     onClick={() => { setEditingId(m.id); setEditName(m.name); }}
                   >
                     <Pencil />
@@ -233,7 +233,7 @@ export function StarredPanel({ dispatch, onError, refreshKey, onChanged, onManag
                     variant="ghost"
                     size="icon-sm"
                     className="size-7 opacity-100 transition-opacity hover:text-destructive md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
-                    title="Elimina dai preferiti"
+                    title="Delete from favorites"
                     onClick={() => void onDelete(m.id)}
                   >
                     <Trash2 />
@@ -301,7 +301,7 @@ export function StarredCommandDialog({
     if (!open) return;
     setQuery("");
     setActive(0);
-    listStarred().then(setItems).catch(() => onError("Impossibile leggere i preferiti."));
+    listStarred().then(setItems).catch(() => onError("Couldn't read the favorites."));
   }, [open]);
 
   if (!open) return null;
@@ -318,7 +318,7 @@ export function StarredCommandDialog({
       onError("");
       onClose();
     } catch {
-      onError("Impossibile inserire l'elemento.");
+      onError("Couldn't insert the element.");
     } finally {
       setBusy(false);
     }
@@ -345,16 +345,16 @@ export function StarredCommandDialog({
             autoFocus
             onChange={(e) => { setQuery(e.target.value); setActive(0); }}
             onKeyDown={onKey}
-            placeholder="Cerca un preferito per nome o tipo…"
-            aria-label="Cerca nei preferiti"
+            placeholder="Search favorites by name or type…"
+            aria-label="Search favorites"
           />
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
           {items.length === 0 ? (
-            <Hint>Nessun preferito. Usa la stella su un livello per salvarlo qui.</Hint>
+            <Hint>No favorites yet. Use the star on a layer to save it here.</Hint>
           ) : visible.length === 0 ? (
-            <p className="px-2.5 py-3 text-sm text-muted-foreground">Nessun risultato per «{query.trim()}».</p>
+            <p className="px-2.5 py-3 text-sm text-muted-foreground">No results for “{query.trim()}”.</p>
           ) : (
             visible.map((m, i) => (
               <button
@@ -378,9 +378,9 @@ export function StarredCommandDialog({
         </div>
 
         <div className="flex items-center gap-3 border-t border-border px-3.5 py-2 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-          <span>↑↓ naviga</span>
-          <span>↵ inserisci</span>
-          <span>esc chiude</span>
+          <span>↑↓ navigate</span>
+          <span>↵ insert</span>
+          <span>esc close</span>
         </div>
       </div>
     </div>
@@ -406,7 +406,7 @@ export function ManageStarredDialog({
       }));
       setPreviews(new Map(layers.filter((row): row is readonly [string, Layer] => row !== null)));
     }
-    catch { onError("Impossibile leggere i preferiti."); }
+    catch { onError("Couldn't read the favorites."); }
   };
 
   useEffect(() => {
@@ -428,7 +428,7 @@ export function ManageStarredDialog({
     return bUse - aUse;
   });
   const tabs = [
-    ["all", "Tutti"], ["image", "Immagini"], ["text", "Testi"],
+    ["all", "All"], ["image", "Images"], ["text", "Text"],
     ...projects.map(([id, name]) => [`project:${id}`, name]),
   ];
   const visible = items.filter((item) => {
@@ -444,7 +444,7 @@ export function ManageStarredDialog({
       setItems((current) => current.filter((item) => item.id !== id));
       onChanged();
     } catch {
-      onError("Impossibile eliminare l'elemento.");
+      onError("Couldn't delete the element.");
     } finally {
       setRemoving(null);
     }
@@ -453,16 +453,16 @@ export function ManageStarredDialog({
   return (
     <DialogPortal>
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4" onPointerDown={onClose}>
-      <section className="anim-panel flex h-[min(620px,82vh)] w-[min(720px,94vw)] flex-col overflow-hidden rounded-xl border border-border bg-card shadow-2xl" onPointerDown={(e) => e.stopPropagation()} aria-label="Gestisci preferiti">
+      <section className="anim-panel flex h-[min(620px,82vh)] w-[min(720px,94vw)] flex-col overflow-hidden rounded-xl border border-border bg-card shadow-2xl" onPointerDown={(e) => e.stopPropagation()} aria-label="Manage favorites">
         <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-4">
           <div>
-            <h2 className="text-base font-semibold">Gestisci preferiti</h2>
-            <p className="mt-0.5 text-sm text-muted-foreground">Organizzati per ultimo utilizzo, tipo e progetto di origine.</p>
+            <h2 className="text-base font-semibold">Manage favorites</h2>
+            <p className="mt-0.5 text-sm text-muted-foreground">Organized by last use, type and source project.</p>
           </div>
-          <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Chiudi"><X /></Button>
+          <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Close"><X /></Button>
         </div>
         <div className="shrink-0 overflow-x-auto border-b border-border px-3 pt-2">
-          <div className="flex min-w-max gap-1" role="tablist" aria-label="Filtra preferiti">
+          <div className="flex min-w-max gap-1" role="tablist" aria-label="Filter favorites">
             {tabs.map(([id, label]) => (
               <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)} className={cn("rounded-t-md px-3 py-2 text-sm transition-colors", tab === id ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-foreground")}>
                 {label}
@@ -472,7 +472,7 @@ export function ManageStarredDialog({
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto p-3">
           {visible.length === 0 ? (
-            <Hint>Nessun preferito in questa raccolta.</Hint>
+            <Hint>No favorites in this collection.</Hint>
           ) : (
             <div className="divide-y divide-border/70">
               {visible.map((item) => (
@@ -480,9 +480,9 @@ export function ManageStarredDialog({
                   <FavoritePreview item={item} layer={previews.get(item.id)} />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-medium">{item.name}</span>
-                    <span className="block truncate text-xs text-muted-foreground">{KIND_LABELS[item.kind]} · {item.sourceProjectName ?? "Senza progetto"} · usato {shortTime(item.lastUsedAt)}</span>
+                    <span className="block truncate text-xs text-muted-foreground">{KIND_LABELS[item.kind]} · {item.sourceProjectName ?? "No project"} · used {shortTime(item.lastUsedAt)}</span>
                   </span>
-                  <Button variant="ghost" size="icon-sm" className="shrink-0 text-muted-foreground hover:text-destructive" title="Rimuovi dai preferiti" aria-label={`Rimuovi ${item.name} dai preferiti`} disabled={removing === item.id} onClick={() => void remove(item.id)}>
+                  <Button variant="ghost" size="icon-sm" className="shrink-0 text-muted-foreground hover:text-destructive" title="Remove from favorites" aria-label={`Remove ${item.name} from favorites`} disabled={removing === item.id} onClick={() => void remove(item.id)}>
                     <Trash2 />
                   </Button>
                 </div>
@@ -491,8 +491,8 @@ export function ManageStarredDialog({
           )}
         </div>
         <div className="flex justify-between border-t border-border px-5 py-3 text-xs text-muted-foreground">
-          <span>{visible.length} {visible.length === 1 ? "elemento" : "elementi"}</span>
-          <Button variant="ghost" size="sm" onClick={onClose}>Chiudi</Button>
+          <span>{visible.length} {visible.length === 1 ? "element" : "elements"}</span>
+          <Button variant="ghost" size="sm" onClick={onClose}>Close</Button>
         </div>
       </section>
     </div>
@@ -511,7 +511,7 @@ function ImportFromProjectDialog({
   const [starredIds, setStarredIds] = useState<Set<string>>(new Set()); // feedback per layer row
 
   useEffect(() => {
-    listConfigs().then(setProjects).catch(() => onError("Impossibile leggere l'archivio."));
+    listConfigs().then(setProjects).catch(() => onError("Couldn't read the archive."));
   }, []);
 
   async function openOne(meta: ConfigMeta) {
@@ -520,7 +520,7 @@ function ImportFromProjectDialog({
       const full = await loadConfig(meta.id); // hydrated: layers carry paintable data URLs
       setOpenProject({ meta, layers: full.doc.layers });
     } catch {
-      onError("Impossibile caricare il progetto.");
+      onError("Couldn't load the project.");
     } finally {
       setBusy(null);
     }
@@ -533,7 +533,7 @@ function ImportFromProjectDialog({
       setStarredIds((s) => new Set(s).add(layer.id));
       onStarred();
     } catch {
-      onError("Impossibile salvare nei preferiti.");
+      onError("Couldn't save to favorites.");
     } finally {
       setBusy(null);
     }
@@ -547,18 +547,18 @@ function ImportFromProjectDialog({
         onPointerDown={(e) => e.stopPropagation()}
       >
         <div className="space-y-1">
-          <h3 className="text-sm font-semibold">{openProject ? openProject.meta.name : "Importa da progetto"}</h3>
+          <h3 className="text-sm font-semibold">{openProject ? openProject.meta.name : "Import from a project"}</h3>
           <p className="text-sm text-muted-foreground">
             {openProject
-              ? "Inserisci un elemento nel progetto attuale o salvalo nei preferiti."
-              : "Scegli il progetto da cui prendere gli elementi."}
+              ? "Insert an element into the current project, or save it to favorites."
+              : "Pick the project to take elements from."}
           </p>
         </div>
 
         <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto">
           {!openProject ? (
             projects.length === 0 ? (
-              <Hint>Nessun progetto in archivio.</Hint>
+              <Hint>Nothing in the archive.</Hint>
             ) : (
               projects.map((p) => (
                 <button
@@ -577,7 +577,7 @@ function ImportFromProjectDialog({
               ))
             )
           ) : openProject.layers.length === 0 ? (
-            <Hint>Questo progetto non ha livelli.</Hint>
+            <Hint>This project has no layers.</Hint>
           ) : (
             [...openProject.layers].reverse().map((layer) => (
               <div key={layer.id} className="group flex items-center gap-0.5 rounded-md transition-colors hover:bg-accent/40">
@@ -592,7 +592,7 @@ function ImportFromProjectDialog({
                   variant="ghost"
                   size="icon-sm"
                   className={cn("size-7", starredIds.has(layer.id) && "text-amber-400")}
-                  title={starredIds.has(layer.id) ? "Nei preferiti" : "Salva nei preferiti"}
+                  title={starredIds.has(layer.id) ? "In favorites" : "Save to favorites"}
                   disabled={busy === layer.id}
                   onClick={() => void star(layer)}
                 >
@@ -602,7 +602,7 @@ function ImportFromProjectDialog({
                   variant="ghost"
                   size="icon-sm"
                   className="size-7"
-                  title="Inserisci nel progetto attuale"
+                  title="Insert into the current project"
                   onClick={() => onInsert(layer)}
                 >
                   <Plus />
@@ -614,9 +614,9 @@ function ImportFromProjectDialog({
 
         <div className="flex justify-end gap-2">
           {openProject && (
-            <Button variant="ghost" size="sm" onClick={() => setOpenProject(null)}>Indietro</Button>
+            <Button variant="ghost" size="sm" onClick={() => setOpenProject(null)}>Back</Button>
           )}
-          <Button variant="ghost" size="sm" onClick={onClose}>Chiudi</Button>
+          <Button variant="ghost" size="sm" onClick={onClose}>Close</Button>
         </div>
       </div>
     </div>

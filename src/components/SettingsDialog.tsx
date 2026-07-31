@@ -16,8 +16,8 @@ type TabId = "mcp" | "tokens" | "session";
 
 const TABS: { id: TabId; label: string; icon: typeof Plug }[] = [
   { id: "mcp", label: "MCP", icon: Plug },
-  { id: "tokens", label: "Token API", icon: KeyRound },
-  { id: "session", label: "Sessione", icon: UserRound },
+  { id: "tokens", label: "API tokens", icon: KeyRound },
+  { id: "session", label: "Session", icon: UserRound },
 ];
 
 export function SettingsDialog({ onClose }: Props) {
@@ -41,12 +41,12 @@ export function SettingsDialog({ onClose }: Props) {
         onPointerDown={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
-        aria-label="Impostazioni"
+        aria-label="Settings"
       >
         {/* Tab rail: a column on desktop, a scrollable strip above the body on mobile. */}
         <nav className="flex shrink-0 gap-1 overflow-x-auto border-b border-border/60 bg-secondary/20 p-2 sm:w-44 sm:flex-col sm:overflow-x-visible sm:border-b-0 sm:border-r sm:p-3">
           <div className="hidden px-2 pb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground sm:block">
-            Impostazioni
+            Settings
           </div>
           {TABS.map(({ id, label, icon: Icon }) => (
             <button
@@ -74,8 +74,8 @@ export function SettingsDialog({ onClose }: Props) {
               size="icon-sm"
               className="text-muted-foreground hover:text-foreground"
               onClick={onClose}
-              title="Chiudi"
-              aria-label="Chiudi"
+              title="Close"
+              aria-label="Close"
             >
               <X />
             </Button>
@@ -100,9 +100,9 @@ function SessionPanel() {
     <div className="flex flex-col gap-4">
       <div className="space-y-1">
         <h3 className="flex items-center gap-2 text-sm font-semibold">
-          <UserRound className="size-4 text-primary" /> Sessione
+          <UserRound className="size-4 text-primary" /> Session
         </h3>
-        <p className="text-sm text-muted-foreground">Account attualmente connesso in questo browser.</p>
+        <p className="text-sm text-muted-foreground">The account currently signed in on this browser.</p>
       </div>
 
       <div className="space-y-2 rounded-lg border border-border/70 bg-secondary/30 p-3">
@@ -112,10 +112,10 @@ function SessionPanel() {
 
       <div className="space-y-2">
         <p className="text-[11px] text-muted-foreground">
-          Uscendo, la tela di lavoro locale viene svuotata: salva il progetto se vuoi ritrovarlo.
+          Signing out clears the local working canvas — save the project first if you want it back.
         </p>
         <Button variant="outline" size="sm" onClick={() => void logout()}>
-          <LogOut /> Esci
+          <LogOut /> Sign out
         </Button>
       </div>
     </div>

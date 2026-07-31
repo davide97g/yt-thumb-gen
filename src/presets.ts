@@ -26,8 +26,8 @@ export const TEMPLATE_LABELS: Record<TemplateKey, string> = {
   brand: "Brand",
   dev: "Dev",
   hype: "Hype",
-  number: "Numerone",
-  split: "Prima/Dopo",
+  number: "Big number",
+  split: "Before/After",
   minimal: "Minimal",
 };
 
@@ -75,7 +75,7 @@ function face(o: Partial<ImageLayer> & { x: number; y: number }): ImageLayer {
   return {
     id: uid(),
     type: "image",
-    name: "Foto",
+    name: "Photo",
     rotation: 0,
     visible: true,
     src: null,

@@ -132,7 +132,7 @@ function ResetButton({ onReset }: { onReset: () => void }) {
     <button
       type="button"
       onClick={onReset}
-      title="Ripristina valore predefinito"
+      title="Reset to default"
       className={cn(buttonVariants({ variant: "ghost", size: "icon-sm" }), "size-6 text-muted-foreground")}
     >
       <RotateCcw className="size-3" />
@@ -212,7 +212,7 @@ export function ColorRow({ label, value, onChange, defaultValue }: { label: stri
           <button
             type="button"
             onClick={() => eyedrop(onChange)}
-            title="Contagocce — preleva un colore dallo schermo (copia l'hex)"
+            title="Eyedropper — pick a color from the screen (copies the hex)"
             className={cn(buttonVariants({ variant: "ghost", size: "icon-sm" }))}
           >
             <Pipette className="size-3.5" />

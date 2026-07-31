@@ -4,9 +4,9 @@ import { type ApiToken, createToken, deleteToken, listTokens } from "../lib/stor
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 
-const when = (ms: number | null) => (ms ? new Date(ms).toLocaleDateString("it-IT") : "mai");
+const when = (ms: number | null) => (ms ? new Date(ms).toLocaleDateString("en-GB") : "never");
 
-/** Settings › Token API. Manages personal API tokens — the credential the MCP server uses
+/** Settings › API tokens. Manages personal API tokens — the credential the MCP server uses
  *  to design from an agent. The plaintext token exists only in this panel, once, right
  *  after creation: the backend stores nothing but its hash. */
 export function TokensPanel() {
@@ -20,7 +20,7 @@ export function TokensPanel() {
   useEffect(() => {
     listTokens()
       .then(setTokens)
-      .catch(() => setError("Impossibile caricare i token."));
+      .catch(() => setError("Couldn't load the tokens."));
   }, []);
 
   async function create() {
@@ -34,7 +34,7 @@ export function TokensPanel() {
       setName("");
       setTokens(await listTokens());
     } catch {
-      setError("Creazione non riuscita.");
+      setError("Couldn't create the token.");
     } finally {
       setBusy(false);
     }
@@ -47,7 +47,7 @@ export function TokensPanel() {
       setTokens(await listTokens());
       setFresh(null);
     } catch {
-      setError("Revoca non riuscita.");
+      setError("Couldn't revoke the token.");
     } finally {
       setBusy(false);
     }
@@ -63,18 +63,18 @@ export function TokensPanel() {
     <div className="flex flex-col gap-4">
       <div className="space-y-1">
         <h3 className="flex items-center gap-2 text-sm font-semibold">
-          <KeyRound className="size-4 text-primary" /> Token API
+          <KeyRound className="size-4 text-primary" /> API tokens
         </h3>
         <p className="text-sm text-muted-foreground">
-          Servono per creare progetti da fuori dall’editor, ad esempio dal server MCP. Un token vale quanto il tuo
-          account: non condividerlo.
+          Use these to create projects from outside the editor — from the MCP server, for instance. A token is as
+          powerful as your account: don't share it.
         </p>
       </div>
 
       <div className="flex gap-2">
         <Input
           value={name}
-          placeholder="Nome del token (es. mcp-locale)"
+          placeholder="Token name (e.g. mcp-local)"
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
@@ -84,20 +84,20 @@ export function TokensPanel() {
           }}
         />
         <Button size="sm" onClick={() => void create()} disabled={busy || !name.trim()}>
-          <Plus /> Crea
+          <Plus /> Create
         </Button>
       </div>
 
       {fresh && (
         <div className="space-y-2 rounded-lg border border-primary/30 bg-primary/10 p-3">
           <p className="text-xs text-muted-foreground">
-            Copialo adesso: non verrà mostrato di nuovo.
+            Copy it now — it won't be shown again.
           </p>
           <div className="flex items-center gap-2">
             <code className="readout min-w-0 flex-1 truncate rounded bg-background/60 px-2 py-1.5 text-xs">{fresh}</code>
             <Button variant="ghost" size="sm" onClick={() => void copy()}>
               {copied ? <Check /> : <Copy />}
-              {copied ? "Copiato" : "Copia"}
+              {copied ? "Copied" : "Copy"}
             </Button>
           </div>
         </div>
@@ -107,9 +107,9 @@ export function TokensPanel() {
 
       <div className="space-y-1">
         {tokens === null ? (
-          <p className="text-sm text-muted-foreground">Caricamento…</p>
+          <p className="text-sm text-muted-foreground">Loading…</p>
         ) : tokens.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Nessun token.</p>
+          <p className="text-sm text-muted-foreground">No tokens yet.</p>
         ) : (
           tokens.map((t) => (
             <div key={t.id} className="flex items-center gap-2 rounded-lg border border-border/60 px-3 py-2">
@@ -117,7 +117,7 @@ export function TokensPanel() {
               <div className="min-w-0 flex-1">
                 <div className="truncate text-sm">{t.name}</div>
                 <div className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-                  creato {when(t.createdAt)} · usato {when(t.lastUsedAt)}
+                  created {when(t.createdAt)} · used {when(t.lastUsedAt)}
                 </div>
               </div>
               <Button
@@ -126,8 +126,8 @@ export function TokensPanel() {
                 className="text-muted-foreground hover:text-destructive"
                 onClick={() => void remove(t.id)}
                 disabled={busy}
-                title="Revoca"
-                aria-label={`Revoca ${t.name}`}
+                title="Revoke"
+                aria-label={`Revoke ${t.name}`}
               >
                 <Trash2 />
               </Button>

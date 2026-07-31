@@ -36,8 +36,8 @@ type Props = {
 const UNGROUPED = "__none__"; // Radix Select has no concept of a null value
 
 /** The project library, grouped by campaign. A campaign is a folder: a project belongs to
- *  at most one, and deleting a campaign keeps its designs (they fall back to "Senza
- *  campagna"). The live project, if it came from here, is pinned visually. */
+ *  at most one, and deleting a campaign keeps its designs (they fall back to "No
+ *  campaign"). The live project, if it came from here, is pinned visually. */
 export function SavesPanel({ doc, projectId, projectName, onLoad, onError, refreshKey, open, onToggle }: Props) {
   const [configs, setConfigs] = useState<ConfigMeta[]>([]);
   const [campaigns, setCampaigns] = useState<CampaignMeta[]>([]);
@@ -50,7 +50,7 @@ export function SavesPanel({ doc, projectId, projectName, onLoad, onError, refre
   const refresh = () =>
     Promise.all([listConfigs(), listCampaigns()])
       .then(([c, g]) => { setConfigs(c); setCampaigns(g); })
-      .catch(() => onError("Impossibile leggere l'archivio."));
+      .catch(() => onError("Couldn't read the archive."));
   useEffect(() => { void refresh(); }, [refreshKey]);
 
   // One pass over the list: each campaign's designs, then whatever is left over.
@@ -89,7 +89,7 @@ export function SavesPanel({ doc, projectId, projectName, onLoad, onError, refre
       onLoad(full.doc, full.name, full.id, full.updatedAt);
       onError("");
     } catch {
-      onError("Impossibile caricare il progetto.");
+      onError("Couldn't load the project.");
     } finally {
       setBusyId(null);
     }
@@ -101,7 +101,7 @@ export function SavesPanel({ doc, projectId, projectName, onLoad, onError, refre
       const full = await loadConfig(c.id);
       exportConfigFile(full.doc, full.name);
     } catch {
-      onError("Impossibile esportare il progetto.");
+      onError("Couldn't export the project.");
     } finally {
       setBusyId(null);
     }
@@ -111,10 +111,10 @@ export function SavesPanel({ doc, projectId, projectName, onLoad, onError, refre
     if (!file) return;
     try {
       const { name, doc: imported } = await importConfigFile(file);
-      onLoad(imported, name ?? "Senza titolo", null, null);
+      onLoad(imported, name ?? "Untitled", null, null);
       onError("");
     } catch {
-      onError("File JSON non valido.");
+      onError("Invalid JSON file.");
     }
   }
 
@@ -127,7 +127,7 @@ export function SavesPanel({ doc, projectId, projectName, onLoad, onError, refre
       setCreating(false);
       await refresh();
     } catch {
-      onError("Creazione campagna non riuscita.");
+      onError("Couldn't create the campaign.");
     }
   }
 
@@ -140,7 +140,7 @@ export function SavesPanel({ doc, projectId, projectName, onLoad, onError, refre
       setDraftName("");
       await refresh();
     } catch {
-      onError("Rinomina non riuscita.");
+      onError("Couldn't rename.");
     }
   }
 
@@ -149,7 +149,7 @@ export function SavesPanel({ doc, projectId, projectName, onLoad, onError, refre
       await deleteCampaign(id);
       await refresh();
     } catch {
-      onError("Eliminazione campagna non riuscita.");
+      onError("Couldn't delete the campaign.");
     }
   }
 
@@ -159,7 +159,7 @@ export function SavesPanel({ doc, projectId, projectName, onLoad, onError, refre
       await setProjectCampaign(id, campaignId);
       await refresh();
     } catch {
-      onError("Spostamento non riuscito.");
+      onError("Couldn't move the project.");
     } finally {
       setBusyId(null);
     }
@@ -173,7 +173,7 @@ export function SavesPanel({ doc, projectId, projectName, onLoad, onError, refre
     const shown = active ? projectName : prefixed ? c.name.slice(campaignName!.length + 3) : c.name;
     // Don't repeat the format when stripping already left the name showing it.
     const fmt = !prefixed && c.format && FORMATS[c.format] ? `${FORMATS[c.format].label} · ` : "";
-    const meta = active ? "In uso" : `${fmt}${relTime(c.updatedAt)}`;
+    const meta = active ? "Open" : `${fmt}${relTime(c.updatedAt)}`;
     return (
       <div
         className={cn(
@@ -184,7 +184,7 @@ export function SavesPanel({ doc, projectId, projectName, onLoad, onError, refre
         <button
           type="button"
           className="flex min-w-0 flex-1 items-center gap-2.5 px-2 py-1.5 text-left disabled:opacity-60"
-          title={active ? "Progetto attuale" : "Carica"}
+          title={active ? "Current project" : "Open"}
           disabled={busyId === c.id}
           onClick={() => void onOpen(c)}
         >
@@ -201,14 +201,14 @@ export function SavesPanel({ doc, projectId, projectName, onLoad, onError, refre
         >
           <SelectTrigger
             className="size-7 shrink-0 justify-center border-0 bg-transparent p-0 opacity-100 shadow-none transition-opacity hover:bg-accent md:opacity-0 md:group-hover:opacity-100"
-            aria-label={`Sposta ${c.name} in una campagna`}
-            title="Sposta in campagna"
+            aria-label={`Move ${c.name} to a campaign`}
+            title="Move to campaign"
           >
             <Layers3 className="size-4 text-muted-foreground" />
             <SelectValue className="hidden" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={UNGROUPED}>Senza campagna</SelectItem>
+            <SelectItem value={UNGROUPED}>No campaign</SelectItem>
             {campaigns.map((g) => (
               <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>
             ))}
@@ -219,7 +219,7 @@ export function SavesPanel({ doc, projectId, projectName, onLoad, onError, refre
           variant="ghost"
           size="icon-sm"
           className="size-7 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
-          title="Esporta JSON"
+          title="Export JSON"
           disabled={busyId === c.id}
           onClick={() => void onExport(c)}
         >
@@ -229,7 +229,7 @@ export function SavesPanel({ doc, projectId, projectName, onLoad, onError, refre
           variant="ghost"
           size="icon-sm"
           className="size-7 opacity-100 transition-opacity hover:text-destructive md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
-          title="Elimina"
+          title="Delete"
           onClick={() => void onDelete(c.id)}
         >
           <Trash2 />
@@ -242,7 +242,7 @@ export function SavesPanel({ doc, projectId, projectName, onLoad, onError, refre
 
   return (
     <Section
-      title="Archivio"
+      title="Archive"
       count={configs.length}
       open={open}
       onToggle={onToggle}
@@ -252,8 +252,8 @@ export function SavesPanel({ doc, projectId, projectName, onLoad, onError, refre
           variant="ghost"
           size="icon-sm"
           className="size-7 text-muted-foreground hover:text-foreground"
-          title="Nuova campagna"
-          aria-label="Nuova campagna"
+          title="New campaign"
+          aria-label="New campaign"
           onClick={() => { setCreating((v) => !v); setDraftName(""); setRenaming(null); }}
         >
           <FolderPlus />
@@ -266,7 +266,7 @@ export function SavesPanel({ doc, projectId, projectName, onLoad, onError, refre
             className="h-8"
             autoFocus
             value={draftName}
-            placeholder="Nome campagna"
+            placeholder="Campaign name"
             onChange={(e) => setDraftName(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") { e.preventDefault(); void onCreateCampaign(); }
@@ -274,13 +274,13 @@ export function SavesPanel({ doc, projectId, projectName, onLoad, onError, refre
             }}
           />
           <Button size="sm" className="h-8" onClick={() => void onCreateCampaign()} disabled={!draftName.trim()}>
-            Crea
+            Create
           </Button>
         </div>
       )}
 
       {empty ? (
-        <Hint>Nessun progetto in archivio. <span className="text-foreground">Salva</span> per archiviare quello attuale.</Hint>
+        <Hint>Nothing in the archive yet. <span className="text-foreground">Save</span> to archive the current project.</Hint>
       ) : (
         <div className="space-y-1.5">
           {campaigns.map((g) => {
@@ -300,7 +300,7 @@ export function SavesPanel({ doc, projectId, projectName, onLoad, onError, refre
                         if (e.key === "Escape") setRenaming(null);
                       }}
                     />
-                    <Button size="sm" className="h-8" onClick={() => void onRenameCampaign(g.id)}>Salva</Button>
+                    <Button size="sm" className="h-8" onClick={() => void onRenameCampaign(g.id)}>Save</Button>
                   </div>
                 ) : (
                   <div className="group flex items-center gap-0.5">
@@ -320,7 +320,7 @@ export function SavesPanel({ doc, projectId, projectName, onLoad, onError, refre
                       variant="ghost"
                       size="icon-sm"
                       className="size-7 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100"
-                      title="Rinomina campagna"
+                      title="Rename campaign"
                       onClick={() => { setRenaming(g.id); setDraftName(g.name); setCreating(false); }}
                     >
                       <Pencil />
@@ -329,7 +329,7 @@ export function SavesPanel({ doc, projectId, projectName, onLoad, onError, refre
                       variant="ghost"
                       size="icon-sm"
                       className="size-7 opacity-100 transition-opacity hover:text-destructive md:opacity-0 md:group-hover:opacity-100"
-                      title="Elimina campagna (i progetti restano)"
+                      title="Delete campaign (the designs stay)"
                       onClick={() => void onDeleteCampaign(g.id)}
                     >
                       <Trash2 />
@@ -343,7 +343,7 @@ export function SavesPanel({ doc, projectId, projectName, onLoad, onError, refre
                       {designs.map((c) => <ProjectRow key={c.id} c={c} campaignName={g.name} />)}
                     </div>
                   ) : (
-                    <p className="pl-5 text-[11px] text-muted-foreground">Vuota.</p>
+                    <p className="pl-5 text-[11px] text-muted-foreground">Empty.</p>
                   ))}
               </div>
             );
@@ -353,7 +353,7 @@ export function SavesPanel({ doc, projectId, projectName, onLoad, onError, refre
             <div className="space-y-0.5">
               {campaigns.length > 0 && (
                 <div className="px-1.5 pt-1 font-mono text-[10.5px] font-medium uppercase tracking-[0.16em] text-muted-foreground/70">
-                  Senza campagna
+                  No campaign
                 </div>
               )}
               {groups.loose.map((c) => <ProjectRow key={c.id} c={c} />)}
@@ -364,9 +364,9 @@ export function SavesPanel({ doc, projectId, projectName, onLoad, onError, refre
 
       <div className="flex flex-col gap-2 pt-1">
         <Button variant="outline" size="sm" className="w-full justify-center" onClick={() => exportConfigFile(doc, projectName || "thumb")}>
-          <FileDown /> Esporta progetto
+          <FileDown /> Export project
         </Button>
-        <UploadButton label="Importa da file" icon={<FileUp />} accept="application/json,.json" className="w-full justify-center" onFile={(f) => void onImport(f)} />
+        <UploadButton label="Import from file" icon={<FileUp />} accept="application/json,.json" className="w-full justify-center" onFile={(f) => void onImport(f)} />
       </div>
     </Section>
   );

@@ -98,7 +98,7 @@ function docProblems(where: string, errors: string[]): Response | null {
   if (errors.length === 0) return null;
   console.warn(`[thumbdoc:${MODE}] ${where}`, errors.slice(0, 10));
   if (MODE !== "enforce") return null;
-  return Response.json({ error: "Documento non valido", details: errors.slice(0, 50) }, { status: 422 });
+  return Response.json({ error: "Invalid document", details: errors.slice(0, 50) }, { status: 422 });
 }
 
 // ── auth ─────────────────────────────────────────────────────────────────
@@ -113,25 +113,25 @@ app.get("/api/auth/me", async (c) => {
 app.post("/api/auth/register", async (c) => {
   if (!(await signupOpen())) return c.json({ error: "Registrazioni chiuse" }, 403);
   const { email, password } = await c.req.json().catch(() => ({}));
-  if (!emailOk(email)) return c.json({ error: "Email non valida" }, 400);
-  if (typeof password !== "string" || password.length < 8) return c.json({ error: "Password troppo corta (min 8)" }, 400);
+  if (!emailOk(email)) return c.json({ error: "Invalid email" }, 400);
+  if (typeof password !== "string" || password.length < 8) return c.json({ error: "Password too short (min 8)" }, 400);
   const hash = await Bun.password.hash(password);
   try {
     const [u] = await sql<User[]>`INSERT INTO users (email, password_hash) VALUES (${email.toLowerCase()}, ${hash}) RETURNING id, email`;
     setSessionCookie(c, await createSession(u.id));
     return c.json({ id: u.id, email: u.email });
   } catch {
-    return c.json({ error: "Email già registrata" }, 409);
+    return c.json({ error: "Email already registered" }, 409);
   }
 });
 
 app.post("/api/auth/login", async (c) => {
   const { email, password } = await c.req.json().catch(() => ({}));
-  if (!emailOk(email) || typeof password !== "string") return c.json({ error: "Credenziali non valide" }, 400);
+  if (!emailOk(email) || typeof password !== "string") return c.json({ error: "Invalid credentials" }, 400);
   const rows = await sql<{ id: string; email: string; password_hash: string }[]>`
     SELECT id, email, password_hash FROM users WHERE email = ${email.toLowerCase()}`;
   const u = rows[0];
-  if (!u || !(await Bun.password.verify(password, u.password_hash))) return c.json({ error: "Credenziali non valide" }, 401);
+  if (!u || !(await Bun.password.verify(password, u.password_hash))) return c.json({ error: "Invalid credentials" }, 401);
   setSessionCookie(c, await createSession(u.id));
   return c.json({ id: u.id, email: u.email });
 });
@@ -211,7 +211,7 @@ app.post("/api/projects", async (c) => {
   const rejected = docProblems("POST /projects", validateDoc(doc));
   if (rejected) return rejected;
   const campaign = campaignId === undefined ? null : await resolveCampaign(user.id, campaignId);
-  if (campaign === false) return c.json({ error: "Campagna non trovata" }, 404);
+  if (campaign === false) return c.json({ error: "Campaign not found" }, 404);
   const [row] = await sql`
     INSERT INTO projects (user_id, name, doc, campaign_id)
     VALUES (${user.id}, ${name}, ${sql.json(doc)}, ${campaign})
@@ -233,7 +233,7 @@ app.put("/api/projects/:id", async (c) => {
   // can't express "set to null", so the column is only touched when the key is present.
   const hasCampaign = "campaignId" in body;
   const campaign = hasCampaign ? await resolveCampaign(user.id, body.campaignId) : null;
-  if (campaign === false) return c.json({ error: "Campagna non trovata" }, 404);
+  if (campaign === false) return c.json({ error: "Campaign not found" }, 404);
   const [row] = await sql`
     UPDATE projects SET
       name = coalesce(${name ?? null}, name),

@@ -62,7 +62,7 @@ export default function App() {
   // until first save), and when it was last saved. `savedDocRef` holds the doc as
   // of the last save/load — since the reducer makes a new doc on every edit, a
   // reference mismatch is a free "unsaved changes" check.
-  const [projectName, setProjectName] = useState("Senza titolo");
+  const [projectName, setProjectName] = useState("Untitled");
   const [projectId, setProjectId] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const savedDocRef = useRef<ThumbDoc>(initial.doc);
@@ -116,7 +116,7 @@ export default function App() {
         Promise.all([getWorking(), getProject()]).then(([d, p]) => {
           if (d) { savedDocRef.current = d; dispatch({ type: "loadDoc", doc: d }); }
           if (p) { setProjectName(p.name); setProjectId(p.id); }
-          if (wanted) setMessage("Progetto non trovato.");
+          if (wanted) setMessage("Project not found.");
         })
       )
       .catch(() => {})
@@ -171,7 +171,7 @@ export default function App() {
       setSavedAt(saved.updatedAt);
       setSavesKey((k) => k + 1);
     } catch {
-      setMessage("Salvataggio non riuscito.");
+      setMessage("Couldn't save.");
     }
   }
 
@@ -181,9 +181,9 @@ export default function App() {
     try {
       await starLayer(layer, undefined, { id: projectId, name: projectName });
       setStarredKey((k) => k + 1);
-      setMessage(`«${layer.name}» aggiunto ai preferiti.`);
+      setMessage(`“${layer.name}” added to favorites.`);
     } catch {
-      setMessage("Impossibile salvare nei preferiti.");
+      setMessage("Couldn't save to favorites.");
     }
   }
 
@@ -247,12 +247,12 @@ export default function App() {
       const file = [...(e.clipboardData?.items ?? [])].find((i) => i.type.startsWith("image/"))?.getAsFile();
       if (!file) return;
       e.preventDefault();
-      if (file.size > 8 * 1024 * 1024) { setMessage("Foto troppo grande (max 8 MB)"); return; }
+      if (file.size > 8 * 1024 * 1024) { setMessage("Image too large (max 8 MB)"); return; }
       try {
         setMessage(null);
         dispatch({ type: "addLayer", layer: newImageLayer(await loadImageFile(file)) });
       } catch {
-        setMessage("Impossibile incollare l'immagine.");
+        setMessage("Couldn't paste the image.");
       }
     }
     window.addEventListener("paste", onPaste);
@@ -289,7 +289,7 @@ export default function App() {
       const { warning } = await exportThumb(canvasRef.current, exportName, { w: CW, h: CH, maxBytes: fmt.maxBytes, platform: fmt.platform });
       if (warning) setMessage(warning);
     } catch (err) {
-      setMessage(`Export fallito: ${err instanceof Error ? err.message : String(err)}`);
+      setMessage(`Export failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setExporting(false);
     }
@@ -316,8 +316,8 @@ export default function App() {
             size="icon-sm"
             className="text-muted-foreground hover:text-foreground md:hidden"
             onClick={() => setMobileLeft(true)}
-            title="Livelli e progetto"
-            aria-label="Apri livelli e progetto"
+            title="Layers and project"
+            aria-label="Open layers and project"
           >
             <Layers />
           </Button>
@@ -326,8 +326,8 @@ export default function App() {
             size="icon-sm"
             className="hidden text-muted-foreground hover:text-foreground md:inline-flex"
             onClick={() => setChromeHidden((v) => !v)}
-            title={chromeHidden ? "Mostra pannelli (\\)" : "Nascondi pannelli (\\)"}
-            aria-label={chromeHidden ? "Mostra pannelli" : "Nascondi pannelli"}
+            title={chromeHidden ? "Show panels (\\)" : "Hide panels (\\)"}
+            aria-label={chromeHidden ? "Show panels" : "Hide panels"}
             aria-pressed={chromeHidden}
           >
             {chromeHidden ? <Maximize2 /> : <PanelsTopLeft />}
@@ -350,8 +350,8 @@ export default function App() {
               className="size-6 text-muted-foreground hover:text-foreground"
               onClick={() => dispatch({ type: "undo" })}
               disabled={hist.past.length === 0}
-              title="Annulla (⌘Z)"
-              aria-label="Annulla"
+              title="Undo (⌘Z)"
+              aria-label="Undo"
             >
               <Undo2 />
             </Button>
@@ -361,15 +361,15 @@ export default function App() {
               className="size-6 text-muted-foreground hover:text-foreground"
               onClick={() => dispatch({ type: "redo" })}
               disabled={hist.future.length === 0}
-              title="Ripristina (⌘⇧Z)"
-              aria-label="Ripristina"
+              title="Redo (⌘⇧Z)"
+              aria-label="Redo"
             >
               <Redo2 />
             </Button>
           </div>
           {message && (
             <span
-              className={`hidden max-w-64 truncate text-xs md:block ${message.startsWith("Export fallito") ? "text-destructive" : "text-muted-foreground"}`}
+              className={`hidden max-w-64 truncate text-xs md:block ${message.startsWith("Export failed") ? "text-destructive" : "text-muted-foreground"}`}
               title={message}
             >
               {message}
@@ -381,8 +381,8 @@ export default function App() {
             size="icon-sm"
             className="text-muted-foreground hover:text-foreground md:hidden"
             onClick={() => setMobileRight(true)}
-            title="Proprietà"
-            aria-label="Apri proprietà"
+            title="Properties"
+            aria-label="Open properties"
           >
             <SlidersHorizontal />
           </Button>
@@ -391,19 +391,19 @@ export default function App() {
             value={exportName}
             onChange={(e) => setFileName(e.target.value || null)}
             placeholder={defaultFileName(projectName)}
-            aria-label="Nome file"
+            aria-label="File name"
           />
           <Button className="h-8" onClick={onExport} disabled={exporting}>
             <Download />
-            <span className="hidden sm:inline">{exporting ? "Esporto…" : "Esporta PNG"}</span>
+            <span className="hidden sm:inline">{exporting ? "Exporting…" : "Export PNG"}</span>
           </Button>
           <Button
             variant="ghost"
             size="icon-sm"
             className="text-muted-foreground hover:text-foreground"
             onClick={() => setSettingsOpen(true)}
-            title="Impostazioni"
-            aria-label="Impostazioni"
+            title="Settings"
+            aria-label="Settings"
           >
             <Settings />
           </Button>
@@ -439,16 +439,16 @@ export default function App() {
             {/* Pinned head: the project never scrolls away — it's the context for
                 everything below it. */}
             <div className="flex shrink-0 flex-col gap-4 p-4 pb-3">
-              <DrawerClose label="Livelli e progetto" onClose={() => setMobileLeft(false)} />
+              <DrawerClose label="Layers and project" onClose={() => setMobileLeft(false)} />
 
               {/* File name lives in the header on desktop; on mobile it moves in here. */}
               <div className="md:hidden">
-                <Field label="Nome file">
+                <Field label="File name">
                   <Input
                     value={exportName}
                     onChange={(e) => setFileName(e.target.value || null)}
                     placeholder={defaultFileName(projectName)}
-                    aria-label="Nome file"
+                    aria-label="File name"
                   />
                 </Field>
               </div>
@@ -470,7 +470,7 @@ export default function App() {
                 instead of hundreds of layers down. */}
             <div className="flex min-h-0 flex-1 flex-col gap-3 px-4">
               <Section
-                title="Livelli"
+                title="Layers"
                 count={doc.layers.length}
                 open={rail === "layers"}
                 onToggle={() => toggleRail("layers")}
@@ -539,7 +539,15 @@ export default function App() {
 
           {(isMobile || !chromeHidden) && (
             <div className="pointer-events-none absolute inset-x-2 bottom-3 flex justify-center md:inset-x-auto md:bottom-5 md:left-1/2 md:-translate-x-1/2">
-              <Toolbar dispatch={dispatch} layers={doc.layers} onError={setMessage} drawMode={drawMode} setDrawMode={setDrawMode} />
+              {/* `enabled` gates the dock's letter shortcuts: while a dialog is open the
+                  keyboard belongs to it, or "T" would silently add a layer behind it. */}
+              <Toolbar
+                dispatch={dispatch}
+                onError={setMessage}
+                drawMode={drawMode}
+                setDrawMode={setDrawMode}
+                enabled={!newOpen && !cmdkOpen && !manageStarredOpen && !settingsOpen}
+              />
             </div>
           )}
         </main>
@@ -556,7 +564,7 @@ export default function App() {
               !isMobile && "anim-panel-r",
             )}
           >
-            <DrawerClose label="Proprietà" onClose={() => setMobileRight(false)} />
+            <DrawerClose label="Properties" onClose={() => setMobileRight(false)} />
             <FormatSection format={doc.format} dispatch={dispatch} />
             <Inspector selected={selected} selectedIds={selectedIds} layers={doc.layers} dispatch={dispatch} onError={setMessage} cropMode={cropMode} setCropMode={setCropMode} onFontPreview={setFontPreview} cw={CW} ch={CH} />
             <BackgroundInspector background={doc.background} dispatch={dispatch} onError={setMessage} />
@@ -589,7 +597,7 @@ function DrawerClose({ label, onClose }: { label: string; onClose: () => void })
   return (
     <div className="flex items-center justify-between md:hidden">
       <span className="font-mono text-[10.5px] font-medium uppercase tracking-[0.2em] text-muted-foreground">{label}</span>
-      <Button variant="ghost" size="icon-sm" className="text-muted-foreground hover:text-foreground" onClick={onClose} aria-label="Chiudi pannello">
+      <Button variant="ghost" size="icon-sm" className="text-muted-foreground hover:text-foreground" onClick={onClose} aria-label="Close panel">
         <X />
       </Button>
     </div>

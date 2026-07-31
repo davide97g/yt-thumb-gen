@@ -16,12 +16,12 @@ type Props = {
   onError: (msg: string) => void;
 };
 
-/** "Nuovo progetto" flow: offer to save the current project, then create a new
+/** "New project" flow: offer to save the current project, then create a new
  *  one (blank template or a clone of the current) and archive it. */
 export function NewProjectDialog({ doc, projectName, projectId, onClose, onCreated, onError }: Props) {
   const [step, setStep] = useState<1 | 2>(1);
   const [prevName, setPrevName] = useState(projectName);
-  const [newName, setNewName] = useState("Nuovo progetto");
+  const [newName, setNewName] = useState("New project");
   const [clone, setClone] = useState(false);
   const [format, setFormat] = useState<FormatKey>(DEFAULT_FORMAT);
   const [busy, setBusy] = useState(false);
@@ -33,7 +33,7 @@ export function NewProjectDialog({ doc, projectName, projectId, onClose, onCreat
       await saveConfig(prevName, structuredClone(doc), projectId ?? undefined);
       setStep(2);
     } catch {
-      onError("Salvataggio non riuscito.");
+      onError("Couldn't save.");
     } finally {
       setBusy(false);
     }
@@ -49,7 +49,7 @@ export function NewProjectDialog({ doc, projectName, projectId, onClose, onCreat
       onCreated(fresh, saved.name, saved.id, saved.updatedAt);
       onClose();
     } catch {
-      onError("Creazione non riuscita.");
+      onError("Couldn't create the project.");
       setBusy(false);
     }
   }
@@ -65,40 +65,40 @@ export function NewProjectDialog({ doc, projectName, projectId, onClose, onCreat
         onPointerDown={(e) => e.stopPropagation()}
       >
         <div className="space-y-1">
-          <h3 className="text-sm font-semibold">Nuovo progetto</h3>
+          <h3 className="text-sm font-semibold">New project</h3>
           <p className="text-sm text-muted-foreground">
             {step === 1
-              ? "Salvare il progetto attuale prima di continuare?"
-              : "Dai un nome al progetto e scegli da dove partire."}
+              ? "Save the current project before continuing?"
+              : "Name the project and choose where to start from."}
           </p>
         </div>
 
         {step === 1 ? (
           <>
             <label className="space-y-1.5">
-              <span className="text-sm text-muted-foreground">Nome del salvataggio</span>
+              <span className="text-sm text-muted-foreground">Save name</span>
               <Input value={prevName} autoFocus onChange={(e) => setPrevName(e.target.value)} onKeyDown={submitOnEnter(() => void savePrevious())} />
             </label>
             <div className="flex justify-end gap-2">
-              <Button variant="ghost" size="sm" onClick={onClose} disabled={busy}>Annulla</Button>
-              <Button variant="ghost" size="sm" onClick={() => setStep(2)} disabled={busy}>Non salvare</Button>
+              <Button variant="ghost" size="sm" onClick={onClose} disabled={busy}>Cancel</Button>
+              <Button variant="ghost" size="sm" onClick={() => setStep(2)} disabled={busy}>Don't save</Button>
               <Button size="sm" onClick={() => void savePrevious()} disabled={busy}>
-                <Save /> Salva e continua
+                <Save /> Save and continue
               </Button>
             </div>
           </>
         ) : (
           <>
             <label className="space-y-1.5">
-              <span className="text-sm text-muted-foreground">Nome del progetto</span>
+              <span className="text-sm text-muted-foreground">Project name</span>
               <Input value={newName} autoFocus onChange={(e) => setNewName(e.target.value)} onKeyDown={submitOnEnter(() => void create())} />
             </label>
-            <SelectField label="Formato" value={format} options={Object.values(FORMATS).map((f) => ({ value: f.key, label: f.label }))} onChange={setFormat} />
-            <SwitchRow label="Clona il progetto attuale" checked={clone} onChange={setClone} />
+            <SelectField label="Format" value={format} options={Object.values(FORMATS).map((f) => ({ value: f.key, label: f.label }))} onChange={setFormat} />
+            <SwitchRow label="Clone the current project" checked={clone} onChange={setClone} />
             <div className="flex justify-end gap-2">
-              <Button variant="ghost" size="sm" onClick={() => setStep(1)} disabled={busy}>Indietro</Button>
+              <Button variant="ghost" size="sm" onClick={() => setStep(1)} disabled={busy}>Back</Button>
               <Button size="sm" onClick={() => void create()} disabled={busy}>
-                <FilePlus /> Crea
+                <FilePlus /> Create
               </Button>
             </div>
           </>
