@@ -1,6 +1,6 @@
 // Hosted MCP endpoint, served behind nginx at /api/mcp.
 //
-// This is what the editor's Impostazioni › MCP panel hands out: a single URL plus a
+// This is what the editor's Settings › MCP panel hands out: a single URL plus a
 // personal token, so connecting an agent needs no checkout, no runtime, no install.
 //
 // Stateless by design (`sessionIdGenerator: undefined`): every request carries its own

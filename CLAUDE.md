@@ -137,7 +137,7 @@ Two sweeps run every six hours, started only under `import.meta.main` so importi
 
 ### Campaigns — one message across several platforms
 
-A `campaigns` row plus a nullable `projects.campaign_id`: a **folder**, not a tag, so a design belongs to at most one campaign. `ON DELETE SET NULL` is deliberate — deleting a campaign must never destroy the designs in it; they fall back to "Senza campagna" in the archive.
+A `campaigns` row plus a nullable `projects.campaign_id`: a **folder**, not a tag, so a design belongs to at most one campaign. `ON DELETE SET NULL` is deliberate — deleting a campaign must never destroy the designs in it; they fall back to "No campaign" in the archive.
 
 The value is in `adaptDocToFormats` (`src/lib/adapt.ts`) + the `generate_campaign_set` MCP tool: compose once, then save one project per requested format. **`adaptDocToFormats` deep-clones each variant** because `adaptDocToFormat` only shallow-copies layers — without it, `bg`/`crop`/`points` would alias between designs that are supposed to be independent. `src/lib/adapt.test.ts` guards that.
 
@@ -145,7 +145,7 @@ The value is in `adaptDocToFormats` (`src/lib/adapt.ts`) + the `generate_campaig
 
 ### Agent access — `mcp/`, API tokens, `?project=` deep link
 
-`mcp/` holds the tools once (`src/tools.ts`) and serves them over **two transports**: `src/stdio.ts` for local development, and `src/http.ts` — the hosted Streamable-HTTP endpoint at `/api/mcp` that the **Impostazioni › MCP** panel hands out. One implementation, so the two can't drift. It **imports `src/state.ts` and `src/presets.ts` directly** rather than duplicating them, so the agent gets the real layer factories and the real validator, and it pre-validates locally so schema mistakes cost no round trip.
+`mcp/` holds the tools once (`src/tools.ts`) and serves them over **two transports**: `src/stdio.ts` for local development, and `src/http.ts` — the hosted Streamable-HTTP endpoint at `/api/mcp` that the **Settings › MCP** panel hands out. One implementation, so the two can't drift. It **imports `src/state.ts` and `src/presets.ts` directly** rather than duplicating them, so the agent gets the real layer factories and the real validator, and it pre-validates locally so schema mistakes cost no round trip.
 
 The hosted endpoint is its own compose service, **built from the repo root** (`mcp/Dockerfile`) because unlike the api it genuinely needs `src/` as well as `server/src/`. It is stateless (`sessionIdGenerator: undefined`), holds no secrets, and never validates a token itself — it forwards the caller's bearer to `api`, which stays the single authority on auth. nginx routes `/api/mcp` to it; that works because nginx picks the **longest** matching prefix, so it wins over `/api/`. Don't add an explicit close after `handleRequest` — the body may still be streaming, and Hono's `executionCtx` is Workers-only and throws on Bun.
 
@@ -175,7 +175,7 @@ Build contexts differ on purpose and are load-bearing: `api` is built from `./se
 
 ### Background removal — `src/lib/bgremove.ts`
 
-One function, two backends chosen by build mode: **production** uses `@imgly/background-removal` (runs in-browser); **dev** POSTs to the local rembg FastAPI sidecar at `VITE_BGREMOVE_URL` (default `http://localhost:8000`). The pre-cutout image is preserved on the layer as `origSrc` so the operation is reversible ("Ripristina").
+One function, two backends chosen by build mode: **production** uses `@imgly/background-removal` (runs in-browser); **dev** POSTs to the local rembg FastAPI sidecar at `VITE_BGREMOVE_URL` (default `http://localhost:8000`). The pre-cutout image is preserved on the layer as `origSrc` so the operation is reversible ("Restore").
 
 ### Export — `src/lib/export.ts`
 

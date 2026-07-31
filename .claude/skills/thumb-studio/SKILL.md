@@ -104,7 +104,7 @@ when the user pastes `https://…/?project=<uuid>`, hand it straight to `get_pro
 ## Setup
 
 The tools reach Thumb Studio with a personal API token. The user gets a ready-made snippet from
-**Impostazioni › MCP** (gear icon in the editor header) — it covers Claude Code, Codex, Cursor and raw JSON, and
+**Settings › MCP** (gear icon in the editor header) — it covers Claude Code, Codex, Cursor and raw JSON, and
 points at the hosted endpoint (`/api/mcp`), so nothing needs installing. If a tool reports a
 missing or rejected token, send them there; tokens are shown once, so a lost one is replaced,
 not recovered.

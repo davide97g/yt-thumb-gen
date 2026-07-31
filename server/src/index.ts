@@ -126,7 +126,7 @@ app.get("/api/auth/me", async (c) => {
 });
 
 app.post("/api/auth/register", async (c) => {
-  if (!(await signupOpen())) return c.json({ error: "Registrazioni chiuse" }, 403);
+  if (!(await signupOpen())) return c.json({ error: "Signups are closed" }, 403);
   const { email, password } = await c.req.json().catch(() => ({}));
   if (!emailOk(email)) return c.json({ error: "Invalid email" }, 400);
   if (typeof password !== "string" || password.length < 8) return c.json({ error: "Password too short (min 8)" }, 400);
