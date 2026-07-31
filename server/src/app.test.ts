@@ -261,6 +261,46 @@ describe.skipIf(!usable)("api", () => {
     expect(row.designCount).toBe(2);
   });
 
+  // ── hardening ──────────────────────────────────────────────────────────────
+  test("guessing a password runs out of guesses", async () => {
+    const user = await register(nextEmail(), "password123");
+    const guess = () => api.request("/api/auth/login", json({ email: user.email, password: "nope" }));
+
+    let last = await guess();
+    for (let i = 0; i < 8 && last.status === 401; i++) last = await guess();
+    expect(last.status).toBe(429);
+    expect(Number(last.headers.get("retry-after"))).toBeGreaterThan(0);
+
+    // …and it's the credential that's locked out, not the whole endpoint.
+    const other = await seedUser(nextEmail(), "password123");
+    expect((await api.request("/api/auth/login", json({ email: other.email, password: "password123" }))).status).toBe(200);
+  });
+
+  test("health fails loudly when the database is unreachable", async () => {
+    expect((await api.request("/api/health")).status).toBe(200);
+    // Not simulated here — killing the pool would poison every later test. The route's own
+    // try/catch is the contract; this asserts the happy path actually touches the database.
+  });
+
+  test("the session sweep clears what has expired and keeps what hasn't", async () => {
+    const user = await register();
+    const { sweepSessions } = await import("./maintenance");
+    await sql`INSERT INTO sessions (token, user_id, expires_at) VALUES ('stale', ${user.id}, now() - interval '1 day')`;
+
+    expect(await sweepSessions()).toBe(1);
+    expect((await api.request("/api/auth/me", auth(user.cookie))).status).toBe(200);
+  });
+
+  test("the blob reference scan over-matches on purpose", async () => {
+    const { collectBlobIds } = await import("./maintenance");
+    const id = "b".repeat(64);
+    // A ref inside a doc, and a bare id in a field the scanner knows nothing about — both count.
+    expect(collectBlobIds(`{"src":"blob:${id}","someFutureField":"${"c".repeat(64)}"}`)).toEqual(
+      new Set([id, "c".repeat(64)])
+    );
+    expect(collectBlobIds(null).size).toBe(0);
+  });
+
   // ── contract ───────────────────────────────────────────────────────────────
   test("a malformed document is refused up front", async () => {
     const user = await register();

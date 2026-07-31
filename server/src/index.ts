@@ -7,7 +7,9 @@
 import { Hono } from "hono";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { initSchema, sql } from "./db";
+import { startMaintenance } from "./maintenance";
 import { getBlob, putBlob } from "./r2";
+import { createLimiter } from "./ratelimit";
 import { MODE, docWarnings, schema as docSchema, validateDoc, validateLayer } from "./validate";
 
 const APP_URL = process.env.APP_URL ?? "http://localhost";
@@ -91,6 +93,19 @@ async function signupOpen(): Promise<boolean> {
 
 const emailOk = (e: unknown): e is string => typeof e === "string" && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e);
 
+// Password checking is deliberately expensive, which is a gift to whoever is guessing unless
+// something counts the guesses. Two windows: one per (address, account) so a targeted attack
+// stalls, and a looser one per address so walking a list of emails stalls too.
+const perAccount = createLimiter({ limit: 8, windowMs: 10 * 60_000 });
+const perAddress = createLimiter({ limit: 40, windowMs: 10 * 60_000 });
+
+/** Caller's address as nginx reports it (see nginx.conf, which sets both headers). Falls back
+ *  to a constant, so a direct-to-Bun deployment degrades to a single global bucket rather
+ *  than to no limit at all. */
+function clientIp(c: any): string {
+  return c.req.header("x-real-ip") || c.req.header("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+}
+
 // Runs the document contract. In `warn` mode a bad doc is logged and still stored, so the
 // rule can be observed against real traffic before it starts turning saves into failures;
 // in `enforce` mode it 422s. `details` is what an agent reads to correct itself.
@@ -128,10 +143,27 @@ app.post("/api/auth/register", async (c) => {
 app.post("/api/auth/login", async (c) => {
   const { email, password } = await c.req.json().catch(() => ({}));
   if (!emailOk(email) || typeof password !== "string") return c.json({ error: "Invalid credentials" }, 400);
+
+  const ip = clientIp(c);
+  const account = `${ip}|${email.toLowerCase()}`;
+  // Checked before the hash comparison — the whole point is not to pay for the guess.
+  const accountVerdict = perAccount.check(account);
+  const verdict = accountVerdict.ok ? perAddress.check(ip) : accountVerdict;
+  if (!verdict.ok) {
+    const seconds = Math.ceil(verdict.retryAfterMs / 1000);
+    return c.json({ error: "Too many attempts. Try again shortly." }, 429, { "retry-after": String(seconds) });
+  }
+
   const rows = await sql<{ id: string; email: string; password_hash: string }[]>`
     SELECT id, email, password_hash FROM users WHERE email = ${email.toLowerCase()}`;
   const u = rows[0];
-  if (!u || !(await Bun.password.verify(password, u.password_hash))) return c.json({ error: "Invalid credentials" }, 401);
+  if (!u || !(await Bun.password.verify(password, u.password_hash))) {
+    // Only failures count, so a busy legitimate user never locks themselves out.
+    perAccount.fail(account);
+    perAddress.fail(ip);
+    return c.json({ error: "Invalid credentials" }, 401);
+  }
+  perAccount.reset(account);
   setSessionCookie(c, await createSession(u.id));
   return c.json({ id: u.id, email: u.email });
 });
@@ -455,10 +487,24 @@ app.get("/api/blobs/:id", async (c) => {
 // authors a ThumbDoc (the MCP server, a script, a future client) validates against this.
 app.get("/api/schema", (c) => c.json(docSchema));
 
-app.get("/api/health", (c) => c.json({ ok: true }));
+// Health means "can serve requests", which for this API means "can reach Postgres". Returning
+// ok while the database is down is how an orchestrator keeps a broken container in rotation.
+app.get("/api/health", async (c) => {
+  try {
+    await sql`SELECT 1`;
+    return c.json({ ok: true });
+  } catch (err) {
+    console.warn("[health] database unreachable", err);
+    return c.json({ ok: false, error: "database unreachable" }, 503);
+  }
+});
 
 // Exported for the tests, which drive the routes through `app.request()` instead of a socket.
 export { app };
+
+// Background sweeps (expired sessions, unreferenced blobs). Guarded on `import.meta.main` so
+// importing the app in a test never schedules them.
+if (import.meta.main) startMaintenance();
 
 // PORT is only for running the API alongside something else locally; Compose leaves it unset.
 export default { port: Number(process.env.PORT ?? 3000), fetch: app.fetch, idleTimeout: 60 };

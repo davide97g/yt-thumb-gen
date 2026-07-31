@@ -21,6 +21,12 @@ export async function putBlob(id: string, bytes: Uint8Array, contentType: string
   await client.write(key(id), bytes, { type: contentType });
 }
 
+/** Releases the bytes. Only ever called once no `blobs` row references the id (see
+ *  maintenance.ts) — objects are content-addressed and therefore shared between users. */
+export async function deleteBlob(id: string): Promise<void> {
+  await client.delete(key(id));
+}
+
 export async function getBlob(id: string): Promise<ArrayBuffer | null> {
   const file = client.file(key(id));
   if (!(await file.exists())) return null;
