@@ -96,11 +96,9 @@ export default function App() {
     const wanted = new URLSearchParams(window.location.search).get("project");
 
     const open = wanted
-      ? loadConfig(wanted).then((saved) => {
-          adoptProject(saved.doc, saved.name, saved.id, saved.updatedAt);
-          // Drop the param so a later reload restores the working canvas normally.
-          window.history.replaceState(null, "", window.location.pathname);
-        })
+      ? loadConfig(wanted).then((saved) =>
+          adoptProject(saved.doc, saved.name, saved.id, saved.updatedAt)
+        )
       : Promise.reject(new Error("no deep link"));
 
     // Falling back on failure matters: a stale or foreign id must not strand the editor.
@@ -128,6 +126,20 @@ export default function App() {
     if (!hydrated) return;
     void setProject({ name: projectName, id: projectId });
   }, [projectName, projectId, hydrated]);
+
+  // Mirror the open project's id into `?project=<id>` so the address bar is always
+  // shareable: paste it anywhere and the editor reopens that exact design. Gated on
+  // `hydrated` so it can't wipe an incoming deep link before it has been loaded, and
+  // `replaceState` so opening projects doesn't stack up Back-button entries.
+  useEffect(() => {
+    if (!hydrated) return;
+    const url = new URL(window.location.href);
+    if (projectId) url.searchParams.set("project", projectId);
+    else url.searchParams.delete("project");
+    const next = `${url.pathname}${url.search}${url.hash}`;
+    if (next !== `${window.location.pathname}${window.location.search}${window.location.hash}`)
+      window.history.replaceState(null, "", next);
+  }, [projectId, hydrated]);
 
   // ── Project actions ─────────────────────────────────────────────────────────
   // Load/import/create all funnel through `adoptProject`: clone the doc, make it
@@ -454,6 +466,7 @@ export default function App() {
               dirty={dirty}
               savedAt={savedAt}
               archived={projectId !== null}
+              projectId={projectId}
               onRename={renameProject}
               onSave={() => void saveProject()}
               onNew={() => setNewOpen(true)}

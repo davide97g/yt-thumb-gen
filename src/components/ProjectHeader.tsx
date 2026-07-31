@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, FilePlus, Pencil } from "lucide-react";
+import { Check, FilePlus, Link2, Pencil } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { cn } from "@/lib/utils";
@@ -12,6 +12,8 @@ type Props = {
   savedAt: number | null;
   /** never archived → Salva archives it even when not dirty */
   archived: boolean;
+  /** archive id of the open project, or null before the first save — the shareable link */
+  projectId: string | null;
   onRename: (name: string) => void;
   onSave: () => void;
   onNew: () => void;
@@ -26,9 +28,10 @@ function time(ms: number): string | null {
 
 /** The live project's identity card — name, save state, and the primary
  *  "new project" action. The one place in the chrome that names the work. */
-export function ProjectHeader({ name, dirty, savedAt, archived, onRename, onSave, onNew }: Props) {
+export function ProjectHeader({ name, dirty, savedAt, archived, projectId, onRename, onSave, onNew }: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(name);
+  const [copied, setCopied] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Keep the field in sync when the project changes underneath us (load / new).
@@ -46,6 +49,21 @@ export function ProjectHeader({ name, dirty, savedAt, archived, onRename, onSave
   const cancel = () => {
     setDraft(name);
     setEditing(false);
+  };
+
+  // The link is built from the live URL, which already carries `?project=<id>` (App keeps
+  // it in sync), so the id here is only a guard: no id, nothing shareable yet.
+  const copyLink = async () => {
+    if (!projectId) return;
+    const url = new URL(window.location.href);
+    url.searchParams.set("project", projectId);
+    try {
+      await navigator.clipboard.writeText(url.toString());
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    } catch {
+      // Clipboard blocked (non-secure context / denied) — the URL bar still shows the link.
+    }
   };
 
   const canSave = dirty || !archived;
@@ -68,15 +86,28 @@ export function ProjectHeader({ name, dirty, savedAt, archived, onRename, onSave
             Progetto
           </span>
           {!editing && (
-            <button
-              type="button"
-              onClick={() => setEditing(true)}
-              className="text-muted-foreground/60 transition-colors hover:text-foreground"
-              title="Rinomina"
-              aria-label="Rinomina progetto"
-            >
-              <Pencil className="size-3.5" />
-            </button>
+            <span className="flex items-center gap-2">
+              {projectId && (
+                <button
+                  type="button"
+                  onClick={() => void copyLink()}
+                  className="text-muted-foreground/60 transition-colors hover:text-foreground"
+                  title={copied ? "Link copiato" : "Copia link del progetto"}
+                  aria-label="Copia link del progetto"
+                >
+                  {copied ? <Check className="size-3.5 text-primary" /> : <Link2 className="size-3.5" />}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setEditing(true)}
+                className="text-muted-foreground/60 transition-colors hover:text-foreground"
+                title="Rinomina"
+                aria-label="Rinomina progetto"
+              >
+                <Pencil className="size-3.5" />
+              </button>
+            </span>
           )}
         </div>
 
