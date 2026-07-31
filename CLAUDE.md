@@ -58,6 +58,10 @@ Each entry in `TEMPLATES` is a `() => ThumbDoc` returning fresh layer ids on eve
 
 Renders each layer as an absolutely-positioned element inside a node that is `transform: scale()`d to fit the stage. Drag/resize/rotate is hand-rolled with pointer events: screen deltas are divided by `scale` to convert back to canvas units. The `SelectionFrame` resizes around the rotation-invariant centre and clamps the scale factor to each inspector slider's range so canvas and sliders never disagree. The selection outline is hidden during export (`exporting` prop).
 
+### Layer list — `src/components/LayerList.tsx`
+
+The list paints **front-first** (row 0 = last layer in the array), and rows are drag-reorderable with hand-rolled pointer events (no dnd library). Two things follow from the inversion: the drop indicator is an absolutely-positioned overlay (inserting a real element between rows would shift the rows being measured), and a visual gap `slot` becomes a doc gap as `layers.length - slot` before it goes to the `moveLayers` action. `moveLayers` lifts the whole selection out keeping its relative order and reinserts it at that gap, rebasing the gap onto the lifted array so the block lands where the indicator was. Touch/pen must drag from the grip handle — dragging the row body is mouse-only, or a swipe could never scroll the rail. Selection modifiers are the platform-standard ones: plain click replaces, ⌘/Ctrl toggles a row, Shift extends from the last clicked row (group mates always come along).
+
 ### Persistence — `src/lib/storage.ts`
 
 `storage.ts` is the single seam for all persistence, split by concern:

@@ -769,6 +769,7 @@ export type Action =
   | { type: "removeLayer"; id: string }
   | { type: "removeLayers"; ids: string[] }
   | { type: "reorder"; id: string; dir: -1 | 1 } // move one step in z-order
+  | { type: "moveLayers"; ids: string[]; toIndex: number } // drag-reorder: lift a set, reinsert it at a gap
   | { type: "group"; ids: string[] }
   | { type: "ungroup"; ids: string[] }
   | { type: "updateBackground"; patch: Partial<Background> }
@@ -824,6 +825,22 @@ export function reducer(state: AppState, action: Action): AppState {
       const j = i + action.dir;
       if (i < 0 || j < 0 || j >= layers.length) return state;
       [layers[i], layers[j]] = [layers[j], layers[i]];
+      return { ...state, doc: { ...state.doc, layers } };
+    }
+    // Drag-reorder in the layer list. `toIndex` is a *gap* in the current array
+    // (0 = behind everything, layers.length = in front of everything). The moved set
+    // is lifted out keeping its relative order, then reinserted at that gap — which
+    // is why the gap has to be rebased onto the array-without-the-moved-layers.
+    case "moveLayers": {
+      const set = new Set(action.ids);
+      const moving = state.doc.layers.filter((l) => set.has(l.id));
+      if (!moving.length) return state;
+      const rest = state.doc.layers.filter((l) => !set.has(l.id));
+      const lifted = state.doc.layers.slice(0, action.toIndex).filter((l) => set.has(l.id)).length;
+      const at = Math.max(0, Math.min(rest.length, action.toIndex - lifted));
+      const layers = [...rest.slice(0, at), ...moving, ...rest.slice(at)];
+      // Dropping a set back where it already was must not cost an undo entry.
+      if (layers.every((l, i) => l === state.doc.layers[i])) return state;
       return { ...state, doc: { ...state.doc, layers } };
     }
     case "group": {

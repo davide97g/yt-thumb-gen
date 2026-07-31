@@ -218,8 +218,9 @@ export function ThumbCanvas({ doc, scale, selectedIds, exporting, cropMode, setC
     if (!layer) return;
     const mates = groupMates(layer);
 
-    // Shift-click toggles this layer (or its whole group) in/out of the selection — no drag.
-    if (e.shiftKey) {
+    // Shift- / ⌘- / Ctrl-click toggles this layer (or its whole group) in/out of the
+    // selection — no drag. (⌘/Ctrl matches the layer list, where Shift extends a range.)
+    if (e.shiftKey || e.metaKey || e.ctrlKey) {
       const has = mates.every((m) => selectedIds.includes(m));
       const next = has
         ? selectedIds.filter((s) => !mates.includes(s))
@@ -286,7 +287,7 @@ export function ThumbCanvas({ doc, scale, selectedIds, exporting, cropMode, setC
     setCropMode(null);
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return;
-    const additive = e.shiftKey;
+    const additive = e.shiftKey || e.metaKey || e.ctrlKey;
     const base = additive ? selectedIds : [];
     const toCanvas = (cx: number, cy: number) => ({ x: (cx - rect.left) / scale, y: (cy - rect.top) / scale });
     const p0 = toCanvas(e.clientX, e.clientY);

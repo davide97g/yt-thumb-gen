@@ -96,6 +96,65 @@ test("selection changes never create history", () => {
   expect(h.past.length).toBe(len);
 });
 
+// ── moveLayers (drag-reorder in the layer list) ──────────────────────────────
+// `toIndex` is a gap in the *current* array: 0 = behind everything, length = in front.
+
+const stackOf = (n: number) => {
+  let h = initHistory(start());
+  const ids: string[] = [];
+  for (let i = 0; i < n; i++) {
+    const l = newTextLayer();
+    ids.push(l.id);
+    h = historyReducer(h, { type: "addLayer", layer: l });
+  }
+  return { h, ids };
+};
+const order = (h: ReturnType<typeof initHistory>, ids: string[]) =>
+  h.present.doc.layers.map((l) => ids.indexOf(l.id));
+
+test("moveLayers drops a single layer at the requested gap", () => {
+  const { h: h0, ids } = stackOf(4); // [0,1,2,3]
+  let h = historyReducer(h0, { type: "moveLayers", ids: [ids[0]], toIndex: 3 });
+  expect(order(h, ids)).toEqual([1, 2, 0, 3]); // gap 3 sits between 2 and 3
+
+  h = historyReducer(h0, { type: "moveLayers", ids: [ids[3]], toIndex: 0 });
+  expect(order(h, ids)).toEqual([3, 0, 1, 2]); // all the way to the back
+
+  h = historyReducer(h0, { type: "moveLayers", ids: [ids[1]], toIndex: 4 });
+  expect(order(h, ids)).toEqual([0, 2, 3, 1]); // all the way to the front
+});
+
+test("moveLayers moves a multi-selection as a block, keeping its relative order", () => {
+  const { h: h0, ids } = stackOf(5); // [0,1,2,3,4]
+  // Non-contiguous selection, passed in reverse — the block keeps *doc* order, not id order.
+  let h = historyReducer(h0, { type: "moveLayers", ids: [ids[3], ids[0]], toIndex: 5 });
+  expect(order(h, ids)).toEqual([1, 2, 4, 0, 3]);
+
+  h = historyReducer(h0, { type: "moveLayers", ids: [ids[1], ids[2]], toIndex: 0 });
+  expect(order(h, ids)).toEqual([1, 2, 0, 3, 4]);
+
+  // A gap *after* some of the moved layers is rebased onto the lifted array, so the
+  // block lands where the drop indicator was — not shifted by its own removal.
+  h = historyReducer(h0, { type: "moveLayers", ids: [ids[0], ids[1]], toIndex: 4 });
+  expect(order(h, ids)).toEqual([2, 3, 0, 1, 4]);
+});
+
+test("dropping a selection back where it already was costs no history entry", () => {
+  const { h: h0, ids } = stackOf(3);
+  const before = h0.past.length;
+  const h = historyReducer(h0, { type: "moveLayers", ids: [ids[0], ids[1]], toIndex: 0 });
+  expect(order(h, ids)).toEqual([0, 1, 2]);
+  expect(h.past.length).toBe(before); // no-op → historyReducer drops it
+});
+
+test("a whole drag-reorder is one undo entry", () => {
+  const { h: h0, ids } = stackOf(3);
+  let h = historyReducer(h0, { type: "moveLayers", ids: [ids[2]], toIndex: 0 });
+  expect(order(h, ids)).toEqual([2, 0, 1]);
+  h = historyReducer(h, { type: "undo" });
+  expect(order(h, ids)).toEqual([0, 1, 2]);
+});
+
 test(`history is capped at ${HISTORY_LIMIT} entries`, () => {
   let h = initHistory(start());
   for (let i = 0; i < HISTORY_LIMIT + 10; i++) h = historyReducer(h, { type: "addLayer", layer: newTextLayer() });
