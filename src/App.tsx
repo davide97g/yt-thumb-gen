@@ -1,5 +1,5 @@
 import { useEffect, useReducer, useRef, useState } from "react";
-import { Download, KeyRound, Layers, LogOut, Maximize2, PanelsTopLeft, Plug, Redo2, SlidersHorizontal, Undo2, X } from "lucide-react";
+import { Download, Layers, Maximize2, PanelsTopLeft, Redo2, Settings, SlidersHorizontal, Undo2, X } from "lucide-react";
 import { ThumbCanvas, type CropMode } from "./components/ThumbCanvas";
 import { Inspector, BackgroundInspector, FormatSection } from "./components/Inspector";
 import { LayerList } from "./components/LayerList";
@@ -7,9 +7,7 @@ import { SavesPanel } from "./components/SavesPanel";
 import { ManageStarredDialog, StarredCommandDialog, StarredPanel } from "./components/StarredPanel";
 import { ProjectHeader } from "./components/ProjectHeader";
 import { NewProjectDialog } from "./components/NewProjectDialog";
-import { TokensDialog } from "./components/TokensDialog";
-import { AddMcpDialog } from "./components/AddMcpDialog";
-import { useAuth } from "./components/AuthGate";
+import { SettingsDialog } from "./components/SettingsDialog";
 import { Toolbar } from "./components/Toolbar";
 import { Field, Section } from "./components/controls";
 import { Button } from "./components/ui/button";
@@ -25,7 +23,6 @@ import { cn } from "./lib/utils";
 const initial: AppState = { doc: TEMPLATES.dacoder(), selectedIds: [] };
 
 export default function App() {
-  const { logout } = useAuth();
   const [hist, dispatch] = useReducer(historyReducer, initial, initHistory);
   const [hydrated, setHydrated] = useState(false);
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -41,8 +38,7 @@ export default function App() {
   const [starredKey, setStarredKey] = useState(0);
   const [cmdkOpen, setCmdkOpen] = useState(false);
   const [manageStarredOpen, setManageStarredOpen] = useState(false);
-  const [tokensOpen, setTokensOpen] = useState(false);
-  const [mcpOpen, setMcpOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   // `null` = follow the project name (see `exportName`); a string is the user's override.
@@ -394,34 +390,14 @@ export default function App() {
             <span className="hidden sm:inline">{exporting ? "Esporto…" : "Esporta PNG"}</span>
           </Button>
           <Button
-            variant="outline"
-            size="sm"
-            className="h-8"
-            onClick={() => setMcpOpen(true)}
-            title="Collega un agente via MCP"
-          >
-            <Plug />
-            <span className="hidden sm:inline">Aggiungi MCP</span>
-          </Button>
-          <Button
             variant="ghost"
             size="icon-sm"
             className="text-muted-foreground hover:text-foreground"
-            onClick={() => setTokensOpen(true)}
-            title="Token API"
-            aria-label="Token API"
+            onClick={() => setSettingsOpen(true)}
+            title="Impostazioni"
+            aria-label="Impostazioni"
           >
-            <KeyRound />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className="text-muted-foreground hover:text-foreground"
-            onClick={() => void logout()}
-            title="Esci"
-            aria-label="Esci"
-          >
-            <LogOut />
+            <Settings />
           </Button>
         </div>
       </header>
@@ -575,8 +551,7 @@ export default function App() {
         />
       )}
 
-      {tokensOpen && <TokensDialog onClose={() => setTokensOpen(false)} />}
-      {mcpOpen && <AddMcpDialog onClose={() => setMcpOpen(false)} />}
+      {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
     </div>
   );
 }
