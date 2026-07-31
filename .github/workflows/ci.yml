@@ -1,0 +1,79 @@
+# The gate, run for real.
+#
+# `bun run check` is the contract (tsc + schema drift + tests) but it only covers the root
+# package: `server/` and `mcp/` are separate packages with their own deps and tsconfigs, and
+# nothing was typechecking them outside a developer remembering to. This runs all three, then
+# builds the three images — because the build contexts differ on purpose (api from ./server,
+# web and mcp from the repo root) and a wrong path there only shows up at deploy time.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.2"
+
+      # Root install also covers the tests that reach into server/src/validate.ts (that's why
+      # ajv is a root devDep), so this one install runs the whole suite.
+      - run: bun install --frozen-lockfile
+      - run: bun run check
+
+      # Separate packages, separate installs — their tsconfigs resolve deps from their own
+      # node_modules, so typechecking them without this reports every import as missing.
+      - run: bun install --frozen-lockfile
+        working-directory: server
+      - run: bunx tsc --noEmit -p server
+
+      - run: bun install --frozen-lockfile
+        working-directory: mcp
+      - run: bunx tsc --noEmit -p mcp
+
+  images:
+    name: images
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+
+      # Build only — nothing is pushed. Deploys are Dokploy's job; this just proves the three
+      # Dockerfiles still build from the contexts docker-compose gives them.
+      - name: web (nginx, repo root)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: false
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
+
+      - name: api (bun, ./server)
+        uses: docker/build-push-action@v6
+        with:
+          context: ./server
+          file: server/Dockerfile
+          push: false
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+
+      - name: mcp (bun, repo root)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: mcp/Dockerfile
+          push: false
+          cache-from: type=gha,scope=mcp
+          cache-to: type=gha,mode=max,scope=mcp

@@ -21,6 +21,12 @@ explicitly (`bunx tsc --noEmit -p server`, `-p mcp`) after touching them; the ro
 not. Root `bun test` reaches into `server/src/validate.ts`, which is why `ajv` is a root devDep
 too: it lets one `bun install` at the root run the whole suite.
 
+CI (`.github/workflows/ci.yml`) runs exactly that on every push and PR — root `check`, then the
+two package typechecks — plus a build of all three images. The image job exists because the
+build contexts differ on purpose (api from `./server`, web and mcp from the repo root): a wrong
+path there typechecks fine and only fails at deploy time. Nothing is pushed; Dokploy still owns
+deploys.
+
 **Any change to the layer/document types in `src/state.ts` requires `bun run schema`** and
 committing the regenerated file, or `check` fails.
 
