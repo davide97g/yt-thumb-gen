@@ -29,6 +29,9 @@ export type ConfigMeta = {
   campaignId: string | null;
   /** Read straight out of the stored doc, so the archive can label rows without fetching each one. */
   format?: FormatKey | null;
+  /** Blob id of the preview thumbnail, or null for projects saved before previews existed
+   *  (and for projects an agent created without ever opening the editor). */
+  preview?: string | null;
 };
 /** A full project including its (hydrated) doc. */
 export type SavedConfig = ConfigMeta & { doc: ThumbDoc };
@@ -113,13 +116,21 @@ export async function loadConfig(id: string): Promise<SavedConfig> {
 
 /** Upserts a project: pass an existing `id` to overwrite it, or omit it to archive a new
  *  one. Offloads inline images to R2 before sending. Returns the archive metadata. */
-export async function saveConfig(name: string, doc: ThumbDoc, id?: string, campaignId?: string | null): Promise<ConfigMeta> {
-  // `campaignId` is only sent when the caller passes it: on PUT the key's absence means
-  // "leave the campaign alone", which is what an ordinary save should do.
+export async function saveConfig(
+  name: string,
+  doc: ThumbDoc,
+  id?: string,
+  campaignId?: string | null,
+  preview?: string | null
+): Promise<ConfigMeta> {
+  // `campaignId` and `preview` are only sent when the caller passes them: on PUT the key's
+  // absence means "leave it alone", which is what an ordinary save (or a rename, or a save
+  // made with no canvas mounted) should do.
   const payload = {
     name: name.trim() || "Untitled",
     doc: await dehydrateDoc(doc),
     ...(campaignId === undefined ? {} : { campaignId }),
+    ...(preview == null ? {} : { preview }),
   };
   return id ? apiSend<ConfigMeta>("PUT", `/projects/${id}`, payload) : apiSend<ConfigMeta>("POST", "/projects", payload);
 }
@@ -136,7 +147,7 @@ export function deleteConfig(id: string): Promise<void> {
 // ── Campaigns (a folder of designs: one message across several platforms) ─────
 
 export type CampaignMeta = { id: string; name: string; updatedAt: number; designCount: number };
-export type CampaignDesign = { id: string; name: string; format: string; updatedAt: number };
+export type CampaignDesign = { id: string; name: string; format: string; updatedAt: number; preview?: string | null };
 export type Campaign = Omit<CampaignMeta, "designCount"> & { designs: CampaignDesign[] };
 
 export function listCampaigns(): Promise<CampaignMeta[]> {

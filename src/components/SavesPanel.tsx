@@ -15,6 +15,7 @@ import {
   renameCampaign,
   setProjectCampaign,
 } from "../lib/storage";
+import { previewUrl } from "../lib/preview";
 import { Hint, Section, UploadButton } from "./controls";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -188,7 +189,26 @@ export function SavesPanel({ doc, projectId, projectName, onLoad, onError, refre
           disabled={busyId === c.id}
           onClick={() => void onOpen(c)}
         >
-          <FolderOpen className={cn("size-4 shrink-0", active ? "text-primary" : "text-muted-foreground")} />
+          {/* Fixed frame either way, so rows with and without a preview still line up. */}
+          <span
+            className={cn(
+              "grid h-7 w-12 shrink-0 place-items-center overflow-hidden rounded-[3px] bg-black/40 ring-1",
+              active ? "ring-primary/40" : "ring-border/70"
+            )}
+          >
+            {c.preview ? (
+              <img
+                src={previewUrl(c.preview)}
+                alt=""
+                loading="lazy"
+                decoding="async"
+                // contain, not cover: a 9:16 story has to read as a story, not a crop.
+                className="h-full w-full object-contain"
+              />
+            ) : (
+              <FolderOpen className={cn("size-4", active ? "text-primary" : "text-muted-foreground")} />
+            )}
+          </span>
           <span className="min-w-0 flex-1">
             <span className="block truncate text-sm leading-tight">{shown}</span>
             <span className="block truncate text-[11px] leading-tight text-muted-foreground">{meta}</span>

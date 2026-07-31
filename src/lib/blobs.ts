@@ -23,21 +23,27 @@ function blobToDataUrl(blob: Blob): Promise<string> {
   });
 }
 
-/** Upload a data URL, returning its `blob:<id>` ref. Memoized per call so a data URL reused
- *  across layers (e.g. src === origSrc) uploads once. */
-async function uploadDataUrl(dataUrl: string, cache: Map<string, string>): Promise<string> {
-  const hit = cache.get(dataUrl);
-  if (hit) return hit;
-  const blob = await dataUrlToBlob(dataUrl);
+/** Uploads raw bytes to R2 through the API and returns their content-addressed id.
+ *  Exported because not every stored image belongs to a doc: project preview thumbnails
+ *  ride the same blob store, referenced by bare id instead of a `blob:` ref. */
+export async function uploadBlob(blob: Blob): Promise<string> {
   const res = await fetch("/api/blobs", {
     method: "POST",
     credentials: "include",
     headers: { "content-type": blob.type || "application/octet-stream" },
     body: blob,
   });
-  if (!res.ok) throw new Error(`Upload immagine fallito (${res.status})`);
+  if (!res.ok) throw new Error(`Image upload failed (${res.status})`);
   const { id } = (await res.json()) as { id: string };
-  const ref = REF + id;
+  return id;
+}
+
+/** Upload a data URL, returning its `blob:<id>` ref. Memoized per call so a data URL reused
+ *  across layers (e.g. src === origSrc) uploads once. */
+async function uploadDataUrl(dataUrl: string, cache: Map<string, string>): Promise<string> {
+  const hit = cache.get(dataUrl);
+  if (hit) return hit;
+  const ref = REF + (await uploadBlob(await dataUrlToBlob(dataUrl)));
   cache.set(dataUrl, ref);
   return ref;
 }

@@ -14,6 +14,7 @@ import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
 import { defaultFileName, exportThumb } from "./lib/export";
 import { loadImageFile } from "./lib/loadImageFile";
+import { makePreview } from "./lib/preview";
 import { getProject, getWorking, loadConfig, renameConfig, saveConfig, setProject, setWorking, starLayer } from "./lib/storage";
 import { FORMATS, canvasSize, historyReducer, initHistory, newImageLayer, primaryId, type AppState, type FontKey, type Layer, type ThumbDoc } from "./state";
 import { TEMPLATES } from "./presets";
@@ -48,6 +49,9 @@ export default function App() {
   const [rail, setRail] = useState<RailSection | null>("layers");
   const toggleRail = (id: RailSection) => setRail((cur) => (cur === id ? null : id));
   const [exporting, setExporting] = useState(false);
+  // Same "render clean" flag as `exporting`, but kept separate so grabbing a preview on save
+  // doesn't flip the Export button into its busy state for a frame.
+  const [capturing, setCapturing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   // `null` = follow the project name (see `exportName`); a string is the user's override.
   // Clearing the field goes back to following the project.
@@ -163,9 +167,25 @@ export default function App() {
     dispatch({ type: "loadDoc", doc: fresh });
   }
 
+  /** Grabs the archive thumbnail for the design as it stands. The selection outline has to
+   *  be off for the capture (same reason as export), so the canvas is rendered clean for a
+   *  frame first. Returns null if anything fails — a save must not depend on a picture. */
+  async function capturePreview(): Promise<string | null> {
+    const node = canvasRef.current;
+    if (!node) return null;
+    setCapturing(true);
+    try {
+      await new Promise<void>((r) => requestAnimationFrame(() => r()));
+      return await makePreview(node, { w: CW, h: CH });
+    } finally {
+      setCapturing(false);
+    }
+  }
+
   async function saveProject() {
     try {
-      const saved = await saveConfig(projectName, doc, projectId ?? undefined);
+      const preview = await capturePreview();
+      const saved = await saveConfig(projectName, doc, projectId ?? undefined, undefined, preview);
       savedDocRef.current = doc; // current edits are now the clean baseline
       setProjectId(saved.id);
       setSavedAt(saved.updatedAt);
@@ -523,7 +543,7 @@ export default function App() {
               doc={viewDoc}
               scale={scale}
               selectedIds={selectedIds}
-              exporting={exporting}
+              exporting={exporting || capturing}
               cropMode={cropMode}
               setCropMode={setCropMode}
               drawMode={drawMode}

@@ -180,7 +180,7 @@ async function requireCookieUser(c: any, next: () => Promise<void>) {
 app.get("/api/projects", async (c) => {
   const user = c.get("user") as User;
   const rows = await sql`
-    SELECT id, name, campaign_id AS "campaignId", doc->>'format' AS format,
+    SELECT id, name, campaign_id AS "campaignId", doc->>'format' AS format, preview,
       (extract(epoch from updated_at) * 1000)::float8 AS "updatedAt"
     FROM projects WHERE user_id = ${user.id} ORDER BY updated_at DESC`;
   return c.json(rows);
@@ -195,6 +195,11 @@ app.get("/api/projects/:id", async (c) => {
   return c.json(rows[0]);
 });
 
+/** A preview is a blob id, i.e. the sha-256 of the stored bytes. Anything else is dropped
+ *  rather than rejected: a bad preview must never cost the user their save. */
+const previewOr = (value: unknown, fallback: string | null): string | null =>
+  typeof value === "string" && /^[0-9a-f]{64}$/.test(value) ? value : fallback;
+
 /** Resolves a caller-supplied campaign id to something safe to store. Returns `false` when
  *  the campaign isn't the caller's, so a project can never be filed into someone else's. */
 async function resolveCampaign(userId: string, value: unknown): Promise<string | null | false> {
@@ -206,16 +211,16 @@ async function resolveCampaign(userId: string, value: unknown): Promise<string |
 
 app.post("/api/projects", async (c) => {
   const user = c.get("user") as User;
-  const { name, doc, campaignId } = await c.req.json().catch(() => ({}));
+  const { name, doc, campaignId, preview } = await c.req.json().catch(() => ({}));
   if (typeof name !== "string" || typeof doc !== "object" || doc === null) return c.json({ error: "bad request" }, 400);
   const rejected = docProblems("POST /projects", validateDoc(doc));
   if (rejected) return rejected;
   const campaign = campaignId === undefined ? null : await resolveCampaign(user.id, campaignId);
   if (campaign === false) return c.json({ error: "Campaign not found" }, 404);
   const [row] = await sql`
-    INSERT INTO projects (user_id, name, doc, campaign_id)
-    VALUES (${user.id}, ${name}, ${sql.json(doc)}, ${campaign})
-    RETURNING id, name, campaign_id AS "campaignId", (extract(epoch from updated_at) * 1000)::float8 AS "updatedAt"`;
+    INSERT INTO projects (user_id, name, doc, campaign_id, preview)
+    VALUES (${user.id}, ${name}, ${sql.json(doc)}, ${campaign}, ${previewOr(preview, null)})
+    RETURNING id, name, campaign_id AS "campaignId", preview, (extract(epoch from updated_at) * 1000)::float8 AS "updatedAt"`;
   return c.json({ ...row, warnings: docWarnings(doc) });
 });
 
@@ -234,14 +239,17 @@ app.put("/api/projects/:id", async (c) => {
   const hasCampaign = "campaignId" in body;
   const campaign = hasCampaign ? await resolveCampaign(user.id, body.campaignId) : null;
   if (campaign === false) return c.json({ error: "Campaign not found" }, 404);
+  // No tri-state for the preview: a request that omits it (a rename, or a save made with no
+  // canvas mounted) keeps the last one, which is closer to the truth than blanking the row.
   const [row] = await sql`
     UPDATE projects SET
       name = coalesce(${name ?? null}, name),
       doc = coalesce(${doc === undefined ? null : sql.json(doc)}, doc),
+      preview = coalesce(${previewOr(body.preview, null)}, preview),
       campaign_id = ${hasCampaign ? campaign : sql`campaign_id`},
       updated_at = now()
     WHERE id = ${c.req.param("id")} AND user_id = ${user.id}
-    RETURNING id, name, campaign_id AS "campaignId", (extract(epoch from updated_at) * 1000)::float8 AS "updatedAt"`;
+    RETURNING id, name, campaign_id AS "campaignId", preview, (extract(epoch from updated_at) * 1000)::float8 AS "updatedAt"`;
   if (!row) return c.json({ error: "not found" }, 404);
   return c.json(row);
 });
@@ -274,7 +282,7 @@ app.get("/api/campaigns/:id", async (c) => {
   if (!rows[0]) return c.json({ error: "not found" }, 404);
   // Metadata only, like the project list — the docs are fetched one at a time.
   const designs = await sql`
-    SELECT id, name, doc->>'format' AS format,
+    SELECT id, name, doc->>'format' AS format, preview,
       (extract(epoch from updated_at) * 1000)::float8 AS "updatedAt"
     FROM projects WHERE campaign_id = ${id} AND user_id = ${user.id}
     ORDER BY updated_at DESC`;

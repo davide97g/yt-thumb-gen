@@ -73,6 +73,10 @@ The list paints **front-first** (row 0 = last layer in the array), and rows are 
 
 `server/` is a Bun + Hono API (Postgres + Cloudflare R2). Accounts are email+password with an httpOnly session cookie; **signup locks after the first user** unless `ALLOW_SIGNUP=true`. `AuthGate` wraps `<App/>` in `main.tsx` so the editor's mount/autosave effects never run until logged in. **Critical blob rule:** the doc keeps images as data URLs *at runtime* (so `html-to-image` export never hits cross-origin canvas taint); R2 offload happens only at the storage boundary — `dehydrateDoc` (data URL → `blob:<id>` ref, uploaded to R2) on save, `hydrateDoc` (ref → data URL, streamed back through our same-origin API) on load. Never make `ThumbCanvas`/`export.ts` consume remote image URLs directly.
 
+### Archive previews — `src/lib/preview.ts` + `projects.preview`
+
+Saving captures a ~320px JPEG of the canvas (`makePreview`) and stores it in the **same R2 blob store as the images**, referenced by a bare id instead of a `blob:` ref — so `SavesPanel` paints a real picture per row and two designs from one campaign stop being indistinguishable names. Three rules hold it together: the capture runs with the canvas rendered clean (`capturing` in `App.tsx` flips the same selection-hiding flag as export, kept separate so the Export button doesn't flash busy); `makePreview` **never throws**, because a save must not depend on a picture; and `preview` on `PUT /api/projects/:id` is `coalesce`d, not tri-state — a rename, or a save made with no canvas mounted (an agent's, `NewProjectDialog`'s save-then-create), keeps the last preview instead of blanking it. Projects an agent created have none and fall back to an icon; a real headless render would fill that gap.
+
 ### The published document format — `scripts/gen-schema.ts` → `server/src/generated/thumbdoc.schema.json`
 
 `src/state.ts` is the single source of truth; the JSON Schema is **generated** from it and committed. It lands under `server/` because docker-compose builds the api with context `./server` — the image cannot see `src/`. Served publicly at `GET /api/schema`.

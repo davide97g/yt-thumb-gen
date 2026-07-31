@@ -90,6 +90,10 @@ export async function initSchema(): Promise<void> {
       created_at timestamptz NOT NULL DEFAULT now(),
       updated_at timestamptz NOT NULL DEFAULT now()
     )`;
+  // Preview thumbnail: the blob id of a small JPEG of the design, captured by the editor on
+  // save. Nullable — projects created by an agent (or saved before previews existed) simply
+  // have none, and the archive falls back to an icon.
+  await sql`ALTER TABLE projects ADD COLUMN IF NOT EXISTS preview text`;
   // These ALTERs are deliberately idempotent: existing installations predate
   // project-aware favourites and do not have a migration runner.
   await sql`ALTER TABLE starred_items ADD COLUMN IF NOT EXISTS source_project_id uuid`;
