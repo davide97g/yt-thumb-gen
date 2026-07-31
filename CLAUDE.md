@@ -113,6 +113,14 @@ Editing happens at 40% of 1280px on a monitor; the design is seen at ~210px next
 
 `THUMBDOC_VALIDATE=warn|enforce` gates rejection. **Validation on `PUT /api/projects/:id` is gated on `doc !== undefined`** — that endpoint doubles as rename, which sends `{ name }` only.
 
+### Schema migrations — `server/src/migrations.ts`
+
+The schema is a **numbered list applied once each and recorded in `schema_migrations`**, not DDL re-run on every boot. The old `initSchema()` worked only as long as every change was expressible as `IF NOT EXISTS`; a rename, a one-time backfill or a tightened constraint has no such form, and nothing recorded what any given database had actually had done to it.
+
+**Migration 001 is the entire pre-migrations schema, written idempotently** — so the deployed database applies it as a no-op (verified: all three apply cleanly over an existing schema, data intact) and a fresh one gets everything. From 002 on, migrations are ordinary DDL that runs exactly once.
+
+Rules: **append, never renumber or edit an applied migration** — the record is what a deployed database has already done, and rewriting history makes the two disagree silently. One concern per migration. Duplicate or out-of-order ids throw at import, not at boot. Each runs in its own transaction so a failure leaves the database at the last complete step, and an advisory lock stops two containers starting at once from both applying the same one. TypeScript rather than `.sql` files: no statement splitter to get wrong on the first dollar-quoted string, and the migrations ship with the code however the image is built.
+
 ### Version history — `project_versions` + `HistoryDialog`
 
 Undo is in-memory, 20 deep, and gone on reload, so an edit that survived a refresh used to be permanent — including one an agent made. Now every `PUT /api/projects/:id` that carries a `doc` files the **outgoing** document first (`snapshot()`), which is what makes the list read as "put it back to here" rather than as a log. Four rules: a save that didn't change the document files nothing (⌘S fires whether or not anything moved); a rename spends no version (it doesn't send `doc`); the window is capped at `VERSION_LIMIT = 30` per project, cheap because docs are stored dehydrated; and `snapshot()` never throws — losing a snapshot is regrettable, losing the save it was protecting is not. Restore is itself an edit, so it snapshots first and undoing a restore is another restore.
