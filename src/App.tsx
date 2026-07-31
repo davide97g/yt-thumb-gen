@@ -14,7 +14,7 @@ import { Toolbar } from "./components/Toolbar";
 import { Field, Section } from "./components/controls";
 import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
-import { exportThumb } from "./lib/export";
+import { defaultFileName, exportThumb } from "./lib/export";
 import { loadImageFile } from "./lib/loadImageFile";
 import { getProject, getWorking, loadConfig, renameConfig, saveConfig, setProject, setWorking, starLayer } from "./lib/storage";
 import { FORMATS, canvasSize, historyReducer, initHistory, newImageLayer, primaryId, type AppState, type FontKey, type Layer, type ThumbDoc } from "./state";
@@ -45,7 +45,9 @@ export default function App() {
   const [mcpOpen, setMcpOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const [fileName, setFileName] = useState("thumb.png");
+  // `null` = follow the project name (see `exportName`); a string is the user's override.
+  // Clearing the field goes back to following the project.
+  const [fileName, setFileName] = useState<string | null>(null);
   const [cropMode, setCropMode] = useState<CropMode>(null);
   const [drawMode, setDrawMode] = useState(false);
   // Ephemeral font being hovered in the Font select — previewed on the selected text
@@ -65,6 +67,9 @@ export default function App() {
   const { w: CW, h: CH } = canvasSize(doc.format);
   const fmt = FORMATS[doc.format];
   const dirty = hydrated && doc !== savedDocRef.current;
+  // The PNG is named after the open project unless the user typed something else, so
+  // renaming the project (or opening another one) retargets the export for free.
+  const exportName = fileName ?? defaultFileName(projectName);
 
   const primary = primaryId(hist.present);
   // Crop tooling is per-selection; drop it whenever the selected layer changes.
@@ -277,7 +282,7 @@ export default function App() {
     // Let `exporting` render commit first so the selection outline is hidden in capture.
     await new Promise<void>((r) => requestAnimationFrame(() => r()));
     try {
-      const { warning } = await exportThumb(canvasRef.current, fileName, { w: CW, h: CH, maxBytes: fmt.maxBytes, platform: fmt.platform });
+      const { warning } = await exportThumb(canvasRef.current, exportName, { w: CW, h: CH, maxBytes: fmt.maxBytes, platform: fmt.platform });
       if (warning) setMessage(warning);
     } catch (err) {
       setMessage(`Export fallito: ${err instanceof Error ? err.message : String(err)}`);
@@ -379,9 +384,9 @@ export default function App() {
           </Button>
           <Input
             className="readout hidden h-8 w-40 border-transparent bg-secondary/50 text-xs shadow-none md:block"
-            value={fileName}
-            onChange={(e) => setFileName(e.target.value)}
-            placeholder="thumb.png"
+            value={exportName}
+            onChange={(e) => setFileName(e.target.value || null)}
+            placeholder={defaultFileName(projectName)}
             aria-label="Nome file"
           />
           <Button className="h-8" onClick={onExport} disabled={exporting}>
@@ -453,9 +458,9 @@ export default function App() {
             <div className="md:hidden">
               <Field label="Nome file">
                 <Input
-                  value={fileName}
-                  onChange={(e) => setFileName(e.target.value)}
-                  placeholder="thumb.png"
+                  value={exportName}
+                  onChange={(e) => setFileName(e.target.value || null)}
+                  placeholder={defaultFileName(projectName)}
                   aria-label="Nome file"
                 />
               </Field>
