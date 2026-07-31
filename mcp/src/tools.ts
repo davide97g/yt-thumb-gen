@@ -18,8 +18,11 @@ import {
   FONT_LABELS,
   FORMATS,
   type FormatKey,
+  type Layer,
   SIZE_LIMITS,
   type ThumbDoc,
+  detachLayer,
+  newLayerId,
   newBrandLayer,
   newDrawLayer,
   newEffectLayer,
@@ -33,6 +36,8 @@ import { type Api, ApiError } from "./client";
 
 type ProjectMeta = { id: string; name: string; updatedAt: number; campaignId?: string | null; warnings?: string[] };
 type CampaignMeta = { id: string; name: string; updatedAt: number; designCount: number };
+type StarredMeta = { id: string; name: string; kind: string; sourceProjectName: string | null; lastUsedAt: number };
+type StarredItem = StarredMeta & { layer: Layer };
 
 const formatKeys = Object.keys(FORMATS) as [FormatKey, ...FormatKey[]];
 const templateKeys = Object.keys(TEMPLATES) as [TemplateKey, ...TemplateKey[]];
@@ -102,6 +107,44 @@ const badRef = (ref: string) =>
     `Could not read a project id from ${JSON.stringify(ref)}. Pass the id itself, or an editor ` +
       `URL of the form https://…/?project=<id>. Call list_projects to see the ids in the account.`
   );
+
+/** Largest image an agent may hand over. The API accepts 25 MB, but a base64 argument that
+ *  size is ~33 MB of JSON through the transport — refuse it here with a message that says so
+ *  rather than letting it die somewhere less legible. */
+const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
+
+/**
+ * Turns the `data` argument of `upload_image` into bytes.
+ *
+ * Accepts a `data:` URL (whose own media type wins, since that's the one the encoder wrote)
+ * or bare base64. Whitespace is stripped because base64 that has travelled through YAML,
+ * a shell heredoc or a chat message is usually wrapped.
+ */
+export function decodeImageInput(data: string, contentType?: string): { bytes: Uint8Array; contentType: string } | string {
+  const trimmed = data.trim();
+  const dataUrl = /^data:([^;,]+)?(;base64)?,/i.exec(trimmed);
+  if (dataUrl && !dataUrl[2]) return "must be base64 — a `data:…;base64,…` URL or bare base64, not a URL-encoded one.";
+
+  const payload = (dataUrl ? trimmed.slice(dataUrl[0].length) : trimmed).replace(/\s+/g, "");
+  if (!payload) return "is empty.";
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(payload)) return "is not valid base64.";
+
+  const type = dataUrl?.[1] || contentType || "image/png";
+  if (!type.startsWith("image/")) return `has content type ${type}; only image/* can be used as a layer source.`;
+
+  let bytes: Uint8Array;
+  try {
+    const binary = atob(payload);
+    bytes = Uint8Array.from(binary, (ch) => ch.charCodeAt(0));
+  } catch {
+    return "could not be decoded as base64.";
+  }
+  if (bytes.byteLength === 0) return "decoded to zero bytes.";
+  if (bytes.byteLength > MAX_UPLOAD_BYTES) {
+    return `is ${(bytes.byteLength / 1024 / 1024).toFixed(1)} MB; the limit through this tool is ${MAX_UPLOAD_BYTES / 1024 / 1024} MB. Downscale it first.`;
+  }
+  return { bytes, contentType: type };
+}
 
 /** Validates with the same code the server runs, so a malformed doc costs no round trip. */
 function preflight(doc: unknown): string | null {
@@ -224,6 +267,129 @@ export function registerTools(srv: McpServer, api: Api): void {
               { x: 120, y: 0 },
             ])
           );
+      }
+    }
+  );
+
+  srv.registerTool(
+    "upload_image",
+    {
+      title: "Upload an image",
+      description:
+        "Stores image bytes in the account and returns a `blob:<id>` reference to use as an image layer's " +
+        "`src` or as `background.image`. Pass base64 — a `data:image/png;base64,…` URL or bare base64. " +
+        "Without this, a design can only use the built-in brand marks, emoji and shapes.",
+      inputSchema: {
+        data: z.string().min(1).describe("The image as base64 (data: URL or bare). Max 8 MB decoded."),
+        contentType: z
+          .string()
+          .optional()
+          .describe("MIME type such as image/png. Ignored for a data: URL, which carries its own."),
+      },
+    },
+    async ({ data, contentType }) => {
+      const decoded = decodeImageInput(data, contentType);
+      if (typeof decoded === "string") return fail(`\`data\` ${decoded}`);
+      try {
+        const { id } = await api.postBytes<{ id: string }>("/blobs", decoded.bytes, decoded.contentType);
+        return text({
+          ref: `blob:${id}`,
+          bytes: decoded.bytes.byteLength,
+          contentType: decoded.contentType,
+          usage: "Put this in an image layer's `src` (new_layer kind:\"image\"), or in background.image. The editor turns it back into a picture on open.",
+        });
+      } catch (e) {
+        return fail(e instanceof ApiError ? e.toText() : String(e));
+      }
+    }
+  );
+
+  // ── favourites (single layers the user saved out of a design) ───────────────
+  //
+  // The editor's starred collection is where a channel's actual visual language lives — the
+  // logo lockup, the badge, the title treatment that gets reused every episode. An agent that
+  // can't reach it has to reinvent them, badly, every time.
+  srv.registerTool(
+    "list_starred_elements",
+    {
+      title: "List saved elements",
+      description:
+        "The user's collection of favourite layers — logos, badges, title treatments they reuse. " +
+        "Most recently used first. Prefer these over inventing a new element from scratch.",
+      inputSchema: {},
+    },
+    async () => {
+      try {
+        return text(await api.get<StarredMeta[]>("/starred"));
+      } catch (e) {
+        return fail(e instanceof ApiError ? e.toText() : String(e));
+      }
+    }
+  );
+
+  srv.registerTool(
+    "get_starred_element",
+    {
+      title: "Get a saved element",
+      description:
+        "One favourite, including its layer JSON — ready to drop into a document's `layers`. " +
+        "Re-id it (or use add_starred_element, which does) before adding it to a document.",
+      inputSchema: { id: z.string().min(1).describe("Element id from list_starred_elements") },
+    },
+    async ({ id }) => {
+      try {
+        return text(await api.get<StarredItem>(`/starred/${id}`));
+      } catch (e) {
+        return fail(e instanceof ApiError ? e.toText() : String(e));
+      }
+    }
+  );
+
+  srv.registerTool(
+    "add_starred_element",
+    {
+      title: "Add a saved element to a project",
+      description:
+        "Appends a favourite to a project's document, on top of everything else, with a fresh id. " +
+        "Optionally place it — coordinates are the layer's top-left in canvas space (see get_design_reference).",
+      inputSchema: {
+        element: z.string().min(1).describe("Element id from list_starred_elements"),
+        project: projectRef("Project to add it to"),
+        x: z.number().optional().describe("Left edge in canvas units; keeps the element's own x when omitted"),
+        y: z.number().optional().describe("Top edge in canvas units; keeps the element's own y when omitted"),
+      },
+    },
+    async ({ element, project, x, y }) => {
+      const id = projectIdFrom(project);
+      if (!id) return badRef(project);
+      try {
+        const [item, current] = await Promise.all([
+          api.get<StarredItem>(`/starred/${element}`),
+          api.get<{ name: string; doc: ThumbDoc }>(`/projects/${id}`),
+        ]);
+        // Detach + re-id: a favourite carries its old group link and id, and pasting either
+        // into another document collides with whatever is already there.
+        const layer: Layer = {
+          ...detachLayer(item.layer),
+          id: newLayerId(),
+          ...(x === undefined ? {} : { x }),
+          ...(y === undefined ? {} : { y }),
+        };
+        const doc: ThumbDoc = { ...current.doc, layers: [...current.doc.layers, layer] };
+
+        const problem = preflight(doc);
+        if (problem) return fail(problem);
+
+        const saved = await api.put<ProjectMeta>(`/projects/${id}`, { doc });
+        // Insertion is a use event — it's what ranks the collection for the user.
+        await api.post(`/starred/${element}/use`).catch(() => {});
+        return text({
+          ...saved,
+          added: { id: layer.id, name: layer.name, type: layer.type, x: layer.x, y: layer.y },
+          url: projectLink(saved.id),
+        });
+      } catch (e) {
+        return fail(e instanceof ApiError ? e.toText() : String(e));
       }
     }
   );

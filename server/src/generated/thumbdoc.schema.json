@@ -689,7 +689,7 @@
             "string",
             "null"
           ],
-          "description": "Image source: a `data:` URL at runtime, a `blob:<id>` ref at rest. Null while empty or when `brand` is set. Agents cannot upload bytes — use `brand`, or leave null."
+          "description": "Image source: a `data:` URL at runtime, a `blob:<id>` ref at rest. Null while empty or when `brand` is set. Agents get a `blob:<id>` ref from the upload_image tool."
         },
         "origSrc": {
           "type": [

@@ -37,10 +37,17 @@ corner. Full field reference: `reference/doc-format.md`, or `get_doc_schema` for
 `get_design_reference`. Pass `format` to `get_template` and it rescales for you; layers you add
 afterwards are your responsibility.
 
-**You cannot upload images.** No tool sends bytes. Compose with text, shapes, emoji, draw strokes,
-gradients and effects. For imagery use `brand-logo` / `brand-wordmark` (built-in Claude marks, no
-upload). A template's photo layers arrive as empty slots (`src: null`) — leave them for the user
-to fill, or delete them. Never invent a `src`: a fabricated URL or data URL will not render.
+**Images come from two places, and nowhere else.** `upload_image` takes base64 and returns a
+`blob:<id>` ref for an image layer's `src` or for `background.image` — use it when you actually
+have the bytes (a file the user gave you, an image you generated). Otherwise use `brand-logo` /
+`brand-wordmark`, the built-in Claude marks that need no upload. A template's photo layers arrive
+as empty slots (`src: null`) — leave them for the user to fill, or delete them. **Never invent a
+`src`**: a fabricated URL or a hand-written data URL will not render.
+
+**Check what the user already has.** `list_starred_elements` is their collection of saved layers —
+the logo lockup, the badge, the title treatment they reuse every episode. That collection *is* the
+channel's visual language. Look before inventing an element from scratch, and add one with
+`add_starred_element` (it re-ids and repositions for you).
 
 **Legibility beats cleverness.** A thumbnail is judged at ~320px wide on a phone.
 

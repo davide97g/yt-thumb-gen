@@ -30,6 +30,8 @@ export type Api = {
   baseUrl: string;
   get<T>(path: string): Promise<T>;
   post<T>(path: string, body?: unknown): Promise<T>;
+  /** Raw bytes, for the blob endpoint — it reads the body as-is and types it by content-type. */
+  postBytes<T>(path: string, bytes: Uint8Array, contentType: string): Promise<T>;
   put<T>(path: string, body?: unknown): Promise<T>;
   delete<T>(path: string): Promise<T>;
 };
@@ -37,7 +39,7 @@ export type Api = {
 export function makeApi(token: string | undefined, baseUrl: string = DEFAULT_BASE): Api {
   const base = baseUrl.replace(/\/+$/, "");
 
-  async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  async function request<T>(method: string, path: string, body?: unknown, raw?: { bytes: Uint8Array; contentType: string }): Promise<T> {
     if (!token) {
       throw new ApiError(401, "No API token. Create one in Thumb Studio (key icon in the header) and use it as the bearer.");
     }
@@ -45,9 +47,9 @@ export function makeApi(token: string | undefined, baseUrl: string = DEFAULT_BAS
       method,
       headers: {
         authorization: `Bearer ${token}`,
-        ...(body === undefined ? {} : { "content-type": "application/json" }),
+        ...(raw ? { "content-type": raw.contentType } : body === undefined ? {} : { "content-type": "application/json" }),
       },
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: raw ? (raw.bytes as unknown as BodyInit) : body === undefined ? undefined : JSON.stringify(body),
     });
 
     const isJson = res.headers.get("content-type")?.includes("application/json");
@@ -65,6 +67,7 @@ export function makeApi(token: string | undefined, baseUrl: string = DEFAULT_BAS
     baseUrl: base,
     get: (p) => request("GET", p),
     post: (p, b) => request("POST", p, b),
+    postBytes: (p, bytes, contentType) => request("POST", p, undefined, { bytes, contentType }),
     put: (p, b) => request("PUT", p, b),
     delete: (p) => request("DELETE", p),
   };

@@ -10,7 +10,7 @@
 //     URLs. So the DB row stays small and images survive a cache clear / move machines.
 // Plus JSON file export/import (unchanged) so a project can leave the account entirely.
 
-import type { EmojiFxLayer, FormatKey, Layer, LayerType, ThumbDoc } from "../state";
+import { detachLayer, type FormatKey, type Layer, type LayerType, type ThumbDoc } from "../state";
 import { apiGet, apiSend } from "./api";
 import { dehydrateDoc, dehydrateLayer, hydrateDoc, hydrateLayer } from "./blobs";
 
@@ -210,13 +210,9 @@ export type StarredMeta = {
 };
 export type StarredItem = StarredMeta & { layer: Layer };
 
-/** Strip everything that only makes sense inside its source doc: the group link and,
- *  for emoji fields, the bound target image (it won't exist in the destination doc). */
-export function detachLayer(layer: Layer): Layer {
-  const { groupId: _drop, ...rest } = layer;
-  if (rest.type === "emojifx") return { ...rest, targetId: null } as EmojiFxLayer;
-  return rest as Layer;
-}
+// Re-exported from the document model, where it now lives — the MCP server needs it and
+// can't import this module (browser fetch). Importers here are unaffected.
+export { detachLayer };
 
 export function listStarred(): Promise<StarredMeta[]> {
   return apiGet<StarredMeta[]>("/starred");

@@ -224,7 +224,7 @@ export type TextLayer = LayerBase & {
 export type ImageLayer = LayerBase & {
   type: "image";
   /** Image source: a `data:` URL at runtime, a `blob:<id>` ref at rest. Null while empty
-   *  or when `brand` is set. Agents cannot upload bytes — use `brand`, or leave null. */
+   *  or when `brand` is set. Agents get a `blob:<id>` ref from the upload_image tool. */
   src: string | null;
   /** Pre-background-removal original, for "Restore". Same encoding as `src`. */
   origSrc: string | null;
@@ -540,7 +540,20 @@ export const primaryId = (s: AppState): string | null => s.selectedIds[s.selecte
 
 // ── Layer factories ─────────────────────────────────────────────────────────
 
-const uid = () => crypto.randomUUID();
+/** A fresh layer id. Exported because anything that *copies* a layer into a document — the
+ *  favourites palette, the MCP tools — has to re-id it or two layers collide. */
+export const newLayerId = (): string => crypto.randomUUID();
+const uid = newLayerId;
+
+/** Strips everything that only makes sense inside a layer's original document: the group
+ *  link, and for emoji fields the bound target image (it won't exist in the destination).
+ *  Lives here, not in storage.ts, because it's document-model logic — and the MCP server
+ *  needs it without dragging in a module full of browser `fetch`. */
+export function detachLayer(layer: Layer): Layer {
+  const { groupId: _drop, ...rest } = layer;
+  if (rest.type === "emojifx") return { ...rest, targetId: null } as EmojiFxLayer;
+  return rest as Layer;
+}
 
 export function newTextLayer(): TextLayer {
   return {
