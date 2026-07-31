@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, FilePlus, Link2, Pencil } from "lucide-react";
+import { Check, FilePlus, History, Link2, Pencil } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { cn } from "@/lib/utils";
@@ -17,6 +17,8 @@ type Props = {
   onRename: (name: string) => void;
   onSave: () => void;
   onNew: () => void;
+  /** Opens the version history. Only offered once the project has an archive id to have one. */
+  onHistory: () => void;
 };
 
 /** Epoch ms → "14:32", or null if the value isn't a usable timestamp — the status line
@@ -28,7 +30,7 @@ function time(ms: number): string | null {
 
 /** The live project's identity card — name, save state, and the primary
  *  "new project" action. The one place in the chrome that names the work. */
-export function ProjectHeader({ name, dirty, savedAt, archived, projectId, onRename, onSave, onNew }: Props) {
+export function ProjectHeader({ name, dirty, savedAt, archived, projectId, onRename, onSave, onNew, onHistory }: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(name);
   const [copied, setCopied] = useState(false);
@@ -87,6 +89,17 @@ export function ProjectHeader({ name, dirty, savedAt, archived, projectId, onRen
           </span>
           {!editing && (
             <span className="flex items-center gap-2">
+              {projectId && (
+                <button
+                  type="button"
+                  onClick={onHistory}
+                  className="text-muted-foreground/60 transition-colors hover:text-foreground"
+                  title="Version history"
+                  aria-label="Version history"
+                >
+                  <History className="size-3.5" />
+                </button>
+              )}
               {projectId && (
                 <button
                   type="button"

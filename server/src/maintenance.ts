@@ -55,6 +55,12 @@ export async function sweepBlobs(): Promise<{ rows: number; objects: number; mod
     note(r.user_id, collectBlobIds(r.doc));
     if (r.preview) note(r.user_id, [r.preview]);
   }
+  // Past versions count. A restore that finds its photos collected would be worse than no
+  // history at all — any table holding a document has to be listed here.
+  for (const r of await sql<{ user_id: string; doc: string }[]>`
+    SELECT user_id, doc::text AS doc FROM project_versions`) {
+    note(r.user_id, collectBlobIds(r.doc));
+  }
   for (const r of await sql<{ user_id: string; layer: string }[]>`
     SELECT user_id, layer::text AS layer FROM starred_items`) {
     note(r.user_id, collectBlobIds(r.layer));

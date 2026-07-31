@@ -90,6 +90,21 @@ export async function initSchema(): Promise<void> {
       created_at timestamptz NOT NULL DEFAULT now(),
       updated_at timestamptz NOT NULL DEFAULT now()
     )`;
+  // Version history. Undo lives in the browser, holds 20 steps and dies on reload — so an
+  // edit that survives a refresh was, until now, permanent. Every write that changes the
+  // document files the *previous* one here first, which is what makes "put it back" possible
+  // after a bad edit, a bad agent, or a week.
+  await sql`
+    CREATE TABLE IF NOT EXISTS project_versions (
+      id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      user_id    uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      name       text NOT NULL,
+      doc        jsonb NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now()
+    )`;
+  await sql`CREATE INDEX IF NOT EXISTS project_versions_project_idx ON project_versions(project_id, created_at DESC)`;
+
   // Preview thumbnail: the blob id of a small JPEG of the design, captured by the editor on
   // save. Nullable — projects created by an agent (or saved before previews existed) simply
   // have none, and the archive falls back to an icon.

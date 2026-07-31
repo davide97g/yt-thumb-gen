@@ -113,6 +113,12 @@ Editing happens at 40% of 1280px on a monitor; the design is seen at ~210px next
 
 `THUMBDOC_VALIDATE=warn|enforce` gates rejection. **Validation on `PUT /api/projects/:id` is gated on `doc !== undefined`** — that endpoint doubles as rename, which sends `{ name }` only.
 
+### Version history — `project_versions` + `HistoryDialog`
+
+Undo is in-memory, 20 deep, and gone on reload, so an edit that survived a refresh used to be permanent — including one an agent made. Now every `PUT /api/projects/:id` that carries a `doc` files the **outgoing** document first (`snapshot()`), which is what makes the list read as "put it back to here" rather than as a log. Four rules: a save that didn't change the document files nothing (⌘S fires whether or not anything moved); a rename spends no version (it doesn't send `doc`); the window is capped at `VERSION_LIMIT = 30` per project, cheap because docs are stored dehydrated; and `snapshot()` never throws — losing a snapshot is regrettable, losing the save it was protecting is not. Restore is itself an edit, so it snapshots first and undoing a restore is another restore.
+
+**The blob sweep must scan `project_versions`** (it does) — a restore that found its images collected would be worse than no history at all. Any future table holding a document has to be added there too.
+
 ### Hardening & housekeeping — `server/src/ratelimit.ts`, `server/src/maintenance.ts`
 
 `POST /api/auth/login` is rate-limited on two sliding windows: per (address, account) so a targeted guess stalls at 8 tries per 10 minutes, and per address so walking a list of emails stalls at 40. **Only failures count and a success resets** — otherwise a busy legitimate user locks themselves out. The check runs *before* the password comparison, since not paying for the guess is the whole point. Counters are an in-memory `Map` (single API container; a restart forgives everyone) and the limiter is pure apart from an injectable clock, which is what makes `ratelimit.test.ts` possible without sleeping.

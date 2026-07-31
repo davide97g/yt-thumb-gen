@@ -7,6 +7,7 @@ import { ReadabilityPanel } from "./components/ReadabilityPanel";
 import { SavesPanel } from "./components/SavesPanel";
 import { ManageStarredDialog, StarredCommandDialog, StarredPanel } from "./components/StarredPanel";
 import { ProjectHeader } from "./components/ProjectHeader";
+import { HistoryDialog } from "./components/HistoryDialog";
 import { NewProjectDialog } from "./components/NewProjectDialog";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { Toolbar } from "./components/Toolbar";
@@ -45,6 +46,7 @@ export default function App() {
   const [mobileLeft, setMobileLeft] = useState(false);
   const [mobileRight, setMobileRight] = useState(false);
   const [newOpen, setNewOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [savesKey, setSavesKey] = useState(0);
   const [starredKey, setStarredKey] = useState(0);
   const [cmdkOpen, setCmdkOpen] = useState(false);
@@ -103,6 +105,11 @@ export default function App() {
   // Latest doc/selection + a copy/paste clipboard, read by the global key handler
   // without rebinding it each render. Clipboard is a layer snapshot (immutable), so
   // it lives outside undo history and survives edits to the original.
+  // While a dialog owns the screen, the bare-letter shortcuts belong to it — otherwise "a"
+  // toggles safe areas behind an open modal.
+  const modalRef = useRef(false);
+  modalRef.current = newOpen || cmdkOpen || manageStarredOpen || settingsOpen || historyOpen;
+
   const selRef = useRef(selectedIds);
   selRef.current = selectedIds;
   const docRef = useRef(doc);
@@ -237,6 +244,7 @@ export default function App() {
       const el = document.activeElement as HTMLElement | null;
       const typing = el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
       if (typing) return; // let inputs keep native undo / copy / paste
+      if (modalRef.current) return; // a dialog owns the keyboard while it's open
 
       if (e.key === "Escape") { setCropMode(null); setDrawMode(false); return; } // exit crop / draw mode
 
@@ -496,6 +504,7 @@ export default function App() {
                 onRename={renameProject}
                 onSave={() => void saveProject()}
                 onNew={() => setNewOpen(true)}
+                onHistory={() => setHistoryOpen(true)}
               />
             </div>
 
@@ -597,7 +606,7 @@ export default function App() {
                 onError={setMessage}
                 drawMode={drawMode}
                 setDrawMode={setDrawMode}
-                enabled={!newOpen && !cmdkOpen && !manageStarredOpen && !settingsOpen}
+                enabled={!newOpen && !cmdkOpen && !manageStarredOpen && !settingsOpen && !historyOpen}
               />
             </div>
           )}
@@ -634,6 +643,18 @@ export default function App() {
           projectId={projectId}
           onClose={() => setNewOpen(false)}
           onCreated={(d, name, id, at) => { adoptProject(d, name, id, at); setSavesKey((k) => k + 1); }}
+          onError={setMessage}
+        />
+      )}
+
+      {historyOpen && projectId && (
+        <HistoryDialog
+          projectId={projectId}
+          dirty={dirty}
+          onClose={() => setHistoryOpen(false)}
+          // A restore replaces the document server-side, so the restored doc is the clean
+          // baseline — same as opening the project fresh.
+          onRestored={(d, at) => { adoptProject(d, projectName, projectId, at); setSavesKey((k) => k + 1); }}
           onError={setMessage}
         />
       )}

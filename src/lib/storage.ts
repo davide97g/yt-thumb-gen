@@ -144,6 +144,32 @@ export function deleteConfig(id: string): Promise<void> {
   return apiSend<{ ok: true }>("DELETE", `/projects/${id}`).then(() => undefined);
 }
 
+// ── Version history ───────────────────────────────────────────────────────────
+//
+// Undo is in-memory, 20 steps deep, and gone on reload — so before this, an edit that
+// survived a refresh was permanent. The backend files the outgoing document on every save
+// that changes it; these read that history back.
+
+export type VersionMeta = {
+  id: string;
+  /** The project's name at the time — a rename doesn't rewrite the past. */
+  name: string;
+  createdAt: number;
+  layerCount: number;
+  format: FormatKey | null;
+};
+
+export function listVersions(projectId: string): Promise<VersionMeta[]> {
+  return apiGet<VersionMeta[]>(`/projects/${projectId}/versions`);
+}
+
+/** Puts a past document back. The current one is filed first, server-side, so undoing a
+ *  restore is just another restore. Returns the restored doc, hydrated for the canvas. */
+export async function restoreVersion(projectId: string, versionId: string): Promise<{ doc: ThumbDoc; updatedAt: number }> {
+  const row = await apiSend<{ doc: ThumbDoc; updatedAt: number }>("POST", `/projects/${projectId}/versions/${versionId}/restore`);
+  return { doc: await hydrateDoc(row.doc), updatedAt: row.updatedAt };
+}
+
 // ── Campaigns (a folder of designs: one message across several platforms) ─────
 
 export type CampaignMeta = { id: string; name: string; updatedAt: number; designCount: number };

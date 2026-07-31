@@ -220,6 +220,87 @@ describe.skipIf(!usable)("api", () => {
     expect((await api.request(`/api/projects/${mine.id}`, auth(owner.cookie))).status).toBe(200);
   });
 
+  // ── version history ────────────────────────────────────────────────────────
+  test("a changed document files the previous one; an unchanged save files nothing", async () => {
+    const user = await register();
+    const p = await (await api.request("/api/projects", send("POST", { name: "One", doc: doc() }, user.cookie))).json();
+    const versions = () => api.request(`/api/projects/${p.id}/versions`, auth(user.cookie)).then((r) => r.json());
+
+    expect(await versions()).toEqual([]);
+    await api.request(`/api/projects/${p.id}`, send("PUT", { doc: doc({ layers: [] }) }, user.cookie)); // identical
+    expect(await versions()).toEqual([]);
+
+    await api.request(`/api/projects/${p.id}`, send("PUT", { doc: doc({ format: "shorts" }) }, user.cookie));
+    const list = await versions();
+    expect(list).toHaveLength(1);
+    expect(list[0].format).toBe("youtube"); // the document that was replaced, not the new one
+  });
+
+  test("a rename doesn't spend a version", async () => {
+    const user = await register();
+    const p = await (await api.request("/api/projects", send("POST", { name: "One", doc: doc() }, user.cookie))).json();
+    await api.request(`/api/projects/${p.id}`, send("PUT", { name: "Two" }, user.cookie));
+    expect(await (await api.request(`/api/projects/${p.id}/versions`, auth(user.cookie))).json()).toEqual([]);
+  });
+
+  test("restoring puts the old document back, and is itself undoable", async () => {
+    const user = await register();
+    const p = await (await api.request("/api/projects", send("POST", { name: "One", doc: doc() }, user.cookie))).json();
+    await api.request(`/api/projects/${p.id}`, send("PUT", { doc: doc({ format: "shorts" }) }, user.cookie));
+
+    const [v] = await (await api.request(`/api/projects/${p.id}/versions`, auth(user.cookie))).json();
+    const restored = await (await api.request(`/api/projects/${p.id}/versions/${v.id}/restore`, send("POST", {}, user.cookie))).json();
+    expect(restored.doc.format).toBe("youtube");
+    expect((await (await api.request(`/api/projects/${p.id}`, auth(user.cookie))).json()).doc.format).toBe("youtube");
+
+    // The shorts document it replaced is now itself a restore point.
+    const after = await (await api.request(`/api/projects/${p.id}/versions`, auth(user.cookie))).json();
+    expect(after[0].format).toBe("shorts");
+  });
+
+  test("history is capped, keeping the most recent", async () => {
+    const user = await register();
+    const p = await (await api.request("/api/projects", send("POST", { name: "One", doc: doc() }, user.cookie))).json();
+    // 32 distinct documents against a limit of 30.
+    for (let i = 0; i < 32; i++) {
+      await api.request(`/api/projects/${p.id}`, send("PUT", { doc: doc({ background: { mode: "solid", from: `#00000${i % 10}`, to: "#000000", image: null, overlay: i } }) }, user.cookie));
+    }
+    const list = await (await api.request(`/api/projects/${p.id}/versions`, auth(user.cookie))).json();
+    expect(list).toHaveLength(30);
+  });
+
+  test("a version id is not a capability — another user can't read or restore it", async () => {
+    const owner = await register();
+    const other = await seedUser();
+    const p = await (await api.request("/api/projects", send("POST", { name: "One", doc: doc() }, owner.cookie))).json();
+    await api.request(`/api/projects/${p.id}`, send("PUT", { doc: doc({ format: "shorts" }) }, owner.cookie));
+    const [v] = await (await api.request(`/api/projects/${p.id}/versions`, auth(owner.cookie))).json();
+
+    expect(await (await api.request(`/api/projects/${p.id}/versions`, auth(other.cookie))).json()).toEqual([]);
+    expect((await api.request(`/api/projects/${p.id}/versions/${v.id}`, auth(other.cookie))).status).toBe(404);
+    expect((await api.request(`/api/projects/${p.id}/versions/${v.id}/restore`, send("POST", {}, other.cookie))).status).toBe(404);
+  });
+
+  test("deleting a project takes its history with it", async () => {
+    const user = await register();
+    const p = await (await api.request("/api/projects", send("POST", { name: "One", doc: doc() }, user.cookie))).json();
+    await api.request(`/api/projects/${p.id}`, send("PUT", { doc: doc({ format: "shorts" }) }, user.cookie));
+    await api.request(`/api/projects/${p.id}`, { method: "DELETE", headers: { cookie: user.cookie } });
+    expect(await sql`SELECT 1 FROM project_versions WHERE project_id = ${p.id}`).toHaveLength(0);
+  });
+
+  test("images referenced only by an old version are not collected", async () => {
+    const user = await register();
+    const { collectBlobIds } = await import("./maintenance");
+    const id = "d".repeat(64);
+    const p = await (await api.request("/api/projects", send("POST", { name: "One", doc: doc({ background: { mode: "image", from: "#000000", to: "#000000", image: `blob:${id}`, overlay: 0 } }) }, user.cookie))).json();
+    // Replace it with a document that references nothing.
+    await api.request(`/api/projects/${p.id}`, send("PUT", { doc: doc() }, user.cookie));
+
+    const [version] = await sql<{ doc: string }[]>`SELECT doc::text AS doc FROM project_versions WHERE project_id = ${p.id}`;
+    expect(collectBlobIds(version.doc).has(id)).toBe(true); // the sweep scans this table too
+  });
+
   // ── campaigns ──────────────────────────────────────────────────────────────
   test("campaignId is tri-state: absent leaves it, null unfiles, an id files", async () => {
     const user = await register();

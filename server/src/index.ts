@@ -241,6 +241,37 @@ async function resolveCampaign(userId: string, value: unknown): Promise<string |
   return rows[0] ? value : false;
 }
 
+/** How many past documents a project keeps. Docs are stored dehydrated (images are refs, not
+ *  bytes), so a version is a few kilobytes of JSON — 30 of them cost less than one photo. */
+const VERSION_LIMIT = 30;
+
+/** Files a project's current document as a version, ahead of `incoming` replacing it.
+ *
+ *  Skips when nothing changed: the editor saves on ⌘S whether or not anything moved, and a
+ *  history of twenty identical entries is a history of nothing. Never throws — losing a
+ *  snapshot is regrettable, losing the save it was protecting is not. */
+async function snapshot(userId: string, projectId: string, incoming: unknown): Promise<void> {
+  try {
+    const [current] = await sql<{ name: string; same: boolean }[]>`
+      SELECT name, doc = ${sql.json(incoming as any)}::jsonb AS same
+      FROM projects WHERE id = ${projectId} AND user_id = ${userId}`;
+    if (!current || current.same) return;
+
+    await sql`
+      INSERT INTO project_versions (project_id, user_id, name, doc)
+      SELECT id, user_id, name, doc FROM projects WHERE id = ${projectId} AND user_id = ${userId}`;
+
+    // Keep the window bounded per project rather than sweeping globally later.
+    await sql`
+      DELETE FROM project_versions WHERE project_id = ${projectId} AND id NOT IN (
+        SELECT id FROM project_versions WHERE project_id = ${projectId}
+        ORDER BY created_at DESC LIMIT ${VERSION_LIMIT}
+      )`;
+  } catch (err) {
+    console.warn("[versions] snapshot failed", err);
+  }
+}
+
 app.post("/api/projects", async (c) => {
   const user = c.get("user") as User;
   const { name, doc, campaignId, preview } = await c.req.json().catch(() => ({}));
@@ -265,6 +296,9 @@ app.put("/api/projects/:id", async (c) => {
   if (doc !== undefined) {
     const rejected = docProblems("PUT /projects", validateDoc(doc));
     if (rejected) return rejected;
+    // File the outgoing document before it's overwritten. Snapshotting the *previous* state
+    // is what makes the history a list of "put it back here" points rather than a log.
+    await snapshot(user.id, c.req.param("id"), doc);
   }
   // Tri-state: key absent = leave the campaign alone, null = unfile, id = file. `coalesce`
   // can't express "set to null", so the column is only touched when the key is present.
@@ -290,6 +324,51 @@ app.delete("/api/projects/:id", async (c) => {
   const user = c.get("user") as User;
   await sql`DELETE FROM projects WHERE id = ${c.req.param("id")} AND user_id = ${user.id}`;
   return c.json({ ok: true });
+});
+
+// ── version history ─────────────────────────────────────────────────────────
+//
+// Every route here is scoped by user_id as well as project_id. The version id alone is not a
+// capability: guessing one must not read another account's design.
+app.get("/api/projects/:id/versions", async (c) => {
+  const user = c.get("user") as User;
+  const rows = await sql`
+    SELECT id, name, (extract(epoch from created_at) * 1000)::float8 AS "createdAt",
+      jsonb_array_length(doc->'layers') AS "layerCount", doc->>'format' AS format
+    FROM project_versions WHERE project_id = ${c.req.param("id")} AND user_id = ${user.id}
+    ORDER BY created_at DESC`;
+  return c.json(rows);
+});
+
+app.get("/api/projects/:id/versions/:versionId", async (c) => {
+  const user = c.get("user") as User;
+  const rows = await sql`
+    SELECT id, name, doc, (extract(epoch from created_at) * 1000)::float8 AS "createdAt"
+    FROM project_versions
+    WHERE id = ${c.req.param("versionId")} AND project_id = ${c.req.param("id")} AND user_id = ${user.id}`;
+  if (!rows[0]) return c.json({ error: "not found" }, 404);
+  return c.json(rows[0]);
+});
+
+// Restoring is itself an edit, so the document being replaced is filed first — undoing a
+// restore is just another restore.
+app.post("/api/projects/:id/versions/:versionId/restore", async (c) => {
+  const user = c.get("user") as User;
+  const id = c.req.param("id");
+  const [version] = await sql<{ doc: unknown }[]>`
+    SELECT doc FROM project_versions
+    WHERE id = ${c.req.param("versionId")} AND project_id = ${id} AND user_id = ${user.id}`;
+  if (!version) return c.json({ error: "not found" }, 404);
+
+  await snapshot(user.id, id, version.doc);
+  const [row] = await sql`
+    UPDATE projects SET doc = ${sql.json(version.doc as any)}, updated_at = now()
+    WHERE id = ${id} AND user_id = ${user.id}
+    RETURNING id, name, campaign_id AS "campaignId", preview, (extract(epoch from updated_at) * 1000)::float8 AS "updatedAt"`;
+  if (!row) return c.json({ error: "not found" }, 404);
+  // The preview column still shows the design that was just replaced; it refreshes on the
+  // next save from the editor. Better a stale thumbnail than a blank row.
+  return c.json({ ...row, doc: version.doc });
 });
 
 // ── campaigns (a folder of designs: one message across several platforms) ────
