@@ -22,6 +22,10 @@ import { cn } from "./lib/utils";
 
 const initial: AppState = { doc: TEMPLATES.dacoder(), selectedIds: [] };
 
+/** The left rail's three collapsible sections. One is open at a time, so a long layer
+ *  stack can't bury the archive under a page of scrolling. */
+type RailSection = "layers" | "starred" | "saves";
+
 export default function App() {
   const [hist, dispatch] = useReducer(historyReducer, initial, initHistory);
   const [hydrated, setHydrated] = useState(false);
@@ -39,6 +43,10 @@ export default function App() {
   const [cmdkOpen, setCmdkOpen] = useState(false);
   const [manageStarredOpen, setManageStarredOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // `null` = every rail section collapsed, which is a legitimate state: the heads alone
+  // are a compact table of contents.
+  const [rail, setRail] = useState<RailSection | null>("layers");
+  const toggleRail = (id: RailSection) => setRail((cur) => (cur === id ? null : id));
   const [exporting, setExporting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   // `null` = follow the project name (see `exportName`); a string is the user's override.
@@ -419,65 +427,84 @@ export default function App() {
         {(isMobile || !chromeHidden) && (
           <aside
             className={cn(
-              "panel panel-scroll flex flex-col gap-5 overflow-y-auto border-r border-border p-4",
+              "panel flex flex-col overflow-hidden border-r border-border",
               // mobile: off-canvas drawer (below the header, clear of the safe-area insets)
               "fixed left-[env(safe-area-inset-left)] top-[calc(3.5rem_+_env(safe-area-inset-top))] bottom-[env(safe-area-inset-bottom)] z-40 w-[86vw] max-w-xs shadow-2xl transition-transform duration-300 ease-out",
               mobileLeft ? "translate-x-0" : "-translate-x-full",
               // desktop: static rail in the flex row
-              "md:static md:z-auto md:w-64 md:max-w-none md:shrink-0 md:translate-x-0 md:shadow-none md:transition-none",
+              "md:static md:z-auto md:w-72 md:max-w-none md:shrink-0 md:translate-x-0 md:shadow-none md:transition-none",
               !isMobile && "anim-panel-l",
             )}
           >
-            <DrawerClose label="Livelli e progetto" onClose={() => setMobileLeft(false)} />
+            {/* Pinned head: the project never scrolls away — it's the context for
+                everything below it. */}
+            <div className="flex shrink-0 flex-col gap-4 p-4 pb-3">
+              <DrawerClose label="Livelli e progetto" onClose={() => setMobileLeft(false)} />
 
-            {/* File name lives in the header on desktop; on mobile it moves in here. */}
-            <div className="md:hidden">
-              <Field label="Nome file">
-                <Input
-                  value={exportName}
-                  onChange={(e) => setFileName(e.target.value || null)}
-                  placeholder={defaultFileName(projectName)}
-                  aria-label="Nome file"
-                />
-              </Field>
+              {/* File name lives in the header on desktop; on mobile it moves in here. */}
+              <div className="md:hidden">
+                <Field label="Nome file">
+                  <Input
+                    value={exportName}
+                    onChange={(e) => setFileName(e.target.value || null)}
+                    placeholder={defaultFileName(projectName)}
+                    aria-label="Nome file"
+                  />
+                </Field>
+              </div>
+
+              <ProjectHeader
+                name={projectName}
+                dirty={dirty}
+                savedAt={savedAt}
+                archived={projectId !== null}
+                projectId={projectId}
+                onRename={renameProject}
+                onSave={() => void saveProject()}
+                onNew={() => setNewOpen(true)}
+              />
             </div>
 
-            <ProjectHeader
-              name={projectName}
-              dirty={dirty}
-              savedAt={savedAt}
-              archived={projectId !== null}
-              projectId={projectId}
-              onRename={renameProject}
-              onSave={() => void saveProject()}
-              onNew={() => setNewOpen(true)}
-            />
+            {/* One section open at a time: the open one takes the leftover height and
+                scrolls inside itself, so the other heads are always one click away
+                instead of hundreds of layers down. */}
+            <div className="flex min-h-0 flex-1 flex-col gap-3 px-4">
+              <Section
+                title="Livelli"
+                count={doc.layers.length}
+                open={rail === "layers"}
+                onToggle={() => toggleRail("layers")}
+                fill
+              >
+                <LayerList layers={doc.layers} selectedIds={selectedIds} dispatch={dispatch} onStar={(l) => void starFromList(l)} />
+              </Section>
 
-            <Section title="Livelli">
-              <LayerList layers={doc.layers} selectedIds={selectedIds} dispatch={dispatch} onStar={(l) => void starFromList(l)} />
-            </Section>
+              <StarredPanel
+                dispatch={dispatch}
+                onError={setMessage}
+                refreshKey={starredKey}
+                onChanged={() => setStarredKey((k) => k + 1)}
+                onManage={() => setManageStarredOpen(true)}
+                project={{ id: projectId, name: projectName }}
+                open={rail === "starred"}
+                onToggle={() => toggleRail("starred")}
+              />
 
-            <StarredPanel
-              dispatch={dispatch}
-              onError={setMessage}
-              refreshKey={starredKey}
-              onChanged={() => setStarredKey((k) => k + 1)}
-              onManage={() => setManageStarredOpen(true)}
-              project={{ id: projectId, name: projectName }}
-            />
-
-            <SavesPanel
-              doc={doc}
-              projectId={projectId}
-              projectName={projectName}
-              onLoad={adoptProject}
-              onError={setMessage}
-              refreshKey={savesKey}
-            />
+              <SavesPanel
+                doc={doc}
+                projectId={projectId}
+                projectName={projectName}
+                onLoad={adoptProject}
+                onError={setMessage}
+                refreshKey={savesKey}
+                open={rail === "saves"}
+                onToggle={() => toggleRail("saves")}
+              />
+            </div>
 
             {/* Discreet build stamp — tap-and-hold shows the build time. */}
             <div
-              className="mt-auto shrink-0 select-text pt-1 text-center font-mono text-[10px] leading-none text-muted-foreground/35"
+              className="shrink-0 select-text px-4 py-2 text-center font-mono text-[10px] leading-none text-muted-foreground/35"
               title={`Build ${__BUILD_TIME__}`}
             >
               v{__APP_VERSION__} · {__APP_COMMIT__}

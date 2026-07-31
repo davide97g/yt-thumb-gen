@@ -1,5 +1,5 @@
 import type { CSSProperties, ReactNode } from "react";
-import { Pipette, RotateCcw } from "lucide-react";
+import { ChevronRight, Pipette, RotateCcw } from "lucide-react";
 import { Slider as SliderBase } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -34,17 +34,73 @@ export function UploadButton({
   );
 }
 
-export function Section({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) {
+export function Section({
+  title, action, children, count, open, onToggle, fill,
+}: {
+  title: string;
+  action?: ReactNode;
+  children: ReactNode;
+  /** Item tally beside the title — tells you what's inside while it's collapsed. */
+  count?: number;
+  /** Passing `onToggle` makes the head the control that opens and closes the section. */
+  open?: boolean;
+  onToggle?: () => void;
+  /** The open section grows to its content but no further than the rail's leftover
+   *  height, scrolling inside itself past that. So a 200-layer stack can never push the
+   *  other section heads out of reach. */
+  fill?: boolean;
+}) {
+  const collapsible = !!onToggle;
+  const shown = collapsible ? open === true : true;
+  const filling = !!fill && shown;
   return (
-    <section className="space-y-2.5">
+    // A filling section is the only one allowed to shrink, so its scroller absorbs the
+    // squeeze while every other section keeps its full height.
+    <section className={cn("flex flex-col gap-2.5", filling ? "min-h-0" : "shrink-0")}>
       {/* rail-head pins this row to the top of a scrolling rail (see styles.css). */}
-      <div className="rail-head flex items-center gap-3">
-        <h3 className="shrink-0 font-mono text-[10.5px] font-medium tracking-[0.2em] text-muted-foreground uppercase">{title}</h3>
-        <span className="h-px flex-1 bg-border" aria-hidden />
-        {action}
+      <div className="rail-head flex shrink-0 items-center gap-3">
+        {collapsible ? (
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-expanded={shown}
+            className="group/head flex min-w-0 flex-1 items-center gap-2 rounded-sm text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          >
+            <ChevronRight
+              className={cn(
+                "size-3 shrink-0 text-muted-foreground/70 transition-transform duration-200 group-hover/head:text-foreground",
+                shown && "rotate-90"
+              )}
+              aria-hidden
+            />
+            <SectionTitle title={title} />
+            {count !== undefined && (
+              <span className="readout shrink-0 text-[10px] tabular-nums text-muted-foreground/60">{count}</span>
+            )}
+            <span className="h-px flex-1 bg-border" aria-hidden />
+          </button>
+        ) : (
+          <>
+            <SectionTitle title={title} />
+            <span className="h-px flex-1 bg-border" aria-hidden />
+          </>
+        )}
+        {shown && action}
       </div>
-      <div className="space-y-2.5">{children}</div>
+      {shown && (
+        <div className={cn("flex flex-col gap-2.5", filling && "panel-scroll min-h-0 overflow-y-auto")}>
+          {children}
+        </div>
+      )}
     </section>
+  );
+}
+
+function SectionTitle({ title }: { title: string }) {
+  return (
+    <h3 className="shrink-0 font-mono text-[10.5px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
+      {title}
+    </h3>
   );
 }
 

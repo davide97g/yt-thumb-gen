@@ -60,12 +60,15 @@ type Props = {
   onChanged: () => void; // bump the key so every consumer stays in sync
   onManage: () => void;
   project: { id: string | null; name: string };
+  /** Accordion state, owned by the rail (see `App.tsx`). */
+  open: boolean;
+  onToggle: () => void;
 };
 
 /** The starred-elements collection: any layer saved out of a project, searchable by
  *  name/type, re-insertable into the current canvas. Includes an importer that opens
  *  any archived project and lets you pull single layers from it. */
-export function StarredPanel({ dispatch, onError, refreshKey, onChanged, onManage, project }: Props) {
+export function StarredPanel({ dispatch, onError, refreshKey, onChanged, onManage, project, open, onToggle }: Props) {
   const [items, setItems] = useState<StarredMeta[]>([]);
   const [previews, setPreviews] = useState<Map<string, Layer>>(new Map());
   const [query, setQuery] = useState("");
@@ -127,6 +130,10 @@ export function StarredPanel({ dispatch, onError, refreshKey, onChanged, onManag
   return (
     <Section
       title="Preferiti"
+      count={items.length}
+      open={open}
+      onToggle={onToggle}
+      fill
       action={
         <div className="flex items-center gap-0.5">
           {items.length > 0 && !searchOpen && (

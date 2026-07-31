@@ -28,6 +28,9 @@ type Props = {
   onLoad: (doc: ThumbDoc, name: string, id: string | null, savedAt: number | null) => void;
   onError: (msg: string) => void;
   refreshKey?: number;
+  /** Accordion state, owned by the rail (see `App.tsx`). */
+  open: boolean;
+  onToggle: () => void;
 };
 
 const UNGROUPED = "__none__"; // Radix Select has no concept of a null value
@@ -35,7 +38,7 @@ const UNGROUPED = "__none__"; // Radix Select has no concept of a null value
 /** The project library, grouped by campaign. A campaign is a folder: a project belongs to
  *  at most one, and deleting a campaign keeps its designs (they fall back to "Senza
  *  campagna"). The live project, if it came from here, is pinned visually. */
-export function SavesPanel({ doc, projectId, projectName, onLoad, onError, refreshKey }: Props) {
+export function SavesPanel({ doc, projectId, projectName, onLoad, onError, refreshKey, open, onToggle }: Props) {
   const [configs, setConfigs] = useState<ConfigMeta[]>([]);
   const [campaigns, setCampaigns] = useState<CampaignMeta[]>([]);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -240,6 +243,10 @@ export function SavesPanel({ doc, projectId, projectName, onLoad, onError, refre
   return (
     <Section
       title="Archivio"
+      count={configs.length}
+      open={open}
+      onToggle={onToggle}
+      fill
       action={
         <Button
           variant="ghost"
@@ -278,7 +285,7 @@ export function SavesPanel({ doc, projectId, projectName, onLoad, onError, refre
         <div className="space-y-1.5">
           {campaigns.map((g) => {
             const designs = groups.byCampaign.get(g.id) ?? [];
-            const open = !collapsed.has(g.id);
+            const expanded = !collapsed.has(g.id);
             return (
               <div key={g.id} className="space-y-0.5">
                 {renaming === g.id ? (
@@ -301,9 +308,9 @@ export function SavesPanel({ doc, projectId, projectName, onLoad, onError, refre
                       type="button"
                       className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-1.5 py-1 text-left hover:bg-accent/40"
                       onClick={() => toggle(g.id)}
-                      aria-expanded={open}
+                      aria-expanded={expanded}
                     >
-                      <ChevronRight className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform", open && "rotate-90")} />
+                      <ChevronRight className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform", expanded && "rotate-90")} />
                       <span className="min-w-0 flex-1 truncate font-mono text-[10.5px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
                         {g.name}
                       </span>
@@ -330,7 +337,7 @@ export function SavesPanel({ doc, projectId, projectName, onLoad, onError, refre
                   </div>
                 )}
 
-                {open &&
+                {expanded &&
                   (designs.length > 0 ? (
                     <div className="space-y-0.5 border-l border-border/60 pl-1.5">
                       {designs.map((c) => <ProjectRow key={c.id} c={c} campaignName={g.name} />)}

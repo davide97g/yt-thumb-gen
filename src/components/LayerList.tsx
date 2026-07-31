@@ -54,6 +54,17 @@ export function LayerList({ layers, selectedIds, dispatch, onStar }: Props) {
 
   useEffect(() => () => cancelAnimationFrame(rafRef.current), []);
 
+  // The list is capped to the rail's leftover height, so a layer picked on the canvas can
+  // easily sit outside the visible window. Bring it back — but never mid-drag, which runs
+  // its own edge scrolling.
+  const selectionKey = selectedIds.join(",");
+  useEffect(() => {
+    if (dragRef.current) return;
+    const id = selectedIds[selectedIds.length - 1];
+    if (!id) return;
+    listRef.current?.querySelector(`[data-layer-id="${id}"]`)?.scrollIntoView({ block: "nearest" });
+  }, [selectionKey]);
+
   if (layers.length === 0) return <Hint>Nessun livello. Aggiungine uno qui sopra o carica un modello.</Hint>;
 
   const groupMates = (layer: Layer): string[] =>
@@ -189,13 +200,14 @@ export function LayerList({ layers, selectedIds, dispatch, onStar }: Props) {
             <div
               key={layer.id}
               data-layer-row
+              data-layer-id={layer.id}
               onPointerDown={(e) => onRowPointerDown(e, layer)}
               onPointerMove={onRowPointerMove}
               onPointerUp={endDrag}
               onPointerCancel={endDrag}
               onClick={(e) => onRowClick(e, layer, index)}
               className={cn(
-                "group/row relative flex cursor-pointer items-center gap-1 px-1.5 py-1.5 text-[13px] transition-colors",
+                "group/row relative flex cursor-pointer items-center gap-1.5 py-2 pl-1 pr-1.5 text-[13px] transition-colors",
                 active ? "layer-accent bg-primary/10 text-foreground" : "hover:bg-accent",
                 !layer.visible && "opacity-55",
                 dragging && "opacity-40"
@@ -203,7 +215,7 @@ export function LayerList({ layers, selectedIds, dispatch, onStar }: Props) {
             >
               <span
                 data-drag-handle
-                className="-ml-0.5 shrink-0 cursor-grab touch-none text-muted-foreground/45 active:cursor-grabbing"
+                className="shrink-0 cursor-grab touch-none px-0.5 text-muted-foreground/35 transition-colors group-hover/row:text-muted-foreground/70 active:cursor-grabbing"
                 title="Trascina per riordinare"
                 aria-hidden
               >
@@ -212,37 +224,50 @@ export function LayerList({ layers, selectedIds, dispatch, onStar }: Props) {
               <Button
                 variant="ghost"
                 size="icon-sm"
-                className="size-6 text-muted-foreground [&_svg]:size-3.5"
+                className="size-6 shrink-0 text-muted-foreground [&_svg]:size-3.5"
                 title={layer.visible ? "Nascondi" : "Mostra"}
                 onClick={(e) => { e.stopPropagation(); dispatch({ type: "updateLayer", id: layer.id, patch: { visible: !layer.visible } }); }}
               >
                 {layer.visible ? <Eye /> : <EyeOff />}
               </Button>
-              <span className={cn("shrink-0", active ? "text-primary" : "text-muted-foreground")}>{TYPE_ICON[layer.type]}</span>
-              {layer.groupId && <Link2 className="size-3 shrink-0 text-muted-foreground" aria-label="Raggruppato" />}
-              <span className="flex-1 truncate px-1 transition-[padding] pr-[7.75rem] md:pr-1 md:group-hover/row:pr-[7.75rem] md:group-focus-within/row:pr-[7.75rem]">{layer.name}</span>
-              {/* Row actions reveal on hover with a mouse; on touch (no hover) they stay visible. */}
-              <div className="absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center rounded-md opacity-100 transition-opacity pointer-events-auto md:pointer-events-none md:opacity-0 md:group-hover/row:pointer-events-auto md:group-focus-within/row:pointer-events-auto md:group-hover/row:opacity-100 md:group-focus-within/row:opacity-100">
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  className="size-6 [&_svg]:size-3.5"
-                  disabled={front}
-                  title="Porta avanti"
-                  onClick={(e) => { e.stopPropagation(); dispatch({ type: "reorder", id: layer.id, dir: 1 }); }}
-                >
-                  <ChevronUp />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  className="size-6 [&_svg]:size-3.5"
-                  disabled={back}
-                  title="Porta indietro"
-                  onClick={(e) => { e.stopPropagation(); dispatch({ type: "reorder", id: layer.id, dir: -1 }); }}
-                >
-                  <ChevronDown />
-                </Button>
+              <span className="flex shrink-0 items-center gap-1">
+                <span className={active ? "text-primary" : "text-muted-foreground"}>{TYPE_ICON[layer.type]}</span>
+                {layer.groupId && <Link2 className="size-3 text-muted-foreground" aria-label="Raggruppato" />}
+              </span>
+              {/* The name gets the whole remaining row at rest — the actions float over it
+                  on hover instead of reserving a gutter, so nothing re-truncates mid-hover.
+                  On touch (no hover) they're always out, so the gutter is reserved there. */}
+              <span className="min-w-0 flex-1 truncate pl-0.5 pr-[5.75rem] md:pr-0" title={layer.name}>
+                {layer.name}
+              </span>
+              <div className="absolute right-1 top-1/2 flex -translate-y-1/2 items-center gap-0.5 rounded-lg border border-border/70 bg-card px-1 py-0.5 shadow-sm transition-opacity duration-150 pointer-events-auto md:pointer-events-none md:opacity-0 md:group-hover/row:pointer-events-auto md:group-focus-within/row:pointer-events-auto md:group-hover/row:opacity-100 md:group-focus-within/row:opacity-100">
+                {/* Reordering is one instrument; saving, copying and deleting are another.
+                    The pair is desktop-only: on touch it's always on screen, and those two
+                    buttons cost the layer name a third of the row — dragging the grip does
+                    the same job with the finger. */}
+                <span className="hidden items-center gap-0.5 md:flex">
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="size-6 [&_svg]:size-3.5"
+                    disabled={front}
+                    title="Porta avanti"
+                    onClick={(e) => { e.stopPropagation(); dispatch({ type: "reorder", id: layer.id, dir: 1 }); }}
+                  >
+                    <ChevronUp />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="size-6 [&_svg]:size-3.5"
+                    disabled={back}
+                    title="Porta indietro"
+                    onClick={(e) => { e.stopPropagation(); dispatch({ type: "reorder", id: layer.id, dir: -1 }); }}
+                  >
+                    <ChevronDown />
+                  </Button>
+                  <span className="mx-0.5 h-4 w-px bg-border/70" aria-hidden />
+                </span>
                 <Button
                   variant="ghost"
                   size="icon-sm"
