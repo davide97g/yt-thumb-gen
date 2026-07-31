@@ -21,25 +21,45 @@ jobs:
   check:
     name: check
     runs-on: ubuntu-latest
+
+    # The API's route tests drive the real app against a real Postgres — the invariants they
+    # protect (who can see which rows, what a PUT leaves alone) are SQL invariants, and a mock
+    # would only test the mock. The database name has to contain "test": the suite truncates,
+    # and refuses to run anywhere that isn't clearly disposable.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: thumbtest
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/thumbtest
+
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.2"
 
-      # Root install also covers the tests that reach into server/src/validate.ts (that's why
-      # ajv is a root devDep), so this one install runs the whole suite.
+      # Root install also covers the tests that reach into server/src (that's why ajv is a
+      # root devDep) — but those tests import the API itself, so its deps have to be there
+      # too or `bun test` fails on `hono`. Separate packages, separate installs: their
+      # tsconfigs resolve from their own node_modules as well.
       - run: bun install --frozen-lockfile
-      - run: bun run check
-
-      # Separate packages, separate installs — their tsconfigs resolve deps from their own
-      # node_modules, so typechecking them without this reports every import as missing.
       - run: bun install --frozen-lockfile
         working-directory: server
-      - run: bunx tsc --noEmit -p server
-
       - run: bun install --frozen-lockfile
         working-directory: mcp
+
+      # One command, whole suite: with DATABASE_URL set, `check` also runs the API tests that
+      # skip themselves on a machine with no Postgres.
+      - run: bun run check
+
+      - run: bunx tsc --noEmit -p server
       - run: bunx tsc --noEmit -p mcp
 
   images:

@@ -21,6 +21,20 @@ explicitly (`bunx tsc --noEmit -p server`, `-p mcp`) after touching them; the ro
 not. Root `bun test` reaches into `server/src/validate.ts`, which is why `ajv` is a root devDep
 too: it lets one `bun install` at the root run the whole suite.
 
+The API's route tests (`server/src/app.test.ts`) need a Postgres and **skip themselves without
+one**, so `check` stays green on a machine that has none:
+
+```bash
+docker run -d --name thumb-test-pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=thumbtest \
+  -p 55432:5432 postgres:16
+DATABASE_URL=postgres://postgres:postgres@localhost:55432/thumbtest bun test server
+```
+
+They truncate every table, so the suite **refuses to run unless the database name contains
+"test"** — never point `DATABASE_URL` at anything you care about. They also pin
+`ALLOW_SIGNUP=false`, because bun auto-loads `.env` and a developer's has it on, which would
+turn the "signup locks after the first user" test into a no-op.
+
 CI (`.github/workflows/ci.yml`) runs exactly that on every push and PR — root `check`, then the
 two package typechecks — plus a build of all three images. The image job exists because the
 build contexts differ on purpose (api from `./server`, web and mcp from the repo root): a wrong

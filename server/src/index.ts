@@ -457,5 +457,8 @@ app.get("/api/schema", (c) => c.json(docSchema));
 
 app.get("/api/health", (c) => c.json({ ok: true }));
 
+// Exported for the tests, which drive the routes through `app.request()` instead of a socket.
+export { app };
+
 // PORT is only for running the API alongside something else locally; Compose leaves it unset.
 export default { port: Number(process.env.PORT ?? 3000), fetch: app.fetch, idleTimeout: 60 };
