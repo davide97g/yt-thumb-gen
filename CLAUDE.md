@@ -103,6 +103,8 @@ Auth: `currentUser()` accepts the session cookie **or** `Authorization: Bearer t
 
 `?project=<id>` on the editor URL opens that saved project instead of the IndexedDB working canvas, falling back gracefully if the id is stale. That's the loop-closer: the MCP server returns a link the user can open.
 
+Symmetrically, every project tool in `mcp/src/tools.ts` takes its `id` through `projectIdFrom()`, which accepts a bare id **or** an editor URL carrying `?project=<id>` — the address bar is the thing users copy, so pasting it must work. A link with no `project` param is rejected with a usable message instead of being sent to the API as an id.
+
 The param is also **written back**: an effect in `App.tsx` mirrors `projectId` into the query string (`replaceState`, gated on `hydrated` so it can't erase an incoming deep link before it loads). So the address bar always names the open project — shareable as-is, and a reload or new tab lands on the same design. `ProjectHeader`'s link icon copies that URL. Nothing else may strip the param on load.
 
 ### Deployment — `Dockerfile` (web/nginx), `server/Dockerfile` (api), `mcp/Dockerfile` (mcp), `docker-compose.yml`

@@ -89,6 +89,9 @@ Things worth knowing:
 `list_projects` → `get_project` → modify → `update_project` with the same id. Change only what was
 asked; the user's other layers are their work, not yours. Rename by passing `name` alone.
 
+Every project tool's `id` also accepts an editor URL — the address bar carries `?project=<id>`, so
+when the user pastes `https://…/?project=<uuid>`, hand it straight to `get_project`.
+
 `delete_project` is permanent — confirm with the user before calling it.
 
 ## Setup

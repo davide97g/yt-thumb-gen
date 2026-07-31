@@ -73,6 +73,36 @@ export const docInput = (description: string) =>
     )
     .describe(description);
 
+/**
+ * Extracts a project id from either a bare id or an editor link that carries one
+ * (`https://thumb.example/?project=<id>`). Returns null when a link has no `project` param.
+ *
+ * The editor keeps `?project=<id>` in the address bar, so the URL a user copies out of their
+ * browser *is* what they paste at an agent. Every project tool accepts that form, so no one has
+ * to dig the id out of a query string by hand.
+ */
+export function projectIdFrom(ref: string): string | null {
+  const raw = ref.trim();
+  if (!raw) return null;
+  if (!/[:/?]/.test(raw)) return raw; // already a bare id
+  try {
+    // Relative base: also accepts "/?project=<id>" and "?project=<id>".
+    return new URL(raw, "https://thumb.invalid").searchParams.get("project")?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+/** The `id` argument of every project tool: an id, or an editor URL holding one. */
+const projectRef = (what: string) =>
+  z.string().min(1).describe(`${what} — a project id, or an editor URL containing ?project=<id>`);
+
+const badRef = (ref: string) =>
+  fail(
+    `Could not read a project id from ${JSON.stringify(ref)}. Pass the id itself, or an editor ` +
+      `URL of the form https://…/?project=<id>. Call list_projects to see the ids in the account.`
+  );
+
 /** Validates with the same code the server runs, so a malformed doc costs no round trip. */
 function preflight(doc: unknown): string | null {
   const errors = validateDoc(doc);
@@ -215,10 +245,14 @@ export function registerTools(srv: McpServer, api: Api): void {
     "get_project",
     {
       title: "Get a project",
-      description: "Fetches one project including its full document, ready to modify and save back.",
-      inputSchema: { id: z.string().describe("Project id from list_projects") },
+      description:
+        "Fetches one project including its full document, ready to modify and save back. Accepts a " +
+        "project id or an editor URL (https://…/?project=<id>) — paste either.",
+      inputSchema: { id: projectRef("Project from list_projects") },
     },
-    async ({ id }) => {
+    async ({ id: ref }) => {
+      const id = projectIdFrom(ref);
+      if (!id) return badRef(ref);
       try {
         return text(await api.get(`/projects/${id}`));
       } catch (e) {
@@ -257,12 +291,14 @@ export function registerTools(srv: McpServer, api: Api): void {
       title: "Update a project",
       description: "Renames a project, replaces its document, or both. Omit `doc` to rename only.",
       inputSchema: {
-        id: z.string().describe("Project id"),
+        id: projectRef("Project to update"),
         name: z.string().min(1).optional().describe("New name"),
         doc: docInput("Replacement ThumbDoc").optional(),
       },
     },
-    async ({ id, name, doc }) => {
+    async ({ id: ref, name, doc }) => {
+      const id = projectIdFrom(ref);
+      if (!id) return badRef(ref);
       if (name === undefined && doc === undefined) return fail("Pass `name`, `doc`, or both.");
       if (doc !== undefined) {
         const problem = preflight(doc);
@@ -285,9 +321,11 @@ export function registerTools(srv: McpServer, api: Api): void {
     {
       title: "Delete a project",
       description: "Permanently deletes a project. Confirm with the user before calling this.",
-      inputSchema: { id: z.string().describe("Project id") },
+      inputSchema: { id: projectRef("Project to delete") },
     },
-    async ({ id }) => {
+    async ({ id: ref }) => {
+      const id = projectIdFrom(ref);
+      if (!id) return badRef(ref);
       try {
         await api.delete(`/projects/${id}`);
         return text(`Deleted project ${id}.`);
@@ -377,11 +415,13 @@ export function registerTools(srv: McpServer, api: Api): void {
       title: "File a design into a campaign",
       description: "Moves an existing project into a campaign, or pass null to pull it out.",
       inputSchema: {
-        id: z.string().describe("Project id"),
+        id: projectRef("Project to file"),
         campaignId: z.string().nullable().describe("Campaign id, or null to remove it from its campaign"),
       },
     },
-    async ({ id, campaignId }) => {
+    async ({ id: ref, campaignId }) => {
+      const id = projectIdFrom(ref);
+      if (!id) return badRef(ref);
       try {
         return text(await api.put<ProjectMeta>(`/projects/${id}`, { campaignId }));
       } catch (e) {
@@ -451,8 +491,12 @@ export function registerTools(srv: McpServer, api: Api): void {
     {
       title: "Get the editor link for a project",
       description: "A URL that opens the project directly in the Thumb Studio editor.",
-      inputSchema: { id: z.string().describe("Project id") },
+      inputSchema: { id: projectRef("Project to link") },
     },
-    async ({ id }) => text(projectLink(id))
+    async ({ id: ref }) => {
+      const id = projectIdFrom(ref);
+      if (!id) return badRef(ref);
+      return text(projectLink(id));
+    }
   );
 }
