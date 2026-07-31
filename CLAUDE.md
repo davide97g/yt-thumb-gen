@@ -77,6 +77,14 @@ The list paints **front-first** (row 0 = last layer in the array), and rows are 
 
 Saving captures a ~320px JPEG of the canvas (`makePreview`) and stores it in the **same R2 blob store as the images**, referenced by a bare id instead of a `blob:` ref — so `SavesPanel` paints a real picture per row and two designs from one campaign stop being indistinguishable names. Three rules hold it together: the capture runs with the canvas rendered clean (`capturing` in `App.tsx` flips the same selection-hiding flag as export, kept separate so the Export button doesn't flash busy); `makePreview` **never throws**, because a save must not depend on a picture; and `preview` on `PUT /api/projects/:id` is `coalesce`d, not tri-state — a rename, or a save made with no canvas mounted (an agent's, `NewProjectDialog`'s save-then-create), keeps the last preview instead of blanking it. Projects an agent created have none and fall back to an icon; a real headless render would fill that gap.
 
+### Reviewing a design, not just drawing it — `src/lib/safeAreas.ts`, `src/lib/readability.ts`
+
+Editing happens at 40% of 1280px on a monitor; the design is seen at ~210px next to eleven others, with a duration pill over one corner. Three things close that gap, all view-only (they never touch the doc, and are hidden whenever `exporting` is set, which is what keeps them out of exports *and* previews):
+
+- **`SAFE_ZONES`** — per-format boxes the platform paints over (`cover`) or crops away (`keep`), in canvas fractions. Rendered by `SafeAreaOverlay` in `ThumbCanvas`, toggled with **A**. Deliberately approximate: the point is "nothing important here", not a pixel-exact mock of a client that ships weekly.
+- **`GRID_W`** — the width of the *smallest surface each format is really browsed at* (a grid cell, not a full-screen player). The **G** toggle sets the stage scale to it, so "actual size" is a fact rather than a zoom level. Same number drives the readability check, so the two can't disagree.
+- **`checkReadability`** — pure, unit-tested (`readability.test.ts`): text too small at grid size, WCAG contrast under 3:1 against the pill/background (short-circuited by a thick stroke, since that settles it), layers under platform chrome or outside the crop, and word count. Geometry comes in pre-measured — how wide a run of text renders is a fact only the DOM has, so `ReadabilityPanel` measures `[data-layer-id]` nodes the same way the canvas does for snapping.
+
 ### The published document format — `scripts/gen-schema.ts` → `server/src/generated/thumbdoc.schema.json`
 
 `src/state.ts` is the single source of truth; the JSON Schema is **generated** from it and committed. It lands under `server/` because docker-compose builds the api with context `./server` — the image cannot see `src/`. Served publicly at `GET /api/schema`.

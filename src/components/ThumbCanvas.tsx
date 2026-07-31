@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type Dispatch, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
-import { CANVAS_H, CANVAS_W, FONTS, FONT_WEIGHT, SIZE_LIMITS, canvasSize, drawPad, layoutEmojiFx, newDrawLayer, resolveBgBorder, type Action, type DrawCap, type DrawLayer, type EmojiFxLayer, type ImageLayer, type Layer, type LayerPatch, type TextLayer, type ThumbDoc } from "../state";
+import { CANVAS_H, CANVAS_W, FONTS, FONT_WEIGHT, SIZE_LIMITS, canvasSize, drawPad, layoutEmojiFx, newDrawLayer, resolveBgBorder, type Action, type DrawCap, type DrawLayer, type EmojiFxLayer, type FormatKey, type ImageLayer, type Layer, type LayerPatch, type TextLayer, type ThumbDoc } from "../state";
+import { SAFE_ZONES } from "../lib/safeAreas";
 import { smoothPath, type Pt } from "../lib/smoothPath";
 import { boxesIntersect, resolveSnap, type Box } from "../lib/layout";
 import { ClaudeLogo, ClaudeWordmark } from "./brand";
@@ -111,11 +112,13 @@ type Props = {
   setCropMode: (m: CropMode) => void;
   drawMode: boolean;
   setDrawMode: (v: boolean) => void;
+  /** Paint the platform's own chrome over the design (see `SafeAreaOverlay`). */
+  safeAreas?: boolean;
   canvasRef: RefObject<HTMLDivElement | null>;
   dispatch: Dispatch<Action>;
 };
 
-export function ThumbCanvas({ doc, scale, selectedIds, exporting, cropMode, setCropMode, drawMode, setDrawMode, canvasRef, dispatch }: Props) {
+export function ThumbCanvas({ doc, scale, selectedIds, exporting, cropMode, setCropMode, drawMode, setDrawMode, safeAreas, canvasRef, dispatch }: Props) {
   const { w: CW, h: CH } = canvasSize(doc.format); // live canvas size (per-doc format)
   const primary = selectedIds[selectedIds.length - 1] ?? null;
 
@@ -447,6 +450,8 @@ export function ThumbCanvas({ doc, scale, selectedIds, exporting, cropMode, setC
         />
       )}
 
+      {!exporting && safeAreas && <SafeAreaOverlay format={doc.format} w={CW} h={CH} scale={scale} />}
+
       {!exporting && guides.vx != null && (
         <div style={{ position: "absolute", left: guides.vx, top: 0, width: 1.5 / scale, height: CH, background: SELECT_COLOR, pointerEvents: "none", zIndex: 60 }} />
       )}
@@ -457,6 +462,67 @@ export function ThumbCanvas({ doc, scale, selectedIds, exporting, cropMode, setC
         <div style={{ position: "absolute", left: marquee.x, top: marquee.y, width: marquee.w, height: marquee.h, border: `${1 / scale}px solid ${SELECT_COLOR}`, background: `${SELECT_COLOR}22`, pointerEvents: "none", zIndex: 60 }} />
       )}
     </div>
+  );
+}
+
+/** The platform's own chrome, drawn over the design: the boxes YouTube/Instagram paint on
+ *  top (duration pill, action rail, caption) and, for a 4:5 post, the square the profile
+ *  grid crops it to. Ephemeral like the snap guides — never in an export or a preview.
+ *
+ *  Everything is sized in canvas units so it rides the stage transform, except the hairlines
+ *  and labels, which divide by `scale` to keep a constant on-screen size. */
+function SafeAreaOverlay({ format, w, h, scale }: { format: FormatKey; w: number; h: number; scale: number }) {
+  const px = (v: number) => v / scale; // constant on screen, whatever the zoom
+  const labelled = scale > 0.22; // below this the labels are noise, the boxes still read
+  return (
+    <div style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 55 }} aria-hidden>
+      {SAFE_ZONES[format].map((z) => {
+        const box = { left: z.x * w, top: z.y * h, width: z.w * w, height: z.h * h };
+        if (z.kind === "keep") {
+          // One box + an enormous spread shadow dims everything outside the kept crop.
+          return (
+            <div
+              key={z.id}
+              style={{
+                position: "absolute", ...box,
+                border: `${px(1)}px dashed rgba(255,255,255,0.75)`,
+                boxShadow: `0 0 0 ${w * 2}px rgba(0,0,0,0.55)`,
+              }}
+            >
+              {labelled && <ZoneLabel text={z.label} px={px} tone="rgba(255,255,255,0.85)" />}
+            </div>
+          );
+        }
+        return (
+          <div
+            key={z.id}
+            style={{
+              position: "absolute", ...box,
+              border: `${px(1)}px dashed rgba(245,165,36,0.9)`,
+              // Hatching, so a zone still reads as "off limits" over a busy photo.
+              backgroundImage: `repeating-linear-gradient(45deg, rgba(245,165,36,0.22) 0 ${px(4)}px, transparent ${px(4)}px ${px(9)}px)`,
+            }}
+          >
+            {labelled && <ZoneLabel text={z.label} px={px} tone="rgba(245,165,36,0.95)" />}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ZoneLabel({ text, px, tone }: { text: string; px: (v: number) => number; tone: string }) {
+  return (
+    <span
+      style={{
+        position: "absolute", top: px(3), left: px(4),
+        font: `600 ${px(10)}px ui-sans-serif, system-ui, sans-serif`,
+        letterSpacing: px(0.5), textTransform: "uppercase", whiteSpace: "nowrap",
+        color: tone, textShadow: `0 ${px(1)}px ${px(2)}px rgba(0,0,0,0.9)`,
+      }}
+    >
+      {text}
+    </span>
   );
 }
 

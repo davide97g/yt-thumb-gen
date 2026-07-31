@@ -1,8 +1,9 @@
-import { useEffect, useReducer, useRef, useState } from "react";
-import { Download, Layers, Maximize2, PanelsTopLeft, Redo2, Settings, SlidersHorizontal, Undo2, X } from "lucide-react";
+import { useEffect, useReducer, useRef, useState, type ReactNode } from "react";
+import { Download, Layers, Maximize2, PanelsTopLeft, Redo2, Settings, SlidersHorizontal, Smartphone, SquareDashed, Undo2, X } from "lucide-react";
 import { ThumbCanvas, type CropMode } from "./components/ThumbCanvas";
 import { Inspector, BackgroundInspector, FormatSection } from "./components/Inspector";
 import { LayerList } from "./components/LayerList";
+import { ReadabilityPanel } from "./components/ReadabilityPanel";
 import { SavesPanel } from "./components/SavesPanel";
 import { ManageStarredDialog, StarredCommandDialog, StarredPanel } from "./components/StarredPanel";
 import { ProjectHeader } from "./components/ProjectHeader";
@@ -16,6 +17,7 @@ import { defaultFileName, exportThumb } from "./lib/export";
 import { loadImageFile } from "./lib/loadImageFile";
 import { makePreview } from "./lib/preview";
 import { getProject, getWorking, loadConfig, renameConfig, saveConfig, setProject, setWorking, starLayer } from "./lib/storage";
+import { GRID_W } from "./lib/safeAreas";
 import { FORMATS, canvasSize, historyReducer, initHistory, newImageLayer, primaryId, type AppState, type FontKey, type Layer, type ThumbDoc } from "./state";
 import { TEMPLATES } from "./presets";
 import { useIsMobile } from "./lib/useIsMobile";
@@ -32,7 +34,11 @@ export default function App() {
   const [hydrated, setHydrated] = useState(false);
   const canvasRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
-  const [scale, setScale] = useState(0.4);
+  const [fitScale, setFitScale] = useState(0.4);
+  // Two ways of looking at the design instead of editing it: the platform's chrome painted
+  // on top, and the canvas dropped to the size it's actually browsed at.
+  const [safeAreas, setSafeAreas] = useState(false);
+  const [actualSize, setActualSize] = useState(false);
   const [chromeHidden, setChromeHidden] = useState(false);
   const isMobile = useIsMobile();
   // Off-canvas panels for the mobile shell — the two side rails become icon-triggered drawers.
@@ -74,6 +80,9 @@ export default function App() {
   const { doc, selectedIds } = hist.present;
   const { w: CW, h: CH } = canvasSize(doc.format);
   const fmt = FORMATS[doc.format];
+  // "Actual size" is not a zoom level, it's the truth: the width of a grid cell on the
+  // platform. Editing at 40% of 1280px flatters everything.
+  const scale = actualSize ? GRID_W[doc.format] / CW : fitScale;
   const dirty = hydrated && doc !== savedDocRef.current;
   // The PNG is named after the open project unless the user typed something else, so
   // renaming the project (or opening another one) retargets the export for free.
@@ -251,6 +260,10 @@ export default function App() {
       }
       // "\" toggles all chrome (rails + dock) for a full-bleed preview.
       if (e.key === "\\") { e.preventDefault(); setChromeHidden((v) => !v); return; }
+      // The two review modes. Bare letters, like the dock's tools — "a" for the areas the
+      // platform covers, "g" for grid size.
+      if (e.key === "a") { e.preventDefault(); setSafeAreas((v) => !v); return; }
+      if (e.key === "g") { e.preventDefault(); setActualSize((v) => !v); return; }
       if (e.key !== "Backspace" && e.key !== "Delete") return;
       if (selRef.current.length) dispatch({ type: "removeLayers", ids: selRef.current });
     }
@@ -293,7 +306,7 @@ export default function App() {
     const ro = new ResizeObserver(() => {
       const padX = isMobile ? 24 : 80;
       const padY = isMobile ? 96 : 150;
-      setScale(Math.max(0.1, Math.min((el.clientWidth - padX) / CW, (el.clientHeight - padY) / CH)));
+      setFitScale(Math.max(0.1, Math.min((el.clientWidth - padX) / CW, (el.clientHeight - padY) / CH)));
     });
     ro.observe(el);
     return () => ro.disconnect();
@@ -548,13 +561,30 @@ export default function App() {
               setCropMode={setCropMode}
               drawMode={drawMode}
               setDrawMode={setDrawMode}
+              safeAreas={safeAreas}
               canvasRef={canvasRef}
               dispatch={dispatch}
             />
           </div>
 
-          <div className="readout pointer-events-none absolute bottom-4 left-4 hidden text-[10.5px] uppercase tracking-[0.16em] text-muted-foreground/65 md:block">
-            {CW} × {CH} · {Math.round(scale * 100)}%
+          <div className="absolute bottom-4 left-4 hidden items-center gap-2 md:flex">
+            <span className="readout pointer-events-none text-[10.5px] uppercase tracking-[0.16em] text-muted-foreground/65">
+              {CW} × {CH} · {actualSize ? "actual size" : `${Math.round(scale * 100)}%`}
+            </span>
+            <StageToggle
+              on={safeAreas}
+              onClick={() => setSafeAreas((v) => !v)}
+              title={`${safeAreas ? "Hide" : "Show"} what ${fmt.platform} covers (A)`}
+              label="Safe areas"
+              icon={<SquareDashed />}
+            />
+            <StageToggle
+              on={actualSize}
+              onClick={() => setActualSize((v) => !v)}
+              title={`${actualSize ? "Back to fit" : `See it at ${GRID_W[doc.format]}px, the size it's browsed at`} (G)`}
+              label="Actual size"
+              icon={<Smartphone />}
+            />
           </div>
 
           {(isMobile || !chromeHidden) && (
@@ -588,6 +618,7 @@ export default function App() {
             <FormatSection format={doc.format} dispatch={dispatch} />
             <Inspector selected={selected} selectedIds={selectedIds} layers={doc.layers} dispatch={dispatch} onError={setMessage} cropMode={cropMode} setCropMode={setCropMode} onFontPreview={setFontPreview} cw={CW} ch={CH} />
             <BackgroundInspector background={doc.background} dispatch={dispatch} onError={setMessage} />
+            <ReadabilityPanel doc={doc} canvasRef={canvasRef} dispatch={dispatch} />
           </aside>
         )}
       </div>
@@ -608,6 +639,29 @@ export default function App() {
 
       {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
     </div>
+  );
+}
+
+/** A stage-level view toggle: doesn't touch the document, only how it's being looked at.
+ *  Reads as pressed when on, so the stage always says which lens is active. */
+function StageToggle({
+  on, onClick, title, label, icon,
+}: { on: boolean; onClick: () => void; title: string; label: string; icon: ReactNode }) {
+  return (
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      className={cn(
+        "size-7 border border-transparent bg-card/70 backdrop-blur-sm",
+        on ? "border-primary/40 bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground"
+      )}
+      onClick={onClick}
+      title={title}
+      aria-label={label}
+      aria-pressed={on}
+    >
+      {icon}
+    </Button>
   );
 }
 
