@@ -113,6 +113,14 @@ Editing happens at 40% of 1280px on a monitor; the design is seen at ~210px next
 
 `THUMBDOC_VALIDATE=warn|enforce` gates rejection. **Validation on `PUT /api/projects/:id` is gated on `doc !== undefined`** — that endpoint doubles as rename, which sends `{ name }` only.
 
+### Campaign export — `src/components/CampaignExporter.tsx` + `src/lib/zip.ts`
+
+A campaign ends in uploading five files to five places, and the only way to get them was to open each design and press Export. `CampaignExporter` renders each design **offscreen** and captures it with the same `captureThumb` the Export button uses — so a YouTube variant that has to become a JPEG to fit 2 MB does so here too.
+
+Offscreen means `position: fixed; left: -20000px`, **not `display: none`**: a hidden subtree has no layout, and the effect backgrounds are WebGL that needs a real canvas to draw into. Each design waits two frames plus `document.fonts.ready` before capture — the first frame paints layers, the second lets the effect canvases draw, and an unloaded webfont would otherwise capture as a fallback. Designs are fetched one at a time because a hydrated doc holds full-resolution images inline. One failing design is named in the summary instead of costing the other four.
+
+`zip.ts` is a **stored** (uncompressed) ZIP writer, no dependency: PNGs and JPEGs are already compressed, so all that's left is a CRC and two header layouts. Its test writes an archive and hands it to the system `unzip -t` — the only check that proves the header layout is right rather than merely self-consistent.
+
 ### Schema migrations — `server/src/migrations.ts`
 
 The schema is a **numbered list applied once each and recorded in `schema_migrations`**, not DDL re-run on every boot. The old `initSchema()` worked only as long as every change was expressible as `IF NOT EXISTS`; a rename, a one-time backfill or a tightened constraint has no such form, and nothing recorded what any given database had actually had done to it.

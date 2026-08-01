@@ -65,6 +65,28 @@ export function fileNameFor(name: string, kind: "png" | "jpeg"): string {
   return /\.(png|jpe?g)$/i.test(clean) ? clean.replace(/\.(png|jpe?g)$/i, `.${ext}`) : `${clean}.${ext}`;
 }
 
+/** Captures the canvas node at the doc's exact format size, re-encoding down the ladder if the
+ *  platform has a hard limit. No download — that's `exportThumb`. Split out because the
+ *  campaign export needs the bytes, not a file. */
+export async function captureThumb(node: HTMLElement, size: ExportSize): Promise<Encoded> {
+  const prevTransform = node.style.transform;
+  node.style.transform = "none"; // capture unscaled
+  try {
+    const options = { width: size.w, height: size.h, pixelRatio: 1, cacheBust: true };
+    return await fitToLimit(
+      (kind, quality) => (kind === "png" ? toPng(node, options) : toJpeg(node, { ...options, quality })),
+      size.maxBytes
+    );
+  } finally {
+    node.style.transform = prevTransform;
+  }
+}
+
+/** The captured image as raw bytes — what goes into a ZIP entry. */
+export async function encodedBytes(encoded: Encoded): Promise<Uint8Array> {
+  return new Uint8Array(await (await fetch(encoded.dataUrl)).arrayBuffer());
+}
+
 /** Captures the canvas node at the doc's exact format size, re-encoding if the platform has a
  *  hard size limit, and downloads it. `note` explains a format switch; `warning` means it
  *  still doesn't fit and the design itself has to change. */
@@ -73,33 +95,23 @@ export async function exportThumb(
   fileName = FALLBACK_NAME,
   size: ExportSize
 ): Promise<{ warning?: string; note?: string }> {
-  const prevTransform = node.style.transform;
-  node.style.transform = "none"; // capture unscaled
-  try {
-    const options = { width: size.w, height: size.h, pixelRatio: 1, cacheBust: true };
-    const result = await fitToLimit(
-      (kind, quality) => (kind === "png" ? toPng(node, options) : toJpeg(node, { ...options, quality })),
-      size.maxBytes
-    );
+  const result = await captureThumb(node, size);
 
-    const a = document.createElement("a");
-    a.href = result.dataUrl;
-    a.download = fileNameFor(fileName, result.kind);
-    a.click();
+  const a = document.createElement("a");
+  a.href = result.dataUrl;
+  a.download = fileNameFor(fileName, result.kind);
+  a.click();
 
-    if (size.maxBytes && result.bytes > size.maxBytes) {
-      const limit = (size.maxBytes / 1024 / 1024).toFixed(0);
-      return {
-        warning: `${mb(result.bytes)} even as a JPEG — still over ${size.platform}'s ${limit} MB limit. Simplify the background or shrink the photo.`,
-      };
-    }
-    if (result.kind === "jpeg") {
-      return {
-        note: `Too big as a PNG for ${size.platform} — exported as JPEG at ${Math.round((result.quality ?? 0) * 100)}% quality, ${mb(result.bytes)}.`,
-      };
-    }
-    return {};
-  } finally {
-    node.style.transform = prevTransform;
+  if (size.maxBytes && result.bytes > size.maxBytes) {
+    const limit = (size.maxBytes / 1024 / 1024).toFixed(0);
+    return {
+      warning: `${mb(result.bytes)} even as a JPEG — still over ${size.platform}'s ${limit} MB limit. Simplify the background or shrink the photo.`,
+    };
   }
+  if (result.kind === "jpeg") {
+    return {
+      note: `Too big as a PNG for ${size.platform} — exported as JPEG at ${Math.round((result.quality ?? 0) * 100)}% quality, ${mb(result.bytes)}.`,
+    };
+  }
+  return {};
 }

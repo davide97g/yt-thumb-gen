@@ -7,6 +7,7 @@ import { ReadabilityPanel } from "./components/ReadabilityPanel";
 import { SavesPanel } from "./components/SavesPanel";
 import { ManageStarredDialog, StarredCommandDialog, StarredPanel } from "./components/StarredPanel";
 import { ProjectHeader } from "./components/ProjectHeader";
+import { CampaignExporter } from "./components/CampaignExporter";
 import { HistoryDialog } from "./components/HistoryDialog";
 import { NewProjectDialog } from "./components/NewProjectDialog";
 import { SettingsDialog } from "./components/SettingsDialog";
@@ -47,6 +48,8 @@ export default function App() {
   const [mobileRight, setMobileRight] = useState(false);
   const [newOpen, setNewOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  // The campaign currently being zipped, or null. Mounting the exporter starts the run.
+  const [exportingCampaign, setExportingCampaign] = useState<{ id: string; name: string } | null>(null);
   const [savesKey, setSavesKey] = useState(0);
   const [starredKey, setStarredKey] = useState(0);
   const [cmdkOpen, setCmdkOpen] = useState(false);
@@ -108,7 +111,7 @@ export default function App() {
   // While a dialog owns the screen, the bare-letter shortcuts belong to it — otherwise "a"
   // toggles safe areas behind an open modal.
   const modalRef = useRef(false);
-  modalRef.current = newOpen || cmdkOpen || manageStarredOpen || settingsOpen || historyOpen;
+  modalRef.current = newOpen || cmdkOpen || manageStarredOpen || settingsOpen || historyOpen || exportingCampaign !== null;
 
   const selRef = useRef(selectedIds);
   selRef.current = selectedIds;
@@ -540,6 +543,7 @@ export default function App() {
                 onLoad={adoptProject}
                 onError={setMessage}
                 refreshKey={savesKey}
+                onExportCampaign={setExportingCampaign}
                 open={rail === "saves"}
                 onToggle={() => toggleRail("saves")}
               />
@@ -606,7 +610,7 @@ export default function App() {
                 onError={setMessage}
                 drawMode={drawMode}
                 setDrawMode={setDrawMode}
-                enabled={!newOpen && !cmdkOpen && !manageStarredOpen && !settingsOpen && !historyOpen}
+                enabled={!newOpen && !cmdkOpen && !manageStarredOpen && !settingsOpen && !historyOpen && !exportingCampaign}
               />
             </div>
           )}
@@ -656,6 +660,14 @@ export default function App() {
           // baseline — same as opening the project fresh.
           onRestored={(d, at) => { adoptProject(d, projectName, projectId, at); setSavesKey((k) => k + 1); }}
           onError={setMessage}
+        />
+      )}
+
+      {exportingCampaign && (
+        <CampaignExporter
+          campaign={exportingCampaign}
+          onDone={(msg) => { setExportingCampaign(null); setMessage(msg); }}
+          onError={(msg) => { setExportingCampaign(null); setMessage(msg); }}
         />
       )}
 

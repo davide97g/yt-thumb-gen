@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChevronRight, FileDown, FileUp, FolderOpen, FolderPlus, Layers3, Pencil, Trash2 } from "lucide-react";
+import { ChevronRight, FileDown, FileUp, FolderOpen, FolderPlus, Layers3, Package, Pencil, Trash2 } from "lucide-react";
 import { FORMATS, type ThumbDoc } from "../state";
 import {
   type CampaignMeta,
@@ -29,6 +29,8 @@ type Props = {
   onLoad: (doc: ThumbDoc, name: string, id: string | null, savedAt: number | null) => void;
   onError: (msg: string) => void;
   refreshKey?: number;
+  /** Hands a campaign to the offscreen renderer that zips every design in it (see `App.tsx`). */
+  onExportCampaign: (campaign: { id: string; name: string }) => void;
   /** Accordion state, owned by the rail (see `App.tsx`). */
   open: boolean;
   onToggle: () => void;
@@ -39,7 +41,7 @@ const UNGROUPED = "__none__"; // Radix Select has no concept of a null value
 /** The project library, grouped by campaign. A campaign is a folder: a project belongs to
  *  at most one, and deleting a campaign keeps its designs (they fall back to "No
  *  campaign"). The live project, if it came from here, is pinned visually. */
-export function SavesPanel({ doc, projectId, projectName, onLoad, onError, refreshKey, open, onToggle }: Props) {
+export function SavesPanel({ doc, projectId, projectName, onLoad, onError, refreshKey, onExportCampaign, open, onToggle }: Props) {
   const [configs, setConfigs] = useState<ConfigMeta[]>([]);
   const [campaigns, setCampaigns] = useState<CampaignMeta[]>([]);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -336,6 +338,17 @@ export function SavesPanel({ doc, projectId, projectName, onLoad, onError, refre
                       </span>
                       <span className="shrink-0 font-mono text-[10px] text-muted-foreground/70">{designs.length}</span>
                     </button>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className="size-7 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100"
+                      title="Download every design as a ZIP"
+                      aria-label={`Download ${g.name} as a ZIP`}
+                      disabled={designs.length === 0}
+                      onClick={() => onExportCampaign({ id: g.id, name: g.name })}
+                    >
+                      <Package />
+                    </Button>
                     <Button
                       variant="ghost"
                       size="icon-sm"
