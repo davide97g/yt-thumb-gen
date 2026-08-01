@@ -244,6 +244,10 @@ export default function App() {
       // ⌘K / Ctrl+K opens the starred-elements palette — like ⌘S, it also fires while typing.
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setCmdkOpen(true); return; }
 
+      // ⌘D deselects — the way back to the document-level controls in the right rail.
+      // Swallowed even while typing, or the browser's "bookmark page" pops up over the editor.
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "d") { e.preventDefault(); }
+
       const el = document.activeElement as HTMLElement | null;
       const typing = el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
       if (typing) return; // let inputs keep native undo / copy / paste
@@ -256,6 +260,7 @@ export default function App() {
         const k = e.key.toLowerCase();
         if (k === "z") { e.preventDefault(); dispatch(e.shiftKey ? { type: "redo" } : { type: "undo" }); return; }
         if (k === "y") { e.preventDefault(); dispatch({ type: "redo" }); return; } // Windows redo
+        if (k === "d") { if (selRef.current.length) dispatch({ type: "select", ids: [] }); return; } // default already prevented above
         if (k === "c") { const l = docRef.current.layers.find((x) => x.id === selRef.current[selRef.current.length - 1]); if (l) clipboardRef.current = l; return; }
         if (k === "v" && clipboardRef.current) { e.preventDefault(); dispatch({ type: "pasteLayer", layer: clipboardRef.current }); return; }
         if (k === "g") {
@@ -599,6 +604,19 @@ export default function App() {
               label="Actual size"
               icon={<Smartphone />}
             />
+            {/* The rail hides the background controls while a layer is selected, so the way
+                out has to be visible from the stage — not only in a menu nobody opens. */}
+            {selectedIds.length > 0 && (
+              <button
+                type="button"
+                className="flex h-7 items-center rounded-md border border-transparent bg-card/70 px-2 text-[10.5px] uppercase tracking-[0.14em] text-muted-foreground backdrop-blur-sm hover:text-foreground"
+                onClick={() => dispatch({ type: "select", ids: [] })}
+                title="Clear the selection and show the document controls (⌘D)"
+              >
+                Deselect
+                <kbd className="dock-key">⌘D</kbd>
+              </button>
+            )}
           </div>
 
           {(isMobile || !chromeHidden) && (
@@ -629,10 +647,19 @@ export default function App() {
             )}
           >
             <DrawerClose label="Properties" onClose={() => setMobileRight(false)} />
-            <FormatSection format={doc.format} dispatch={dispatch} />
-            <Inspector selected={selected} selectedIds={selectedIds} layers={doc.layers} dispatch={dispatch} onError={setMessage} cropMode={cropMode} setCropMode={setCropMode} onFontPreview={setFontPreview} cw={CW} ch={CH} />
-            <BackgroundInspector background={doc.background} dispatch={dispatch} onError={setMessage} />
-            <ReadabilityPanel doc={doc} canvasRef={canvasRef} dispatch={dispatch} />
+            {/* The rail shows one scope at a time. With a layer selected it is that layer's
+                properties and nothing else — the document-level controls (format, background,
+                readability) are noise you have to scroll past. ⌘D drops the selection to get
+                them back. */}
+            {selected ? (
+              <Inspector selected={selected} selectedIds={selectedIds} layers={doc.layers} dispatch={dispatch} onError={setMessage} cropMode={cropMode} setCropMode={setCropMode} onFontPreview={setFontPreview} cw={CW} ch={CH} />
+            ) : (
+              <>
+                <FormatSection format={doc.format} dispatch={dispatch} />
+                <BackgroundInspector background={doc.background} dispatch={dispatch} onError={setMessage} />
+                <ReadabilityPanel doc={doc} canvasRef={canvasRef} dispatch={dispatch} />
+              </>
+            )}
           </aside>
         )}
       </div>
