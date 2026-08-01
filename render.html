@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Thumb Studio — render</title>
+    <!--
+      The headless render target. Not linked from anywhere and not useful by hand: a browser
+      driven by the render service loads this, calls window.__renderThumb(doc), and
+      screenshots #stage. It exists as its own entry so the renderer gets the real canvas
+      component and the real fonts without booting the editor, its auth gate, or its storage.
+    -->
+    <style>
+      html, body { margin: 0; padding: 0; background: transparent; }
+      /* No scrollbars, or they'd eat pixels off the capture. */
+      body { overflow: hidden; }
+    </style>
+  </head>
+  <body>
+    <div id="stage"></div>
+    <script type="module" src="/src/render.tsx"></script>
+  </body>
+</html>

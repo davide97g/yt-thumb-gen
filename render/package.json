@@ -1,0 +1,16 @@
+{
+  "name": "yt-thumb-gen-render",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "dev": "bun --watch run src/index.ts"
+  },
+  "dependencies": {
+    "hono": "^4.6.14",
+    "playwright-core": "1.62.1"
+  },
+  "devDependencies": {
+    "bun-types": "^1.2.0"
+  }
+}

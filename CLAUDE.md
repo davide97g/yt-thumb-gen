@@ -113,6 +113,21 @@ Editing happens at 40% of 1280px on a monitor; the design is seen at ~210px next
 
 `THUMBDOC_VALIDATE=warn|enforce` gates rejection. **Validation on `PUT /api/projects/:id` is gated on `doc !== undefined`** — that endpoint doubles as rename, which sends `{ name }` only.
 
+### Headless render — `render/` + `render.html` → `src/render.tsx`, `GET /api/projects/:id/render.png`
+
+An agent composed documents blind: it could write layers and never see that two of them overlap. This is the loop-closer — `render_project` (MCP) returns an actual picture.
+
+**One renderer, not two.** The design is HTML: text wrapping, font metrics, WebGL effect backgrounds, SVG glow filters are all the browser's work, and the editor's export is a screenshot of exactly that. A second renderer (satori, resvg, a canvas reimplementation) would be a second *opinion* about the design and would drift the first time anyone touched `ThumbCanvas`. So `render/` is a Chromium that loads `/render.html` — a second Vite entry mounting the real `ThumbCanvas` at scale 1, with no auth gate, no storage, no service worker — and screenshots `#stage`. It renders the **served** bundle over HTTP, so it can never be a stale copy of the canvas code.
+
+The service is deliberately powerless: no database, no credentials, no knowledge of projects or users. `api` authenticates the caller, inlines the images (`hydrate.ts`, ownership checked per blob so a doc naming someone else's id resolves to nothing), and hands over a document. It is not routed by nginx; nothing outside the compose network can reach it.
+
+Three things are load-bearing:
+- **The base image tag and `playwright-core` version must move together** (`mcr.microsoft.com/playwright:v1.62.1-noble` ↔ `1.62.1`) — playwright refuses a browser build it doesn't recognise. CI builds this image for that reason.
+- **`shm_size: 512mb`**, or Chromium dies mid-screenshot on the default 64 MB.
+- `--use-angle=swiftshader`. The base image already resolves WebGL to SwiftShader without it (checked), but a Chromium with no GL context draws effect backgrounds as a **black rectangle with the layers fine on top**, and nothing throws. That's the first place to look if effects come back black.
+
+One browser, one page, reused for the life of the process (boot + bundle load is far more than a render), with calls serialised — the page is stateless between renders because `__renderThumb` replaces the whole tree. A failed render closes the page so a crashed Chromium can't poison every later request. `RENDER_URL` unset ⇒ the route 503s with an explanation; the editor never needs it.
+
 ### Campaign export — `src/components/CampaignExporter.tsx` + `src/lib/zip.ts`
 
 A campaign ends in uploading five files to five places, and the only way to get them was to open each design and press Export. `CampaignExporter` renders each design **offscreen** and captures it with the same `captureThumb` the Export button uses — so a YouTube variant that has to become a JPEG to fit 2 MB does so here too.

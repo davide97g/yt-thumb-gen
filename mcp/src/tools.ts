@@ -483,6 +483,30 @@ export function registerTools(srv: McpServer, api: Api): void {
   );
 
   srv.registerTool(
+    "render_project",
+    {
+      title: "See a project",
+      description:
+        "Renders a saved project to a PNG and returns the image. Use it to check your own work: " +
+        "you compose a document blind, and layers that read fine as JSON overlap, clip, or vanish " +
+        "against the background once drawn. Render before telling the user it's done.",
+      inputSchema: { id: projectRef("Project to render") },
+    },
+    async ({ id: ref }) => {
+      const id = projectIdFrom(ref);
+      if (!id) return badRef(ref);
+      try {
+        const { base64, contentType } = await api.getBase64(`/projects/${id}/render.png`);
+        // An image content block, so the picture lands in the conversation rather than a URL
+        // the model can't open.
+        return { content: [{ type: "image" as const, data: base64, mimeType: contentType }] };
+      } catch (e) {
+        return fail(e instanceof ApiError ? e.toText() : String(e));
+      }
+    }
+  );
+
+  srv.registerTool(
     "delete_project",
     {
       title: "Delete a project",

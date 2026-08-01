@@ -97,3 +97,15 @@ jobs:
           push: false
           cache-from: type=gha,scope=mcp
           cache-to: type=gha,mode=max,scope=mcp
+
+      # The heaviest image by far (Chromium). Worth building: its base tag and the
+      # playwright-core version have to stay in lockstep, and nothing else would catch a
+      # mismatch until a deploy.
+      - name: render (playwright + bun, ./render)
+        uses: docker/build-push-action@v6
+        with:
+          context: ./render
+          file: render/Dockerfile
+          push: false
+          cache-from: type=gha,scope=render
+          cache-to: type=gha,mode=max,scope=render

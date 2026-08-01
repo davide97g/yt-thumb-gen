@@ -33,6 +33,10 @@ services:
       R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID}
       R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY}
       R2_BUCKET: ${R2_BUCKET}
+      BLOB_GC: ${BLOB_GC:-dry-run}
+      # Unset this and /api/projects/:id/render.png answers 503 with an explanation — the
+      # renderer is optional, and the editor doesn't need it.
+      RENDER_URL: http://render:3002
     depends_on:
       postgres:
         condition: service_healthy
@@ -50,6 +54,22 @@ services:
       APP_URL: ${APP_URL:-http://localhost}
     depends_on:
       - api
+
+  # Headless renderer: a Chromium that loads /render.html from `web` and screenshots the real
+  # canvas component, so a picture of a design and an export of it are the same code. Holds no
+  # secrets and never touches the database — `api` authenticates the caller, then hands it a
+  # document. Not routed by nginx: nothing outside this network may reach it.
+  render:
+    build:
+      context: ./render
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    # Chromium needs more than the default 64 MB of /dev/shm or it dies mid-screenshot.
+    shm_size: "512mb"
+    environment:
+      APP_ORIGIN: http://web
+    depends_on:
+      - web
 
   web:
     build:

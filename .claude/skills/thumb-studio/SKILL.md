@@ -21,8 +21,10 @@ the editor, where the user finishes it by hand.
    `new_layer` for anything you add — it returns valid defaults for every required field.
 5. **`create_project`** (or `update_project` for an existing one). It validates locally first, so
    schema errors come back without a round trip.
-6. **Give the user the URL** from the response. Say plainly that you composed it blind and they
-   should check it.
+6. **`render_project`** and *look at it*. You composed by writing coordinates; layers that read
+   fine as JSON overlap, clip, or disappear into the background once drawn. Fix what you see and
+   render again before saying it's done.
+7. **Give the user the URL** from the response.
 
 ## The format
 

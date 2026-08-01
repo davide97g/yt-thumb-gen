@@ -32,6 +32,8 @@ export type Api = {
   post<T>(path: string, body?: unknown): Promise<T>;
   /** Raw bytes, for the blob endpoint — it reads the body as-is and types it by content-type. */
   postBytes<T>(path: string, bytes: Uint8Array, contentType: string): Promise<T>;
+  /** A binary response (a rendered PNG), base64-encoded for an MCP image content block. */
+  getBase64(path: string): Promise<{ base64: string; contentType: string }>;
   put<T>(path: string, body?: unknown): Promise<T>;
   delete<T>(path: string): Promise<T>;
 };
@@ -68,6 +70,21 @@ export function makeApi(token: string | undefined, baseUrl: string = DEFAULT_BAS
     get: (p) => request("GET", p),
     post: (p, b) => request("POST", p, b),
     postBytes: (p, bytes, contentType) => request("POST", p, undefined, { bytes, contentType }),
+
+    async getBase64(path) {
+      if (!token) throw new ApiError(401, "No API token. Create one in Thumb Studio (key icon in the header) and use it as the bearer.");
+      const res = await fetch(`${base}/api${path}`, { headers: { authorization: `Bearer ${token}` } });
+      if (!res.ok) {
+        // Errors still come back as JSON, so the message survives even on a binary route.
+        const payload = await res.json().catch(() => null);
+        throw new ApiError(res.status, (payload as any)?.error ?? `HTTP ${res.status}`);
+      }
+      const bytes = new Uint8Array(await res.arrayBuffer());
+      let binary = "";
+      const chunk = 0x8000; // btoa's argument limit is well under a 1280×720 PNG
+      for (let i = 0; i < bytes.length; i += chunk) binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+      return { base64: btoa(binary), contentType: res.headers.get("content-type") ?? "image/png" };
+    },
     put: (p, b) => request("PUT", p, b),
     delete: (p) => request("DELETE", p),
   };

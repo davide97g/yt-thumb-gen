@@ -7,6 +7,7 @@
 import { Hono } from "hono";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { initSchema, sql } from "./db";
+import { hydrateDocForRender } from "./hydrate";
 import { startMaintenance } from "./maintenance";
 import { getBlob, putBlob } from "./r2";
 import { createLimiter } from "./ratelimit";
@@ -324,6 +325,44 @@ app.delete("/api/projects/:id", async (c) => {
   const user = c.get("user") as User;
   await sql`DELETE FROM projects WHERE id = ${c.req.param("id")} AND user_id = ${user.id}`;
   return c.json({ ok: true });
+});
+
+// ── server-side render ──────────────────────────────────────────────────────
+//
+// A picture of a design, for anything that can't run a browser: an agent checking its own
+// work, a preview for a project nobody has opened, a link unfurl. Optional — with RENDER_URL
+// unset the route says so instead of 500ing, and the editor never needs it.
+const RENDER_URL = process.env.RENDER_URL;
+
+app.get("/api/projects/:id/render.png", async (c) => {
+  const user = c.get("user") as User;
+  if (!RENDER_URL) return c.json({ error: "Rendering is not enabled on this deployment (RENDER_URL unset)." }, 503);
+
+  const [row] = await sql<{ doc: unknown }[]>`
+    SELECT doc FROM projects WHERE id = ${c.req.param("id")} AND user_id = ${user.id}`;
+  if (!row) return c.json({ error: "not found" }, 404);
+
+  try {
+    // Images are inlined here, not fetched by the renderer: it holds no credentials and is
+    // never handed any, so it can only draw what it is given.
+    const doc = await hydrateDocForRender(row.doc, user.id);
+    const res = await fetch(`${RENDER_URL}/render`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ doc }),
+    });
+    if (!res.ok) {
+      console.warn("[render] service replied", res.status, await res.text().catch(() => ""));
+      return c.json({ error: "Render failed" }, 502);
+    }
+    return new Response(await res.arrayBuffer(), {
+      // No caching: the document can change between two requests for the same id.
+      headers: { "content-type": "image/png", "cache-control": "no-store" },
+    });
+  } catch (err) {
+    console.warn("[render] unreachable", err);
+    return c.json({ error: "Render service unreachable" }, 502);
+  }
 });
 
 // ── version history ─────────────────────────────────────────────────────────

@@ -18,6 +18,17 @@ const buildTime = new Date().toISOString().slice(0, 16).replace("T", " ");
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  // Two entries: the editor, and the headless render target the render service drives
+  // (render.html → src/render.tsx). The second one ships in the same bundle on purpose —
+  // it has to be the same canvas code, or server-side pictures would drift from exports.
+  build: {
+    rollupOptions: {
+      input: {
+        main: new URL("./index.html", import.meta.url).pathname,
+        render: new URL("./render.html", import.meta.url).pathname,
+      },
+    },
+  },
   // In production nginx proxies /api to the Bun service same-origin; this mirrors that for
   // `bun run dev`. VITE_API_PROXY points at a locally running server/ (see its README).
   server: {
