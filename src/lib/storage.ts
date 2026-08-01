@@ -12,7 +12,7 @@
 
 import { detachLayer, type FormatKey, type Layer, type LayerType, type ThumbDoc } from "../state";
 import { apiGet, apiSend } from "./api";
-import { dehydrateDoc, dehydrateLayer, hydrateDoc, hydrateLayer } from "./blobs";
+import { assertWritable, dehydrateDoc, dehydrateLayer, hydrateDoc, hydrateLayer, setReadOnly as setBlobReadOnly } from "./blobs";
 
 const DB_NAME = "grocerai-thumb";
 const VERSION = 1;
@@ -21,12 +21,39 @@ const CONFIGS = "configs"; // legacy store, kept so existing DBs open without an
 const WORKING_KEY = "working";
 const PROJECT_KEY = "project";
 
+// ── Session scope ─────────────────────────────────────────────────────────────
+//
+// Two kinds of visitor share one browser: the owner, signed in, and a guest who can edit
+// freely but never writes to the backend. Both autosave a working canvas, and they must not
+// be the same canvas — a guest's fiddling must not overwrite what the owner had open.
+//
+// The separation is a key prefix inside the existing `meta` store, deliberately not a second
+// object store: adding one would mean bumping VERSION and writing an onupgradeneeded branch,
+// and this needs neither.
+
+export type Scope = "owner" | "guest";
+let scope: Scope = "owner";
+
+/** Sets the storage scope and, with it, whether remote writes are allowed at all. Called once
+ *  by AuthGate when it resolves who the visitor is, before the editor mounts. */
+export function setScope(next: Scope): void {
+  scope = next;
+  setBlobReadOnly(next === "guest");
+}
+
+const prefix = (s: Scope = scope) => (s === "guest" ? "guest:" : "");
+const workingKey = () => prefix() + WORKING_KEY;
+const projectKey = () => prefix() + PROJECT_KEY;
+
 /** Lightweight archive-list row (no doc) — what the backend returns for a list. */
 export type ConfigMeta = {
   id: string;
   name: string;
   updatedAt: number;
   campaignId: string | null;
+  /** Whether a logged-out visitor can read this design. Off for everything by default;
+   *  publishing is always a deliberate act, never a side effect of a save. */
+  isPublic?: boolean;
   /** Read straight out of the stored doc, so the archive can label rows without fetching each one. */
   format?: FormatKey | null;
   /** Blob id of the preview thumbnail, or null for projects saved before previews existed
@@ -72,26 +99,28 @@ async function run<T>(store: string, mode: IDBTransactionMode, fn: (s: IDBObject
 }
 
 export async function getWorking(): Promise<ThumbDoc | null> {
-  const doc = await run<ThumbDoc | undefined>(META, "readonly", (s) => s.get(WORKING_KEY));
+  const doc = await run<ThumbDoc | undefined>(META, "readonly", (s) => s.get(workingKey()));
   return doc ?? null;
 }
 
 export function setWorking(doc: ThumbDoc): Promise<void> {
-  return run<IDBValidKey>(META, "readwrite", (s) => s.put(doc, WORKING_KEY)).then(() => undefined);
+  return run<IDBValidKey>(META, "readwrite", (s) => s.put(doc, workingKey())).then(() => undefined);
 }
 
 export async function getProject(): Promise<Project | null> {
-  return (await run<Project | undefined>(META, "readonly", (s) => s.get(PROJECT_KEY))) ?? null;
+  return (await run<Project | undefined>(META, "readonly", (s) => s.get(projectKey()))) ?? null;
 }
 
 export function setProject(project: Project): Promise<void> {
-  return run<IDBValidKey>(META, "readwrite", (s) => s.put(project, PROJECT_KEY)).then(() => undefined);
+  return run<IDBValidKey>(META, "readwrite", (s) => s.put(project, projectKey())).then(() => undefined);
 }
 
-/** Clears the local working cache — used on logout so the next user starts clean. */
-export async function clearWorking(): Promise<void> {
-  await run(META, "readwrite", (s) => s.delete(WORKING_KEY));
-  await run(META, "readwrite", (s) => s.delete(PROJECT_KEY));
+/** Clears one scope's local working cache. Defaults to the current one — that's the logout
+ *  case, where the next user must not inherit the previous one's canvas. Passing "guest"
+ *  explicitly is how a guest who then signs in drops their scratch canvas. */
+export async function clearWorking(which: Scope = scope): Promise<void> {
+  await run(META, "readwrite", (s) => s.delete(prefix(which) + WORKING_KEY));
+  await run(META, "readwrite", (s) => s.delete(prefix(which) + PROJECT_KEY));
 }
 
 // ── Backend projects (source of truth) ────────────────────────────────────────
@@ -123,6 +152,7 @@ export async function saveConfig(
   campaignId?: string | null,
   preview?: string | null
 ): Promise<ConfigMeta> {
+  assertWritable();
   // `campaignId` and `preview` are only sent when the caller passes them: on PUT the key's
   // absence means "leave it alone", which is what an ordinary save (or a rename, or a save
   // made with no canvas mounted) should do.
@@ -137,11 +167,59 @@ export async function saveConfig(
 
 /** Renames an archived project in place, leaving its doc untouched. */
 export function renameConfig(id: string, name: string): Promise<ConfigMeta> {
+  assertWritable();
   return apiSend<ConfigMeta>("PUT", `/projects/${id}`, { name: name.trim() || "Untitled" });
 }
 
 export function deleteConfig(id: string): Promise<void> {
+  assertWritable();
   return apiSend<{ ok: true }>("DELETE", `/projects/${id}`).then(() => undefined);
+}
+
+/** Publishes a design to the public gallery, or takes it back down. Sent as its own key so
+ *  the server's presence gate can tell "set to false" apart from "don't touch". */
+export function setProjectPublic(id: string, isPublic: boolean): Promise<ConfigMeta> {
+  assertWritable();
+  return apiSend<ConfigMeta>("PUT", `/projects/${id}`, { isPublic });
+}
+
+// ── Public gallery (readable without an account) ──────────────────────────────
+//
+// What a guest sees. Backed by /api/public/*, which is GET-only and holds no notion of who is
+// asking — a guest and a stranger with curl are the same caller, which is what keeps the
+// public surface small enough to reason about.
+
+/** A published design as a logged-out visitor sees it. No campaign id, no owner, no doc. */
+export type PublicConfigMeta = {
+  id: string;
+  name: string;
+  updatedAt: number;
+  format?: FormatKey | null;
+  preview?: string | null;
+  /** Group heading in the gallery. Null for designs that aren't in a campaign. */
+  campaignName?: string | null;
+};
+
+export function listPublicConfigs(): Promise<PublicConfigMeta[]> {
+  return apiGet<PublicConfigMeta[]>("/public/projects");
+}
+
+/** Images come back through the publishing project's own route: a guest is entitled to the
+ *  pictures inside a published design, not to the blob store. */
+export const publicBlobUrl = (projectId: string, blobId: string) => `/api/public/projects/${projectId}/blobs/${blobId}`;
+
+/** Fetches one published design. The `id` comes back so the caller can keep the shareable
+ *  link, but a guest must *not* adopt it as `projectId` — that's what the editor treats as
+ *  ownership, and a guest holds a local copy, not the project. */
+export async function loadPublicConfig(id: string): Promise<SavedConfig> {
+  const row = await apiGet<{ id: string; name: string; updatedAt: number; doc: ThumbDoc }>(`/public/projects/${id}`);
+  return {
+    id: row.id,
+    name: row.name,
+    updatedAt: row.updatedAt,
+    campaignId: null,
+    doc: await hydrateDoc(row.doc, (blobId) => publicBlobUrl(id, blobId)),
+  };
 }
 
 // ── Version history ───────────────────────────────────────────────────────────
@@ -166,6 +244,7 @@ export function listVersions(projectId: string): Promise<VersionMeta[]> {
 /** Puts a past document back. The current one is filed first, server-side, so undoing a
  *  restore is just another restore. Returns the restored doc, hydrated for the canvas. */
 export async function restoreVersion(projectId: string, versionId: string): Promise<{ doc: ThumbDoc; updatedAt: number }> {
+  assertWritable();
   const row = await apiSend<{ doc: ThumbDoc; updatedAt: number }>("POST", `/projects/${projectId}/versions/${versionId}/restore`);
   return { doc: await hydrateDoc(row.doc), updatedAt: row.updatedAt };
 }
@@ -185,20 +264,24 @@ export function loadCampaign(id: string): Promise<Campaign> {
 }
 
 export function createCampaign(name: string): Promise<CampaignMeta> {
+  assertWritable();
   return apiSend<CampaignMeta>("POST", "/campaigns", { name });
 }
 
 export function renameCampaign(id: string, name: string): Promise<CampaignMeta> {
+  assertWritable();
   return apiSend<CampaignMeta>("PUT", `/campaigns/${id}`, { name });
 }
 
 /** Deletes the campaign only — its designs survive, ungrouped. */
 export function deleteCampaign(id: string): Promise<void> {
+  assertWritable();
   return apiSend<{ ok: true }>("DELETE", `/campaigns/${id}`).then(() => undefined);
 }
 
 /** Files a project into a campaign, or pass null to pull it back out. */
 export function setProjectCampaign(id: string, campaignId: string | null): Promise<ConfigMeta> {
+  assertWritable();
   return apiSend<ConfigMeta>("PUT", `/projects/${id}`, { campaignId });
 }
 
@@ -216,10 +299,12 @@ export function listTokens(): Promise<ApiToken[]> {
 }
 
 export function createToken(name: string): Promise<NewApiToken> {
+  assertWritable();
   return apiSend<NewApiToken>("POST", "/tokens", { name });
 }
 
 export function deleteToken(id: string): Promise<void> {
+  assertWritable();
   return apiSend<{ ok: true }>("DELETE", `/tokens/${id}`).then(() => undefined);
 }
 
@@ -246,6 +331,7 @@ export function listStarred(): Promise<StarredMeta[]> {
 
 /** Stars a layer: detaches it from its doc, offloads images to R2, saves it. */
 export async function starLayer(layer: Layer, name?: string, sourceProject?: Project): Promise<StarredMeta> {
+  assertWritable();
   const clean = await dehydrateLayer(detachLayer(layer));
   const payload = {
     name: (name ?? layer.name).trim() || "Untitled", kind: layer.type, layer: clean,
@@ -261,15 +347,18 @@ export async function loadStarred(id: string): Promise<StarredItem> {
 }
 
 export function renameStarred(id: string, name: string): Promise<StarredMeta> {
+  assertWritable();
   return apiSend<StarredMeta>("PUT", `/starred/${id}`, { name: name.trim() || "Untitled" });
 }
 
 export function deleteStarred(id: string): Promise<void> {
+  assertWritable();
   return apiSend<{ ok: true }>("DELETE", `/starred/${id}`).then(() => undefined);
 }
 
 /** Records an insertion so favourites can be ranked by actual use. */
 export function useStarred(id: string): Promise<void> {
+  assertWritable();
   return apiSend<{ ok: true }>("POST", `/starred/${id}/use`).then(() => undefined);
 }
 

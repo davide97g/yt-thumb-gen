@@ -2,8 +2,8 @@
 // connection, API tokens, and the current session. Each section is its own panel
 // component; this file is only the shell (backdrop, tab rail, scrolling body).
 
-import { useEffect, useState } from "react";
-import { KeyRound, LogOut, Plug, UserRound, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { KeyRound, LogIn, LogOut, Plug, UserRound, X } from "lucide-react";
 import { useAuth } from "./AuthGate";
 import { McpPanel } from "./McpPanel";
 import { TokensPanel } from "./TokensPanel";
@@ -21,7 +21,11 @@ const TABS: { id: TabId; label: string; icon: typeof Plug }[] = [
 ];
 
 export function SettingsDialog({ onClose }: Props) {
-  const [tab, setTab] = useState<TabId>("mcp");
+  const { canWrite } = useAuth();
+  // MCP and API tokens are both about handing an agent write access to an account. A guest has
+  // no account, so the tabs would have nothing to show and their one button would throw.
+  const tabs = useMemo(() => (canWrite ? TABS : TABS.filter((t) => t.id === "session")), [canWrite]);
+  const [tab, setTab] = useState<TabId>(canWrite ? "mcp" : "session");
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -48,7 +52,7 @@ export function SettingsDialog({ onClose }: Props) {
           <div className="hidden px-2 pb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground sm:block">
             Settings
           </div>
-          {TABS.map(({ id, label, icon: Icon }) => (
+          {tabs.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
               type="button"
@@ -81,8 +85,8 @@ export function SettingsDialog({ onClose }: Props) {
             </Button>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5">
-            {tab === "mcp" && <McpPanel />}
-            {tab === "tokens" && <TokensPanel />}
+            {tab === "mcp" && canWrite && <McpPanel />}
+            {tab === "tokens" && canWrite && <TokensPanel />}
             {tab === "session" && <SessionPanel />}
           </div>
         </div>
@@ -92,9 +96,37 @@ export function SettingsDialog({ onClose }: Props) {
 }
 
 /** Current session: who you are, and the way out. Logout also wipes the local working
- *  canvas (see `AuthGate`), so it's the one action here that discards state. */
+ *  canvas (see `AuthGate`), so it's the one action here that discards state.
+ *
+ *  A guest has no account, so `user` is null here — the panel explains the read-only session
+ *  and offers the way into a real one instead of an email and a sign-out. */
 function SessionPanel() {
-  const { user, logout } = useAuth();
+  const { user, logout, signIn } = useAuth();
+
+  if (!user) {
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="space-y-1">
+          <h3 className="flex items-center gap-2 text-sm font-semibold">
+            <UserRound className="size-4 text-primary" /> Guest session
+          </h3>
+          <p className="text-sm text-muted-foreground">
+            You're browsing without an account. Everything on the canvas is yours to change, and it stays
+            in this browser — nothing is saved to the archive, and the export buttons still work.
+          </p>
+        </div>
+
+        <div className="space-y-2">
+          <p className="text-[11px] text-muted-foreground">
+            Signing in keeps whatever you have open here only if you export it first.
+          </p>
+          <Button variant="outline" size="sm" onClick={signIn}>
+            <LogIn /> Sign in
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-4">

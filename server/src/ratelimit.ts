@@ -17,6 +17,11 @@ export type Limiter = {
   check(key: string, now?: number): Verdict;
   /** Record a failed attempt. Successes must not count, or a busy legitimate user locks out. */
   fail(key: string, now?: number): void;
+  /** Check and record in one step, for limits where *every* request counts rather than only
+   *  the failures — the public read routes, where the request itself is the cost. A rejected
+   *  request is not recorded, so a client that keeps hammering a closed window doesn't push
+   *  its own reopening further away. */
+  hit(key: string, now?: number): Verdict;
   /** Forget a key — called on a successful login, so one typo never lingers. */
   reset(key: string): void;
   /** Live key count, for tests and the eviction bound. */
@@ -43,28 +48,39 @@ export function createLimiter({
     return kept;
   };
 
-  return {
-    check(key, now = Date.now()) {
-      const recent = live(key, now);
-      if (recent.length < limit) return { ok: true };
-      // The window frees up when the oldest attempt in it ages out.
-      return { ok: false, retryAfterMs: Math.max(1, windowMs - (now - recent[0])) };
-    },
+  // Declared as functions rather than object methods so `hit` can call them without `this`,
+  // which would break the moment a caller destructured the limiter.
+  const check = (key: string, now = Date.now()): Verdict => {
+    const recent = live(key, now);
+    if (recent.length < limit) return { ok: true };
+    // The window frees up when the oldest attempt in it ages out.
+    return { ok: false, retryAfterMs: Math.max(1, windowMs - (now - recent[0])) };
+  };
 
-    fail(key, now = Date.now()) {
-      const recent = live(key, now);
-      recent.push(now);
-      hits.set(key, recent);
+  const fail = (key: string, now = Date.now()): void => {
+    const recent = live(key, now);
+    recent.push(now);
+    hits.set(key, recent);
 
-      if (hits.size > maxKeys) {
-        // Sweep the expired first; only if that isn't enough, evict in insertion order.
-        for (const k of [...hits.keys()]) live(k, now);
-        while (hits.size > maxKeys) {
-          const oldest = hits.keys().next();
-          if (oldest.done) break;
-          hits.delete(oldest.value);
-        }
+    if (hits.size > maxKeys) {
+      // Sweep the expired first; only if that isn't enough, evict in insertion order.
+      for (const k of [...hits.keys()]) live(k, now);
+      while (hits.size > maxKeys) {
+        const oldest = hits.keys().next();
+        if (oldest.done) break;
+        hits.delete(oldest.value);
       }
+    }
+  };
+
+  return {
+    check,
+    fail,
+
+    hit(key, now = Date.now()) {
+      const verdict = check(key, now);
+      if (verdict.ok) fail(key, now);
+      return verdict;
     },
 
     reset(key) {

@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChevronRight, FileDown, FileUp, FolderOpen, FolderPlus, Layers3, Package, Pencil, Trash2 } from "lucide-react";
+import { ChevronRight, FileDown, FileUp, FolderOpen, FolderPlus, Globe, Layers3, Lock, Package, Pencil, Trash2 } from "lucide-react";
 import { FORMATS, type ThumbDoc } from "../state";
 import {
   type CampaignMeta,
   type ConfigMeta,
+  type PublicConfigMeta,
   createCampaign,
   deleteCampaign,
   deleteConfig,
@@ -11,9 +12,13 @@ import {
   importConfigFile,
   listCampaigns,
   listConfigs,
+  listPublicConfigs,
   loadConfig,
+  loadPublicConfig,
+  publicBlobUrl,
   renameCampaign,
   setProjectCampaign,
+  setProjectPublic,
 } from "../lib/storage";
 import { previewUrl } from "../lib/preview";
 import { Hint, Section, UploadButton } from "./controls";
@@ -28,6 +33,9 @@ type Props = {
   projectName: string; // live name, mirrored onto the active row
   onLoad: (doc: ThumbDoc, name: string, id: string | null, savedAt: number | null) => void;
   onError: (msg: string) => void;
+  /** false for a guest: the archive is replaced by the public gallery, which is a list of
+   *  published designs and one action — open a local copy. */
+  canWrite: boolean;
   refreshKey?: number;
   /** Hands a campaign to the offscreen renderer that zips every design in it (see `App.tsx`). */
   onExportCampaign: (campaign: { id: string; name: string }) => void;
@@ -41,7 +49,13 @@ const UNGROUPED = "__none__"; // Radix Select has no concept of a null value
 /** The project library, grouped by campaign. A campaign is a folder: a project belongs to
  *  at most one, and deleting a campaign keeps its designs (they fall back to "No
  *  campaign"). The live project, if it came from here, is pinned visually. */
-export function SavesPanel({ doc, projectId, projectName, onLoad, onError, refreshKey, onExportCampaign, open, onToggle }: Props) {
+export function SavesPanel(props: Props) {
+  // Two different lists, two different endpoints, two different sets of actions — a flag
+  // threaded through one component would be a maze of `canWrite &&`. Split at the top instead.
+  return props.canWrite ? <ArchivePanel {...props} /> : <PublicGallery {...props} />;
+}
+
+function ArchivePanel({ doc, projectId, projectName, onLoad, onError, refreshKey, onExportCampaign, open, onToggle }: Props) {
   const [configs, setConfigs] = useState<ConfigMeta[]>([]);
   const [campaigns, setCampaigns] = useState<CampaignMeta[]>([]);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -168,6 +182,20 @@ export function SavesPanel({ doc, projectId, projectName, onLoad, onError, refre
     }
   }
 
+  /** Publishes a design to the public gallery, or takes it down. Optimistic, because the row
+   *  has to answer immediately; the refresh underneath is what makes it true. */
+  async function onPublish(c: ConfigMeta) {
+    const next = !c.isPublic;
+    setConfigs((prev) => prev.map((p) => (p.id === c.id ? { ...p, isPublic: next } : p)));
+    try {
+      await setProjectPublic(c.id, next);
+      await refresh();
+    } catch {
+      setConfigs((prev) => prev.map((p) => (p.id === c.id ? { ...p, isPublic: !next } : p)));
+      onError(next ? "Couldn't publish the project." : "Couldn't unpublish the project.");
+    }
+  }
+
   function ProjectRow({ c, campaignName }: { c: ConfigMeta; campaignName?: string }) {
     const active = c.id === projectId;
     // Inside a campaign every design is named "<campaign> — <format>", which truncates to an
@@ -212,10 +240,29 @@ export function SavesPanel({ doc, projectId, projectName, onLoad, onError, refre
             )}
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm leading-tight">{shown}</span>
+            <span className="flex items-center gap-1.5">
+              <span className="min-w-0 truncate text-sm leading-tight">{shown}</span>
+              {c.isPublic && <Globe className="size-3 shrink-0 text-primary" aria-label="Published" />}
+            </span>
             <span className="block truncate text-[11px] leading-tight text-muted-foreground">{meta}</span>
           </span>
         </button>
+
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className={cn(
+            "size-7 transition-opacity",
+            c.isPublic
+              ? "text-primary opacity-100"
+              : "opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
+          )}
+          title={c.isPublic ? "Published — anyone with the link can view it. Click to unpublish." : "Publish to the public gallery"}
+          aria-pressed={!!c.isPublic}
+          onClick={() => void onPublish(c)}
+        >
+          {c.isPublic ? <Globe /> : <Lock />}
+        </Button>
 
         <Select
           value={c.campaignId ?? UNGROUPED}
@@ -394,6 +441,122 @@ export function SavesPanel({ doc, projectId, projectName, onLoad, onError, refre
           )}
         </div>
       )}
+
+      <div className="flex flex-col gap-2 pt-1">
+        <Button variant="outline" size="sm" className="w-full justify-center" onClick={() => exportConfigFile(doc, projectName || "thumb")}>
+          <FileDown /> Export project
+        </Button>
+        <UploadButton label="Import from file" icon={<FileUp />} accept="application/json,.json" className="w-full justify-center" onFile={(f) => void onImport(f)} />
+      </div>
+    </Section>
+  );
+}
+
+/** What a guest gets in place of the archive: the designs marked public, and one action per
+ *  row. Opening one adopts it with a **null id** — a guest holds a local copy, not the
+ *  project, and nothing here can write. The JSON export/import stay, because both are entirely
+ *  client-side and are how a guest takes their work with them. */
+function PublicGallery({ doc, projectName, onLoad, onError, refreshKey, open, onToggle }: Props) {
+  const [items, setItems] = useState<PublicConfigMeta[]>([]);
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  useEffect(() => {
+    listPublicConfigs()
+      .then(setItems)
+      .catch(() => onError("Couldn't read the gallery."));
+  }, [refreshKey]);
+
+  // Campaigns aren't published separately — the grouping is derived from whichever published
+  // designs happen to share one, so an unpublished sibling never reveals itself as a gap.
+  const groups = useMemo(() => {
+    const out = new Map<string, PublicConfigMeta[]>();
+    for (const c of items) {
+      const key = c.campaignName ?? "";
+      const list = out.get(key);
+      list ? list.push(c) : out.set(key, [c]);
+    }
+    return [...out.entries()];
+  }, [items]);
+
+  async function onOpen(c: PublicConfigMeta) {
+    setBusyId(c.id);
+    try {
+      const full = await loadPublicConfig(c.id);
+      onLoad(full.doc, full.name, null, null);
+      onError("");
+    } catch {
+      onError("Couldn't load the design.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function onImport(file: File | undefined) {
+    if (!file) return;
+    try {
+      const { name, doc: imported } = await importConfigFile(file);
+      onLoad(imported, name ?? "Untitled", null, null);
+      onError("");
+    } catch {
+      onError("Invalid JSON file.");
+    }
+  }
+
+  return (
+    <Section title="Gallery" count={items.length} open={open} onToggle={onToggle} fill>
+      {items.length === 0 ? (
+        <Hint>No designs have been published yet.</Hint>
+      ) : (
+        <div className="space-y-1.5">
+          {groups.map(([campaignName, designs]) => (
+            <div key={campaignName || "__loose__"} className="space-y-0.5">
+              {campaignName && (
+                <div className="px-1.5 pt-1 font-mono text-[10.5px] font-medium uppercase tracking-[0.16em] text-muted-foreground/70">
+                  {campaignName}
+                </div>
+              )}
+              {designs.map((c) => {
+                const prefixed = !!campaignName && c.name.startsWith(`${campaignName} — `);
+                const shown = prefixed ? c.name.slice(campaignName.length + 3) : c.name;
+                const fmt = !prefixed && c.format && FORMATS[c.format] ? `${FORMATS[c.format].label} · ` : "";
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    className="flex w-full min-w-0 items-center gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-accent/40 disabled:opacity-60"
+                    title="Open a copy"
+                    disabled={busyId === c.id}
+                    onClick={() => void onOpen(c)}
+                  >
+                    <span className="grid h-7 w-12 shrink-0 place-items-center overflow-hidden rounded-[3px] bg-black/40 ring-1 ring-border/70">
+                      {c.preview ? (
+                        <img
+                          src={publicBlobUrl(c.id, c.preview)}
+                          alt=""
+                          loading="lazy"
+                          decoding="async"
+                          className="h-full w-full object-contain"
+                        />
+                      ) : (
+                        <FolderOpen className="size-4 text-muted-foreground" />
+                      )}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm leading-tight">{shown}</span>
+                      <span className="block truncate text-[11px] leading-tight text-muted-foreground">
+                        {fmt}
+                        {relTime(c.updatedAt)}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <Hint>Opening a design gives you your own copy to play with. Export it to keep it.</Hint>
 
       <div className="flex flex-col gap-2 pt-1">
         <Button variant="outline" size="sm" className="w-full justify-center" onClick={() => exportConfigFile(doc, projectName || "thumb")}>

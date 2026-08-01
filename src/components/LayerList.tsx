@@ -15,7 +15,14 @@ export const TYPE_ICON: Record<LayerType, ReactNode> = {
   emojifx: <PartyPopper className="size-3.5" />,
 };
 
-type Props = { layers: Layer[]; selectedIds: string[]; dispatch: Dispatch<Action>; onStar: (layer: Layer) => void };
+type Props = {
+  layers: Layer[];
+  selectedIds: string[];
+  dispatch: Dispatch<Action>;
+  /** Omitted for a read-only session — favourites are a per-account collection, so the row
+   *  simply loses its star rather than offering an action that would be refused. */
+  onStar?: (layer: Layer) => void;
+};
 
 const DRAG_THRESHOLD = 4; // px before a press becomes a drag, so clicks still select
 const EDGE = 48; // distance from the scroller edge where auto-scroll kicks in
@@ -268,15 +275,17 @@ export function LayerList({ layers, selectedIds, dispatch, onStar }: Props) {
                   </Button>
                   <span className="mx-0.5 h-4 w-px bg-border/70" aria-hidden />
                 </span>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  className="size-6 text-muted-foreground hover:text-amber-400 [&_svg]:size-3.5"
-                  title="Add to favorites"
-                  onClick={(e) => { e.stopPropagation(); onStar(layer); }}
-                >
-                  <Star />
-                </Button>
+                {onStar && (
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="size-6 text-muted-foreground hover:text-amber-400 [&_svg]:size-3.5"
+                    title="Add to favorites"
+                    onClick={(e) => { e.stopPropagation(); onStar(layer); }}
+                  >
+                    <Star />
+                  </Button>
+                )}
                 <Button
                   variant="ghost"
                   size="icon-sm"
