@@ -12,6 +12,7 @@ import {
   defaultEffect,
   defaultBgBorder,
   defaultFx,
+  resolveGlow,
   resolveRing,
   HOLO_STOPS,
   EMOJIFX_PRESETS,
@@ -302,6 +303,37 @@ function ImageRingControls({ layer, set }: { layer: ImageLayer; set: Setter }) {
   );
 }
 
+/** Stops + angle of the gradient traced around the cut-out. Split from the halo rows because they
+ *  straddle the shared width slider, which reads as "outline thickness" for every style. */
+function ImageGlowGradientControls({ layer, set }: { layer: ImageLayer; set: Setter }) {
+  const g = resolveGlow(layer);
+  const setStop = (i: number, v: string) => {
+    const glowColors = [...g.colors] as [string, string, string, string];
+    glowColors[i] = v;
+    set({ glowColors });
+  };
+  return (
+    <>
+      {g.colors.map((c, i) => (
+        <ColorRow key={i} label={`Color ${i + 1}`} value={c} defaultValue={HOLO_STOPS[i]} onChange={(v) => setStop(i, v)} />
+      ))}
+      <SliderRow label="Angle" min={0} max={360} value={g.angle} defaultValue={135} display={`${g.angle}°`} onChange={(glowAngle) => set({ glowAngle })} />
+    </>
+  );
+}
+
+function ImageGlowHaloControls({ layer, set }: { layer: ImageLayer; set: Setter }) {
+  const g = resolveGlow(layer);
+  return (
+    <>
+      <SliderRow label="Halo" min={0} max={80} value={g.halo} defaultValue={18} display={g.halo ? `${g.halo}px` : "off"} onChange={(glowHalo) => set({ glowHalo })} />
+      {g.halo > 0 && (
+        <SliderRow label="Halo opacity" min={0} max={100} value={g.haloOpacity} defaultValue={70} display={`${g.haloOpacity}%`} onChange={(glowHaloOpacity) => set({ glowHaloOpacity })} />
+      )}
+    </>
+  );
+}
+
 function ImageProps({ layer, set, onError, cropMode, setCropMode }: { layer: ImageLayer; set: Setter; onError: (msg: string) => void; cropMode: CropMode; setCropMode: (m: CropMode) => void }) {
   const [busy, setBusy] = useState(false);
   const [showCam, setShowCam] = useState(false);
@@ -403,11 +435,17 @@ function ImageProps({ layer, set, onError, cropMode, setCropMode }: { layer: Ima
                 options={[
                   { value: "glow", label: "Soft" },
                   { value: "line", label: "Hard line" },
+                  { value: "gradient", label: "Gradient" },
                 ]}
                 onChange={(glowStyle) => set({ glowStyle })}
               />
-              <ColorRow label="Glow color" value={layer.glowColor} defaultValue={D.glowColor} onChange={(glowColor) => set({ glowColor })} />
-              <SliderRow label={layer.glowStyle === "line" ? "Width" : "Strength"} min={1} max={48} value={layer.glowSize} defaultValue={D.glowSize} onChange={(glowSize) => set({ glowSize })} />
+              {layer.glowStyle === "gradient" ? (
+                <ImageGlowGradientControls layer={layer} set={set} />
+              ) : (
+                <ColorRow label="Glow color" value={layer.glowColor} defaultValue={D.glowColor} onChange={(glowColor) => set({ glowColor })} />
+              )}
+              <SliderRow label={layer.glowStyle === "glow" ? "Strength" : "Width"} min={1} max={48} value={layer.glowSize} defaultValue={D.glowSize} onChange={(glowSize) => set({ glowSize })} />
+              {layer.glowStyle === "gradient" && <ImageGlowHaloControls layer={layer} set={set} />}
             </>
           )}
         </>

@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type Dispatch, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
-import { CANVAS_H, CANVAS_W, FONTS, FONT_WEIGHT, SIZE_LIMITS, canvasSize, drawPad, layoutEmojiFx, newDrawLayer, resolveBgBorder, resolveRing, type Action, type DrawCap, type DrawLayer, type EmojiFxLayer, type FormatKey, type ImageLayer, type Layer, type LayerPatch, type TextLayer, type ThumbDoc } from "../state";
+import { CANVAS_H, CANVAS_W, FONTS, FONT_WEIGHT, SIZE_LIMITS, canvasSize, drawPad, layoutEmojiFx, newDrawLayer, resolveBgBorder, resolveGlow, resolveRing, type Action, type DrawCap, type DrawLayer, type EmojiFxLayer, type FormatKey, type ImageLayer, type Layer, type LayerPatch, type TextLayer, type ThumbDoc } from "../state";
 import { SAFE_ZONES } from "../lib/safeAreas";
 import { smoothPath, type Pt } from "../lib/smoothPath";
 import { boxesIntersect, resolveSnap, type Box } from "../lib/layout";
@@ -20,12 +20,12 @@ const outlineId = (id: string) => `thumb-outline-${id}`;
 
 /**
  * Glow: stacked drop-shadows trace the cut-out's alpha edge.
- * Line: a single SVG feMorphology dilate pass (defined in OutlineDefs) — one GPU pass instead of
- * dozens of chained shadows, which is what made the line variant choke during drags.
+ * Line/gradient: a single SVG feMorphology dilate pass (defined in OutlineDefs) — one GPU pass
+ * instead of dozens of chained shadows, which is what made the line variant choke during drags.
  */
 function glowFilter(l: ImageLayer): string | undefined {
   if (!l.glow) return undefined;
-  if (l.glowStyle === "line") return `url(#${outlineId(l.id)})`;
+  if (l.glowStyle !== "glow") return `url(#${outlineId(l.id)})`;
   const s = l.glowSize;
   return [s, s, Math.round(s / 2)].map((r) => `drop-shadow(0 0 ${r}px ${l.glowColor})`).join(" ");
 }
@@ -79,25 +79,77 @@ function BackgroundBorder({ border }: { border: ReturnType<typeof resolveBgBorde
   );
 }
 
-/** Solid-outline filters for every line-glow image layer. Lives inside the captured node so export keeps them. */
+/** A flat gradient tile, as a data URI, so a filter can use it as paint. A filter graph has no
+ *  access to a `<linearGradient>` — feFlood is one colour and nothing else produces a ramp — so
+ *  the ramp arrives as an image and feImage stretches it over the filter region. Inline, because
+ *  the export re-serialises this subtree and must not have to fetch anything. */
+function gradientTile(colors: readonly string[], angle: number, span: number): string {
+  // CSS gradient angles run clockwise from "to top"; SVG's box space has y pointing down.
+  const a = (angle * Math.PI) / 180;
+  // feImage stretches the tile over the whole filter region, but the picture only occupies
+  // `span` of it — so the ramp is squeezed to that share, or the end stops fall in the empty
+  // margin and the outline shows the middle of the gradient only. Past the ends the stops
+  // hold, which is what the halo wants anyway.
+  const dx = (Math.sin(a) * span) / 2,
+    dy = (-Math.cos(a) * span) / 2;
+  const stops = colors.map((c, i) => `<stop offset="${i / (colors.length - 1)}" stop-color="${c}"/>`).join("");
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" preserveAspectRatio="none">` +
+    `<linearGradient id="g" x1="${0.5 - dx}" y1="${0.5 - dy}" x2="${0.5 + dx}" y2="${0.5 + dy}">${stops}</linearGradient>` +
+    `<rect width="100" height="100" fill="url(#g)"/></svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
+
+/** The gradient variant: the same dilated silhouette, painted with the gradient tile instead of a
+ *  flat colour, plus a blurred copy of itself behind so the colour bleeds outward. The filter
+ *  region is 300% because that blur reaches well past the picture's box. */
+const GLOW_REGION = 3; // filter region as a multiple of the layer's box, per axis
+
+function GradientOutlineFilter({ layer }: { layer: ImageLayer }) {
+  const g = resolveGlow(layer);
+  return (
+    <filter id={outlineId(layer.id)} x="-100%" y="-100%" width={`${GLOW_REGION * 100}%`} height={`${GLOW_REGION * 100}%`}>
+      <feImage href={gradientTile(g.colors, g.angle, 1 / GLOW_REGION)} preserveAspectRatio="none" result="grad" />
+      <feMorphology in="SourceAlpha" operator="dilate" radius={layer.glowSize} result="d" />
+      <feComposite in="grad" in2="d" operator="in" result="o" />
+      {g.halo > 0 && <feGaussianBlur in="o" stdDeviation={g.halo / 2} result="hb" />}
+      {g.halo > 0 && (
+        <feComponentTransfer in="hb" result="h">
+          <feFuncA type="linear" slope={g.haloOpacity / 100} />
+        </feComponentTransfer>
+      )}
+      <feMerge>
+        {g.halo > 0 && <feMergeNode in="h" />}
+        <feMergeNode in="o" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+  );
+}
+
+/** Outline filters for every line/gradient-glow image layer. Lives inside the captured node so export keeps them. */
 function OutlineDefs({ layers }: { layers: Layer[] }) {
-  const lines = layers.filter((l): l is ImageLayer => l.type === "image" && l.glow && l.glowStyle === "line");
+  const lines = layers.filter((l): l is ImageLayer => l.type === "image" && l.glow && l.glowStyle !== "glow");
   if (lines.length === 0) return null;
   return (
     <svg aria-hidden style={{ position: "absolute", width: 0, height: 0 }}>
       <defs>
-        {lines.map((l) => (
-          // Dilate the silhouette alpha by glowSize px, flood it with the glow colour, then put the image back on top.
-          <filter key={l.id} id={outlineId(l.id)} x="-50%" y="-50%" width="200%" height="200%">
-            <feMorphology in="SourceAlpha" operator="dilate" radius={l.glowSize} result="d" />
-            <feFlood floodColor={l.glowColor} result="c" />
-            <feComposite in="c" in2="d" operator="in" result="o" />
-            <feMerge>
-              <feMergeNode in="o" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
-        ))}
+        {lines.map((l) =>
+          l.glowStyle === "gradient" ? (
+            <GradientOutlineFilter key={l.id} layer={l} />
+          ) : (
+            // Dilate the silhouette alpha by glowSize px, flood it with the glow colour, then put the image back on top.
+            <filter key={l.id} id={outlineId(l.id)} x="-50%" y="-50%" width="200%" height="200%">
+              <feMorphology in="SourceAlpha" operator="dilate" radius={l.glowSize} result="d" />
+              <feFlood floodColor={l.glowColor} result="c" />
+              <feComposite in="c" in2="d" operator="in" result="o" />
+              <feMerge>
+                <feMergeNode in="o" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+          ),
+        )}
       </defs>
     </svg>
   );

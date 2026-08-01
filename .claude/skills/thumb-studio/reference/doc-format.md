@@ -104,7 +104,8 @@ There is **no letter-spacing field**. To fake wide tracking, put spaces between 
 ### `image`
 
 Required: `src`, `origSrc`, **`brand`**, **`brandColor`**, `scale` (1 = 360px wide), `opacity`,
-`flip`, `radius`, `ring`, `ringColor`, `glow`, `glowStyle` (glow|line), `glowColor`, `glowSize`.
+`flip`, `radius`, `ring`, `ringColor`, `glow`, `glowStyle` (glow|line|gradient), `glowColor`,
+`glowSize`.
 
 `src` and `origSrc` must stay `null` — you have no upload path. A layer with `src: null` renders
 as a grey `carica foto →` slot sized `360 × scale` wide by 1.2× that tall, which is the correct
@@ -118,6 +119,13 @@ Border options (all optional, only read when `ring` is true): `ringStyle` (`soli
 default solid), `ringColors` (exactly 4 hex stops for the gradient, default the iridescent
 purple→blue→cyan→green set), `ringAngle` (deg, default 135), `ringWidth` (px, default 10),
 `ringGlow` (blur px of the same border repeated behind the picture, default 0 = off).
+
+Cut-out outline options (only read when `glow` is true): `glowSize` is the blur radius for
+`glowStyle: "glow"` and the outline thickness for `"line"` and `"gradient"`. `"gradient"` traces
+the cut-out's silhouette with a 4-stop gradient and bleeds a blurred copy of it outward — its own
+knobs are `glowColors` (exactly 4 hex stops, default the same iridescent set), `glowAngle` (deg,
+default 135), `glowHalo` (halo blur px, default 18, 0 = no halo) and `glowHaloOpacity` (0–100,
+default 70). `glowColor` is ignored by that style.
 
 ### `emoji`
 Required: `glyph`, `size`.

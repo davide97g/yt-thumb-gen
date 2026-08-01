@@ -258,10 +258,22 @@ export type ImageLayer = LayerBase & {
   ringGlow?: number;
   /** Glow tracing the cut-out alpha edge. */
   glow: boolean;
-  /** Soft glow vs. solid sticker outline. */
-  glowStyle: "glow" | "line";
+  /** Soft glow, solid sticker outline, or a gradient outline with a matching halo. */
+  glowStyle: "glow" | "line" | "gradient";
+  /** Outline/glow colour for the "glow" and "line" styles. */
   glowColor: string;
+  /** Blur radius ("glow") or outline thickness ("line", "gradient") in px. */
   glowSize: number;
+  /** Gradient stops traced around the cut-out, used when `glowStyle` is "gradient".
+   *  Absent reads as the holo set. */
+  glowColors?: [string, string, string, string];
+  /** Gradient angle in degrees (135 = top-left to bottom-right). Absent reads as 135. */
+  glowAngle?: number;
+  /** Blur radius of the coloured halo bleeding outside the gradient outline, in px.
+   *  0 = no halo. Absent reads as 18. */
+  glowHalo?: number;
+  /** Halo opacity, 0–100. Absent reads as 70. */
+  glowHaloOpacity?: number;
   /** Brightness via CSS filter, in % (100 = neutral). Absent reads as 100. */
   brightness?: number;
   /** Contrast via CSS filter, in % (100 = neutral). Absent reads as 100. */
@@ -502,6 +514,24 @@ export function resolveRing(layer: ImageLayer): ResolvedRing {
     angle: layer.ringAngle ?? 135,
     width: layer.ringWidth ?? 10,
     glow: layer.ringGlow ?? 0,
+  };
+}
+
+export type ResolvedGlow = {
+  colors: [string, string, string, string];
+  angle: number;
+  halo: number;
+  haloOpacity: number;
+};
+
+/** Fill every optional field of the gradient cut-out outline. Same reason as `resolveRing`:
+ *  docs written before the gradient style must keep reading as what they were saved as. */
+export function resolveGlow(layer: ImageLayer): ResolvedGlow {
+  return {
+    colors: layer.glowColors ?? HOLO_STOPS,
+    angle: layer.glowAngle ?? 135,
+    halo: layer.glowHalo ?? 18,
+    haloOpacity: layer.glowHaloOpacity ?? 70,
   };
 }
 

@@ -775,15 +775,39 @@
           "type": "string",
           "enum": [
             "glow",
-            "line"
+            "line",
+            "gradient"
           ],
-          "description": "Soft glow vs. solid sticker outline."
+          "description": "Soft glow, solid sticker outline, or a gradient outline with a matching halo."
         },
         "glowColor": {
-          "type": "string"
+          "type": "string",
+          "description": "Outline/glow colour for the \"glow\" and \"line\" styles."
         },
         "glowSize": {
-          "type": "number"
+          "type": "number",
+          "description": "Blur radius (\"glow\") or outline thickness (\"line\", \"gradient\") in px."
+        },
+        "glowColors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 4,
+          "maxItems": 4,
+          "description": "Gradient stops traced around the cut-out, used when `glowStyle` is \"gradient\". Absent reads as the holo set."
+        },
+        "glowAngle": {
+          "type": "number",
+          "description": "Gradient angle in degrees (135 = top-left to bottom-right). Absent reads as 135."
+        },
+        "glowHalo": {
+          "type": "number",
+          "description": "Blur radius of the coloured halo bleeding outside the gradient outline, in px. 0 = no halo. Absent reads as 18."
+        },
+        "glowHaloOpacity": {
+          "type": "number",
+          "description": "Halo opacity, 0–100. Absent reads as 70."
         },
         "brightness": {
           "type": "number",
