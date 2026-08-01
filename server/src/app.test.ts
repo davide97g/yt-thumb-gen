@@ -13,7 +13,7 @@
 // name says "test". Without DATABASE_URL it skips silently — `bun run check` still passes on
 // a machine with no Postgres, and CI supplies one.
 
-import { beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
 
 const DB = process.env.DATABASE_URL;
 const usable = !!DB && /test/i.test(DB);
@@ -25,12 +25,15 @@ if (DB && !usable) {
 // turn the "signup locks after the first user" test into a no-op. Pin it before the app reads it.
 process.env.ALLOW_SIGNUP = "false";
 
-// R2 is never called here (no blob route is exercised), but its module throws at import
-// unless it can construct a client, so it needs credentials shaped like credentials.
-process.env.R2_ENDPOINT ??= "https://example.invalid";
-process.env.R2_ACCESS_KEY_ID ??= "test";
-process.env.R2_SECRET_ACCESS_KEY ??= "test";
-process.env.R2_BUCKET ??= "test";
+// The object store stands in for R2. The blob routes are about *authorization* — which caller
+// is allowed which bytes — and that decision is made in SQL, before the store is ever asked.
+// A map keeps the tests honest about the decision without a network or a bucket.
+const objects = new Map<string, Uint8Array>();
+mock.module("./r2", () => ({
+  putBlob: async (id: string, bytes: Uint8Array) => { objects.set(id, bytes); },
+  deleteBlob: async (id: string) => { objects.delete(id); },
+  getBlob: async (id: string) => objects.get(id)?.buffer ?? null,
+}));
 
 type Api = { app: { request: (path: string, init?: RequestInit) => Promise<Response> } };
 let api: Api["app"];
@@ -71,10 +74,21 @@ const doc = (extra: Record<string, unknown> = {}) => ({
 let seq = 0;
 const nextEmail = () => `user${++seq}@example.test`;
 
+/** A fresh caller address per helper call. The auth routes are rate-limited per address and
+ *  the limiters are module state shared by the whole file, so without this the suite would
+ *  throttle itself somewhere around the tenth registration — and the failure would look like
+ *  a bug in whichever test happened to be Nth. */
+let ips = 0;
+const nextIp = () => `10.0.${Math.floor(ips / 250)}.${++ips % 250}`;
+const fromIp = (init: RequestInit, ip = nextIp()): RequestInit => ({
+  ...init,
+  headers: { ...(init.headers as Record<string, string>), "x-real-ip": ip },
+});
+
 /** Registers through the real endpoint. Only usable while signup is open — i.e. for the
  *  first user of a truncated database. */
 async function register(email = nextEmail(), password = "password123"): Promise<Session> {
-  const res = await api.request("/api/auth/register", json({ email, password }));
+  const res = await api.request("/api/auth/register", fromIp(json({ email, password })));
   expect(res.status).toBe(200);
   const { id } = (await res.json()) as { id: string };
   return { id, email, cookie: cookieOf(res) };
@@ -82,10 +96,10 @@ async function register(email = nextEmail(), password = "password123"): Promise<
 
 /** Signup locks after the first user, which is the point — so extra users are seeded the way
  *  an operator would (straight into the table) and then log in for real. */
-async function seedUser(email = nextEmail(), password = "password123"): Promise<Session> {
+async function seedUser(email = nextEmail(), password = "password123", ip = nextIp()): Promise<Session> {
   const hash = await Bun.password.hash(password);
   await sql`INSERT INTO users (email, password_hash) VALUES (${email}, ${hash})`;
-  const res = await api.request("/api/auth/login", json({ email, password }));
+  const res = await api.request("/api/auth/login", fromIp(json({ email, password }), ip));
   expect(res.status).toBe(200);
   const { id } = (await res.json()) as { id: string };
   return { id, email, cookie: cookieOf(res) };
@@ -116,13 +130,13 @@ describe.skipIf(!usable)("api", () => {
     expect(await (await api.request("/api/auth/status")).json()).toEqual({ signupOpen: true });
     await register();
     expect(await (await api.request("/api/auth/status")).json()).toEqual({ signupOpen: false });
-    const second = await api.request("/api/auth/register", json({ email: nextEmail(), password: "password123" }));
+    const second = await api.request("/api/auth/register", fromIp(json({ email: nextEmail(), password: "password123" })));
     expect(second.status).toBe(403);
   });
 
   test("login rejects a wrong password without saying which half was wrong", async () => {
     const user = await register(nextEmail(), "password123");
-    const res = await api.request("/api/auth/login", json({ email: user.email, password: "wrong-one" }));
+    const res = await api.request("/api/auth/login", fromIp(json({ email: user.email, password: "wrong-one" })));
     expect(res.status).toBe(401);
     expect((await res.json()).error).toBe("Invalid credentials");
   });
@@ -135,7 +149,7 @@ describe.skipIf(!usable)("api", () => {
 
   test("logout kills the session server-side, not just the cookie", async () => {
     const user = await register();
-    await api.request("/api/auth/logout", { method: "POST", headers: { cookie: user.cookie } });
+    await api.request("/api/auth/logout", fromIp({ method: "POST", headers: { cookie: user.cookie } }));
     expect((await api.request("/api/auth/me", auth(user.cookie))).status).toBe(401);
   });
 
@@ -344,17 +358,20 @@ describe.skipIf(!usable)("api", () => {
 
   // ── hardening ──────────────────────────────────────────────────────────────
   test("guessing a password runs out of guesses", async () => {
+    const attacker = nextIp();
     const user = await register(nextEmail(), "password123");
-    const guess = () => api.request("/api/auth/login", json({ email: user.email, password: "nope" }));
+    const guess = () => api.request("/api/auth/login", fromIp(json({ email: user.email, password: "nope" }), attacker));
 
     let last = await guess();
     for (let i = 0; i < 8 && last.status === 401; i++) last = await guess();
     expect(last.status).toBe(429);
     expect(Number(last.headers.get("retry-after"))).toBeGreaterThan(0);
 
-    // …and it's the credential that's locked out, not the whole endpoint.
-    const other = await seedUser(nextEmail(), "password123");
-    expect((await api.request("/api/auth/login", json({ email: other.email, password: "password123" }))).status).toBe(200);
+    // …and it's the credential that's locked out, not the whole endpoint: another account
+    // logs in fine *from the same address*, which is the half that per-address limiting
+    // could otherwise break.
+    const other = await seedUser(nextEmail(), "password123", attacker);
+    expect(other.cookie).toBeTruthy();
   });
 
   test("health fails loudly when the database is unreachable", async () => {
@@ -380,6 +397,176 @@ describe.skipIf(!usable)("api", () => {
       new Set([id, "c".repeat(64)])
     );
     expect(collectBlobIds(null).size).toBe(0);
+  });
+
+  // ── public reads (the guest surface) ───────────────────────────────────────
+  //
+  // The whole security argument for guest mode is that an unauthenticated caller can reach
+  // exactly three GETs and nothing else. These are the tests that make that a fact.
+
+  /** A saved project, optionally published. Returns the row the API handed back. */
+  async function project(user: Session, name: string, publish: boolean, extra: Record<string, unknown> = {}) {
+    const row = await (await api.request("/api/projects", send("POST", { name, doc: doc(extra) }, user.cookie))).json();
+    if (publish) await api.request(`/api/projects/${row.id}`, send("PUT", { isPublic: true }, user.cookie));
+    return row;
+  }
+
+  test("the public list shows published designs and hides everything else", async () => {
+    const user = await register();
+    await project(user, "Published", true);
+    await project(user, "Private", false);
+
+    const rows = await (await api.request("/api/public/projects")).json();
+    expect(rows.map((r: any) => r.name)).toEqual(["Published"]);
+    // Nothing in a public row may identify who owns it.
+    expect(Object.keys(rows[0])).not.toContain("user_id");
+    expect(Object.keys(rows[0])).not.toContain("userId");
+  });
+
+  test("a private project is a 404 to a logged-out caller, published or not by id", async () => {
+    const user = await register();
+    const open = await project(user, "Published", true);
+    const shut = await project(user, "Private", false);
+
+    expect((await api.request(`/api/public/projects/${open.id}`)).status).toBe(200);
+    // Same answer as an id that doesn't exist — the route never confirms a private one does.
+    expect((await api.request(`/api/public/projects/${shut.id}`)).status).toBe(404);
+    expect((await api.request(`/api/public/projects/${crypto.randomUUID()}`)).status).toBe(404);
+  });
+
+  test("publishing is presence-gated, so a rename can't quietly change it", async () => {
+    const user = await register();
+    const p = await project(user, "One", true);
+
+    await api.request(`/api/projects/${p.id}`, send("PUT", { name: "Renamed" }, user.cookie));
+    expect((await api.request(`/api/public/projects/${p.id}`)).status).toBe(200);
+
+    // And false actually means false — `coalesce` couldn't express this, which is why the
+    // column is only touched when the key is present.
+    const down = await api.request(`/api/projects/${p.id}`, send("PUT", { isPublic: false }, user.cookie));
+    expect((await down.json()).isPublic).toBe(false);
+    expect((await api.request(`/api/public/projects/${p.id}`)).status).toBe(404);
+  });
+
+  test("a new project is private, whoever made it", async () => {
+    const user = await register();
+    // Even when the caller asks for it: POST doesn't read the key at all.
+    const row = await (
+      await api.request("/api/projects", send("POST", { name: "Sneaky", doc: doc(), isPublic: true }, user.cookie))
+    ).json();
+    expect(row.isPublic).toBe(false);
+    expect((await api.request(`/api/public/projects/${row.id}`)).status).toBe(404);
+  });
+
+  test("publishing someone else's project is a 404, and leaves it private", async () => {
+    const owner = await register();
+    const other = await seedUser();
+    const p = await project(owner, "Mine", false);
+
+    expect((await api.request(`/api/projects/${p.id}`, send("PUT", { isPublic: true }, other.cookie))).status).toBe(404);
+    const mine = await (await api.request(`/api/projects/${p.id}`, auth(owner.cookie))).json();
+    expect(mine.isPublic).toBe(false);
+  });
+
+  /** Records ownership of some bytes under a fixed, readable id — real uploads are addressed
+   *  by their own hash, which makes for unreadable assertions. */
+  async function seedBlob(user: Session, id: string, contentType = "image/png") {
+    await sql`INSERT INTO blobs (id, user_id, content_type, size) VALUES (${id}, ${user.id}, ${contentType}, 3)`;
+    objects.set(id, new Uint8Array([1, 2, 3]));
+  }
+
+  test("public blobs are scoped to the design that publishes them", async () => {
+    const user = await register();
+    const referenced = "a".repeat(64);
+    const elsewhere = "b".repeat(64);
+    await seedBlob(user, referenced);
+    await seedBlob(user, elsewhere);
+    const open = await project(user, "Published", true, {
+      background: { mode: "image", from: "#000000", to: "#000000", image: `blob:${referenced}`, overlay: 0 },
+    });
+    const shut = await project(user, "Private", false);
+
+    const hit = await api.request(`/api/public/projects/${open.id}/blobs/${referenced}`);
+    expect(hit.status).toBe(200);
+    expect(hit.headers.get("content-type")).toBe("image/png");
+    expect(hit.headers.get("cache-control")).toContain("immutable");
+
+    // A blob the public document doesn't mention — the bytes exist and are the same owner's.
+    expect((await api.request(`/api/public/projects/${open.id}/blobs/${elsewhere}`)).status).toBe(404);
+    // The same blob, asked for through a project that isn't published.
+    expect((await api.request(`/api/public/projects/${shut.id}/blobs/${referenced}`)).status).toBe(404);
+    // Anything that isn't a blob id, including a LIKE wildcard, is rejected before the query.
+    expect((await api.request(`/api/public/projects/${open.id}/blobs/${"%".repeat(64)}`)).status).toBe(404);
+  });
+
+  test("a published document can't lend out someone else's bytes", async () => {
+    const owner = await register();
+    const stranger = await seedUser();
+    const theirs = "c".repeat(64);
+    await seedBlob(stranger, theirs);
+    // The document names an id the publisher doesn't own. It resolves to nothing — the same
+    // rule the authenticated render path applies (see hydrate.ts).
+    const p = await project(owner, "Published", true, {
+      background: { mode: "image", from: "#000000", to: "#000000", image: `blob:${theirs}`, overlay: 0 },
+    });
+    expect((await api.request(`/api/public/projects/${p.id}/blobs/${theirs}`)).status).toBe(404);
+  });
+
+  test("a published preview is reachable, an unreferenced one is not", async () => {
+    const user = await register();
+    const preview = "d".repeat(64);
+    await seedBlob(user, preview, "image/jpeg");
+    const p = await project(user, "Published", true);
+    await api.request(`/api/projects/${p.id}`, send("PUT", { preview }, user.cookie));
+
+    // The gallery paints its thumbnails through this same route, which is what the `preview =`
+    // arm of the check is for: the id is on the row, not inside the document.
+    expect((await api.request(`/api/public/projects/${p.id}/blobs/${preview}`)).status).toBe(200);
+    expect((await api.request(`/api/public/projects/${p.id}/blobs/${"e".repeat(64)}`)).status).toBe(404);
+  });
+
+  test("no credentials means no write, anywhere", async () => {
+    const user = await register();
+    const p = await project(user, "One", true);
+    const camp = await (await api.request("/api/campaigns", send("POST", { name: "Launch" }, user.cookie))).json();
+
+    // Every mutating route on the API, called with neither a cookie nor a bearer. This is the
+    // assertion that guest mode adds no way to act like an authenticated user: the client-side
+    // flag is a courtesy, and this is the rule underneath it.
+    const writes: [string, RequestInit][] = [
+      ["/api/projects", send("POST", { name: "x", doc: doc() })],
+      [`/api/projects/${p.id}`, send("PUT", { name: "x" })],
+      [`/api/projects/${p.id}`, send("PUT", { isPublic: false })],
+      [`/api/projects/${p.id}`, { method: "DELETE" }],
+      [`/api/projects/${p.id}/versions/${crypto.randomUUID()}/restore`, { method: "POST" }],
+      ["/api/campaigns", send("POST", { name: "x" })],
+      [`/api/campaigns/${camp.id}`, send("PUT", { name: "x" })],
+      [`/api/campaigns/${camp.id}`, { method: "DELETE" }],
+      ["/api/starred", send("POST", { name: "x", kind: "text", layer: {} })],
+      ["/api/tokens", send("POST", { name: "x" })],
+      ["/api/blobs", { method: "POST", body: "bytes" }],
+    ];
+    for (const [path, init] of writes) {
+      expect(`${init.method} ${path} → ${(await api.request(path, init)).status}`).toBe(`${init.method} ${path} → 401`);
+    }
+
+    // And the reads a guest must not have either.
+    for (const path of ["/api/projects", `/api/projects/${p.id}`, "/api/campaigns", "/api/starred", "/api/tokens"]) {
+      expect((await api.request(path)).status).toBe(401);
+    }
+    // …while the published design stays readable, which is the whole point.
+    expect((await api.request(`/api/public/projects/${p.id}`)).status).toBe(200);
+  });
+
+  test("public reads run out of budget", async () => {
+    // 120 per 10 minutes per address (see index.ts). One address, one window.
+    const ip = nextIp();
+    let last = await api.request("/api/public/projects", fromIp({}, ip));
+    for (let i = 0; i < 130 && last.status === 200; i++) last = await api.request("/api/public/projects", fromIp({}, ip));
+    expect(last.status).toBe(429);
+    expect(Number(last.headers.get("retry-after"))).toBeGreaterThan(0);
+    // A different visitor is unaffected — the bucket is per address, not global.
+    expect((await api.request("/api/public/projects", fromIp({}, nextIp()))).status).toBe(200);
   });
 
   // ── contract ───────────────────────────────────────────────────────────────

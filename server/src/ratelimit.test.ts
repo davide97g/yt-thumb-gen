@@ -43,6 +43,22 @@ test("expired keys are dropped rather than kept forever", () => {
   expect(l.size()).toBe(0);
 });
 
+test("hit counts every call, not only the failures", () => {
+  const l = createLimiter(opts);
+  expect(l.hit("a", 0).ok).toBe(true);
+  expect(l.hit("a", 0).ok).toBe(true);
+  expect(l.hit("a", 0).ok).toBe(true);
+  expect(l.hit("a", 0)).toEqual({ ok: false, retryAfterMs: 1000 });
+});
+
+test("a refused hit isn't recorded, so hammering doesn't extend the lockout", () => {
+  const l = createLimiter(opts);
+  for (let i = 0; i < 3; i++) l.hit("a", 0);
+  for (let i = 0; i < 50; i++) l.hit("a", 500); // all refused
+  // The window is still measured from the three that counted, not the fifty that didn't.
+  expect(l.check("a", 1001).ok).toBe(true);
+});
+
 test("a spray of unique keys stays bounded", () => {
   const l = createLimiter({ ...opts, maxKeys: 10 });
   for (let i = 0; i < 500; i++) l.fail(`key-${i}`, 0); // all within the window, none expired

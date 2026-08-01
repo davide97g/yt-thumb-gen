@@ -156,6 +156,19 @@ export const MIGRATIONS: Migration[] = [
       await sql`CREATE INDEX IF NOT EXISTS project_versions_project_idx ON project_versions(project_id, created_at DESC)`;
     },
   },
+  {
+    id: 4,
+    name: "public projects",
+    // A design a logged-out visitor is allowed to read. `DEFAULT false` is the load-bearing
+    // part: every project that already exists stays private the moment this applies, and
+    // publishing stays a separate, deliberate act rather than a side effect of a save.
+    up: async (sql) => {
+      await sql`ALTER TABLE projects ADD COLUMN IF NOT EXISTS is_public boolean NOT NULL DEFAULT false`;
+      // Partial: the public gallery only ever asks for the true rows, and on a personal
+      // archive those are the minority.
+      await sql`CREATE INDEX IF NOT EXISTS projects_public_idx ON projects(is_public) WHERE is_public`;
+    },
+  },
 ];
 
 /** Guards the one mistake this design can't survive: two migrations sharing an id, where

@@ -10,7 +10,7 @@ import { initSchema, sql } from "./db";
 import { hydrateDocForRender } from "./hydrate";
 import { startMaintenance } from "./maintenance";
 import { getBlob, putBlob } from "./r2";
-import { createLimiter } from "./ratelimit";
+import { createLimiter, type Limiter } from "./ratelimit";
 import { MODE, docWarnings, schema as docSchema, validateDoc, validateLayer } from "./validate";
 
 const APP_URL = process.env.APP_URL ?? "http://localhost";
@@ -94,17 +94,49 @@ async function signupOpen(): Promise<boolean> {
 
 const emailOk = (e: unknown): e is string => typeof e === "string" && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e);
 
+/** Blob ids are the sha-256 of their bytes, so they have exactly one shape. Checking it up
+ *  front rejects junk before it reaches a query, and — on the public blob route — guarantees
+ *  the value carries no `LIKE` wildcard. */
+const isBlobId = (v: unknown): v is string => typeof v === "string" && /^[0-9a-f]{64}$/.test(v);
+
 // Password checking is deliberately expensive, which is a gift to whoever is guessing unless
 // something counts the guesses. Two windows: one per (address, account) so a targeted attack
 // stalls, and a looser one per address so walking a list of emails stalls too.
 const perAccount = createLimiter({ limit: 8, windowMs: 10 * 60_000 });
 const perAddress = createLimiter({ limit: 40, windowMs: 10 * 60_000 });
 
+// The rest of the auth surface is reachable without credentials too, and a public landing page
+// is an invitation to poke at it. Register is gated by `signupOpen()` so it can't create an
+// account, but every call still costs a count(*) — and, while signup is open, one deliberately
+// expensive password hash. Logout issues a DELETE per call. Neither is a guessing oracle, so
+// these are generous: they bound the cost, they don't defend a secret.
+const perAddressRegister = createLimiter({ limit: 10, windowMs: 10 * 60_000 });
+const perAddressLogout = createLimiter({ limit: 30, windowMs: 10 * 60_000 });
+
+// Public reads. Every request counts here (`hit`, not `check`/`fail`) because there is no
+// success/failure distinction to exploit — the request itself is the cost. Two buckets: one
+// design pulls a handful of images, so bounding both with one number would either starve a
+// legitimate gallery visit or leave the expensive path wide open.
+const perAddressPublic = createLimiter({ limit: 120, windowMs: 10 * 60_000 });
+const perAddressPublicBlob = createLimiter({ limit: 400, windowMs: 10 * 60_000 });
+
 /** Caller's address as nginx reports it (see nginx.conf, which sets both headers). Falls back
  *  to a constant, so a direct-to-Bun deployment degrades to a single global bucket rather
  *  than to no limit at all. */
 function clientIp(c: any): string {
   return c.req.header("x-real-ip") || c.req.header("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+}
+
+/** Charges one request to the caller's address. Returns the 429 to send, or null to carry on.
+ *  Login doesn't use this — it counts only failures, and has to check before it pays for the
+ *  password comparison, which is a different shape. */
+function throttle(c: any, limiter: Limiter): Response | null {
+  const verdict = limiter.hit(clientIp(c));
+  if (verdict.ok) return null;
+  return Response.json(
+    { error: "Too many requests. Try again shortly." },
+    { status: 429, headers: { "retry-after": String(Math.ceil(verdict.retryAfterMs / 1000)) } }
+  );
 }
 
 // Runs the document contract. In `warn` mode a bad doc is logged and still stored, so the
@@ -127,6 +159,8 @@ app.get("/api/auth/me", async (c) => {
 });
 
 app.post("/api/auth/register", async (c) => {
+  const limited = throttle(c, perAddressRegister);
+  if (limited) return limited;
   if (!(await signupOpen())) return c.json({ error: "Signups are closed" }, 403);
   const { email, password } = await c.req.json().catch(() => ({}));
   if (!emailOk(email)) return c.json({ error: "Invalid email" }, 400);
@@ -170,10 +204,77 @@ app.post("/api/auth/login", async (c) => {
 });
 
 app.post("/api/auth/logout", async (c) => {
+  const limited = throttle(c, perAddressLogout);
+  if (limited) return limited;
   const token = getCookie(c, COOKIE);
   if (token) await sql`DELETE FROM sessions WHERE token = ${token}`;
   deleteCookie(c, COOKIE, { path: "/" });
   return c.json({ ok: true });
+});
+
+// ── public reads (no credentials, by design) ────────────────────────────────
+//
+// The front door for a visitor with no account: the designs the owner has explicitly marked
+// public, and nothing else. Three GETs, no body accepted anywhere, no write of any kind — so
+// "a guest cannot act like an authenticated user" isn't a check somewhere, it's the absence
+// of a code path.
+//
+// They live under their own `/api/public` prefix rather than as unguarded handlers inside
+// `/api/projects`. Hono dispatches in registration order, so a public handler placed above
+// the `app.use(…, requireUser)` block would bypass the guard *by position* — an invariant
+// that survives exactly until someone moves a line. A separate prefix says "no guard here"
+// out loud, and can't be undone by reordering.
+
+app.get("/api/public/projects", async (c) => {
+  const limited = throttle(c, perAddressPublic);
+  if (limited) return limited;
+  // Note what isn't selected: user_id, campaign_id, and every row where is_public is false.
+  // The campaign *name* is exposed, for grouping — owner-chosen text, but exposed.
+  const rows = await sql`
+    SELECT p.id, p.name, p.preview, p.doc->>'format' AS format, c.name AS "campaignName",
+      (extract(epoch from p.updated_at) * 1000)::float8 AS "updatedAt"
+    FROM projects p LEFT JOIN campaigns c ON c.id = p.campaign_id
+    WHERE p.is_public ORDER BY p.updated_at DESC`;
+  return c.json(rows);
+});
+
+app.get("/api/public/projects/:id", async (c) => {
+  const limited = throttle(c, perAddressPublic);
+  if (limited) return limited;
+  const rows = await sql`
+    SELECT id, name, doc, (extract(epoch from updated_at) * 1000)::float8 AS "updatedAt"
+    FROM projects WHERE id = ${c.req.param("id")} AND is_public`;
+  // Absent and private answer identically, so the route never confirms that a private id exists.
+  if (!rows[0]) return c.json({ error: "not found" }, 404);
+  return c.json(rows[0]);
+});
+
+// Image bytes, scoped to the project that publishes them — which is why the route is nested
+// rather than a flat /api/public/blobs/:id. Blobs are content-addressed and shared between
+// users, so a flat route would have to prove "some public project references this id", i.e.
+// scan every public document on every image request. Nesting turns that into a primary-key
+// lookup plus a containment test on one row.
+app.get("/api/public/projects/:pid/blobs/:bid", async (c) => {
+  const limited = throttle(c, perAddressPublicBlob);
+  if (limited) return limited;
+  const bid = c.req.param("bid");
+  if (!isBlobId(bid)) return c.json({ error: "not found" }, 404);
+  const [row] = await sql<{ ok: boolean; content_type: string | null }[]>`
+    SELECT (p.preview = ${bid} OR p.doc::text LIKE ${"%" + bid + "%"}) AS ok, b.content_type
+    FROM projects p LEFT JOIN blobs b ON b.id = ${bid} AND b.user_id = p.user_id
+    WHERE p.id = ${c.req.param("pid")} AND p.is_public`;
+  // Two conditions, both required. `ok` says the public document actually references these
+  // bytes (the `preview =` arm is what lets the gallery paint its thumbnails through this
+  // same route); `content_type` comes from the ownership row and being null means the
+  // publisher doesn't own the blob — a document naming someone else's id resolves to nothing,
+  // the same rule hydrate.ts applies for the authenticated render path.
+  if (!row?.ok || !row.content_type) return c.json({ error: "not found" }, 404);
+  const bytes = await getBlob(bid);
+  if (!bytes) return c.json({ error: "not found" }, 404);
+  return new Response(bytes, {
+    // Content-addressed bytes never change, so repeat views cost the browser cache, not R2.
+    headers: { "content-type": row.content_type, "cache-control": "public, max-age=31536000, immutable" },
+  });
 });
 
 // ── auth guard for everything below ─────────────────────────────────────────
@@ -213,7 +314,7 @@ async function requireCookieUser(c: any, next: () => Promise<void>) {
 app.get("/api/projects", async (c) => {
   const user = c.get("user") as User;
   const rows = await sql`
-    SELECT id, name, campaign_id AS "campaignId", doc->>'format' AS format, preview,
+    SELECT id, name, campaign_id AS "campaignId", doc->>'format' AS format, preview, is_public AS "isPublic",
       (extract(epoch from updated_at) * 1000)::float8 AS "updatedAt"
     FROM projects WHERE user_id = ${user.id} ORDER BY updated_at DESC`;
   return c.json(rows);
@@ -222,7 +323,8 @@ app.get("/api/projects", async (c) => {
 app.get("/api/projects/:id", async (c) => {
   const user = c.get("user") as User;
   const rows = await sql`
-    SELECT id, name, doc, campaign_id AS "campaignId", (extract(epoch from updated_at) * 1000)::float8 AS "updatedAt"
+    SELECT id, name, doc, campaign_id AS "campaignId", is_public AS "isPublic",
+      (extract(epoch from updated_at) * 1000)::float8 AS "updatedAt"
     FROM projects WHERE id = ${c.req.param("id")} AND user_id = ${user.id}`;
   if (!rows[0]) return c.json({ error: "not found" }, 404);
   return c.json(rows[0]);
@@ -230,8 +332,7 @@ app.get("/api/projects/:id", async (c) => {
 
 /** A preview is a blob id, i.e. the sha-256 of the stored bytes. Anything else is dropped
  *  rather than rejected: a bad preview must never cost the user their save. */
-const previewOr = (value: unknown, fallback: string | null): string | null =>
-  typeof value === "string" && /^[0-9a-f]{64}$/.test(value) ? value : fallback;
+const previewOr = (value: unknown, fallback: string | null): string | null => (isBlobId(value) ? value : fallback);
 
 /** Resolves a caller-supplied campaign id to something safe to store. Returns `false` when
  *  the campaign isn't the caller's, so a project can never be filed into someone else's. */
@@ -273,6 +374,9 @@ async function snapshot(userId: string, projectId: string, incoming: unknown): P
   }
 }
 
+// Note what this does *not* read: `isPublic`. A new project is always private — publishing is
+// a separate act (PUT), never a side effect of a save, which is what keeps every project an
+// agent creates out of the public gallery by default.
 app.post("/api/projects", async (c) => {
   const user = c.get("user") as User;
   const { name, doc, campaignId, preview } = await c.req.json().catch(() => ({}));
@@ -284,7 +388,8 @@ app.post("/api/projects", async (c) => {
   const [row] = await sql`
     INSERT INTO projects (user_id, name, doc, campaign_id, preview)
     VALUES (${user.id}, ${name}, ${sql.json(doc)}, ${campaign}, ${previewOr(preview, null)})
-    RETURNING id, name, campaign_id AS "campaignId", preview, (extract(epoch from updated_at) * 1000)::float8 AS "updatedAt"`;
+    RETURNING id, name, campaign_id AS "campaignId", preview, is_public AS "isPublic",
+      (extract(epoch from updated_at) * 1000)::float8 AS "updatedAt"`;
   return c.json({ ...row, warnings: docWarnings(doc) });
 });
 
@@ -306,6 +411,11 @@ app.put("/api/projects/:id", async (c) => {
   const hasCampaign = "campaignId" in body;
   const campaign = hasCampaign ? await resolveCampaign(user.id, body.campaignId) : null;
   if (campaign === false) return c.json({ error: "Campaign not found" }, 404);
+  // Same presence gate for the publish flag, and for the same reason: `coalesce` can't set a
+  // column to false, so unpublishing would be impossible if this were a value check. It also
+  // means an ordinary save or a rename — neither of which sends the key — can never quietly
+  // publish a design or take a published one down.
+  const hasPublic = "isPublic" in body;
   // No tri-state for the preview: a request that omits it (a rename, or a save made with no
   // canvas mounted) keeps the last one, which is closer to the truth than blanking the row.
   const [row] = await sql`
@@ -314,9 +424,11 @@ app.put("/api/projects/:id", async (c) => {
       doc = coalesce(${doc === undefined ? null : sql.json(doc)}, doc),
       preview = coalesce(${previewOr(body.preview, null)}, preview),
       campaign_id = ${hasCampaign ? campaign : sql`campaign_id`},
+      is_public = ${hasPublic ? body.isPublic === true : sql`is_public`},
       updated_at = now()
     WHERE id = ${c.req.param("id")} AND user_id = ${user.id}
-    RETURNING id, name, campaign_id AS "campaignId", preview, (extract(epoch from updated_at) * 1000)::float8 AS "updatedAt"`;
+    RETURNING id, name, campaign_id AS "campaignId", preview, is_public AS "isPublic",
+      (extract(epoch from updated_at) * 1000)::float8 AS "updatedAt"`;
   if (!row) return c.json({ error: "not found" }, 404);
   return c.json(row);
 });

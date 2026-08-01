@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, FilePlus, History, Link2, Pencil } from "lucide-react";
+import { Check, Eye, FilePlus, History, Link2, Pencil } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { cn } from "@/lib/utils";
@@ -14,6 +14,9 @@ type Props = {
   archived: boolean;
   /** archive id of the open project, or null before the first save — the shareable link */
   projectId: string | null;
+  /** false for a guest: everything that persists is dropped, leaving the name and the
+   *  read-only note. Renaming stays available because it's local until a save. */
+  canWrite: boolean;
   onRename: (name: string) => void;
   onSave: () => void;
   onNew: () => void;
@@ -30,7 +33,7 @@ function time(ms: number): string | null {
 
 /** The live project's identity card — name, save state, and the primary
  *  "new project" action. The one place in the chrome that names the work. */
-export function ProjectHeader({ name, dirty, savedAt, archived, projectId, onRename, onSave, onNew, onHistory }: Props) {
+export function ProjectHeader({ name, dirty, savedAt, archived, projectId, canWrite, onRename, onSave, onNew, onHistory }: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(name);
   const [copied, setCopied] = useState(false);
@@ -89,7 +92,7 @@ export function ProjectHeader({ name, dirty, savedAt, archived, projectId, onRen
           </span>
           {!editing && (
             <span className="flex items-center gap-2">
-              {projectId && (
+              {projectId && canWrite && (
                 <button
                   type="button"
                   onClick={onHistory}
@@ -153,35 +156,47 @@ export function ProjectHeader({ name, dirty, savedAt, archived, projectId, onRen
           </button>
         )}
 
-        <div className="mt-2 flex items-center justify-between gap-2">
-          <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-            <span
+        {/* A save state is only meaningful against an archive. A guest has none, so saying
+            "Unsaved changes" next to a dead button would describe a problem they can't fix —
+            the note says what's actually true instead. */}
+        {canWrite ? (
+          <div className="mt-2 flex items-center justify-between gap-2">
+            <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+              <span
+                className={cn(
+                  "size-1.5 shrink-0 rounded-full",
+                  canSave ? "bg-primary" : "bg-muted-foreground/40"
+                )}
+                aria-hidden
+              />
+              <span className="truncate">{status}</span>
+            </span>
+            <button
+              type="button"
+              onClick={onSave}
+              disabled={!canSave}
               className={cn(
-                "size-1.5 shrink-0 rounded-full",
-                canSave ? "bg-primary" : "bg-muted-foreground/40"
+                "shrink-0 text-xs font-medium transition-colors",
+                canSave ? "text-primary hover:text-primary/80" : "cursor-default text-muted-foreground/40"
               )}
-              aria-hidden
-            />
-            <span className="truncate">{status}</span>
-          </span>
-          <button
-            type="button"
-            onClick={onSave}
-            disabled={!canSave}
-            className={cn(
-              "shrink-0 text-xs font-medium transition-colors",
-              canSave ? "text-primary hover:text-primary/80" : "cursor-default text-muted-foreground/40"
-            )}
-            title="Save to the archive (⌘S)"
-          >
-            Save
-          </button>
-        </div>
+              title="Save to the archive (⌘S)"
+            >
+              Save
+            </button>
+          </div>
+        ) : (
+          <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Eye className="size-3.5 shrink-0" />
+            <span className="truncate">Read-only — edits stay in this browser</span>
+          </p>
+        )}
       </div>
 
-      <Button className="w-full justify-center" onClick={onNew}>
-        <FilePlus /> New project
-      </Button>
+      {canWrite && (
+        <Button className="w-full justify-center" onClick={onNew}>
+          <FilePlus /> New project
+        </Button>
+      )}
     </div>
   );
 }

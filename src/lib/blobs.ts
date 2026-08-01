@@ -7,6 +7,24 @@ import type { ImageLayer, Layer, ThumbDoc } from "../state";
 
 const REF = "blob:"; // sentinel prefix for a stored-blob reference ("blob:<sha256>")
 
+/** Where a `blob:<id>` ref's bytes are read from. The default is the owner's authenticated
+ *  route; the public gallery passes a project-scoped one, because a logged-out visitor is
+ *  allowed the images of a published design and nothing else. */
+export type BlobUrl = (id: string) => string;
+const ownBlobUrl: BlobUrl = (id) => `/api/blobs/${id}`;
+
+// Writes are refused here rather than only at the buttons. `uploadBlob` is the one write that
+// skips the api.ts wrapper, and it runs from the preview capture *before* a save — so a guest
+// mode that disabled only `saveConfig` would still fire this. See `setReadOnly` in storage.ts,
+// which is the flag both modules share.
+let readOnly = false;
+export function setReadOnly(v: boolean) {
+  readOnly = v;
+}
+export function assertWritable(): void {
+  if (readOnly) throw new Error("Read-only session: sign in to save.");
+}
+
 const isDataUrl = (s: string | null | undefined): s is string => typeof s === "string" && s.startsWith("data:");
 const isRef = (s: string | null | undefined): s is string => typeof s === "string" && s.startsWith(REF);
 
@@ -27,6 +45,7 @@ function blobToDataUrl(blob: Blob): Promise<string> {
  *  Exported because not every stored image belongs to a doc: project preview thumbnails
  *  ride the same blob store, referenced by bare id instead of a `blob:` ref. */
 export async function uploadBlob(blob: Blob): Promise<string> {
+  assertWritable();
   const res = await fetch("/api/blobs", {
     method: "POST",
     credentials: "include",
@@ -48,10 +67,10 @@ async function uploadDataUrl(dataUrl: string, cache: Map<string, string>): Promi
   return ref;
 }
 
-async function fetchRef(ref: string, cache: Map<string, string>): Promise<string> {
+async function fetchRef(ref: string, cache: Map<string, string>, blobUrl: BlobUrl): Promise<string> {
   const hit = cache.get(ref);
   if (hit) return hit;
-  const res = await fetch(`/api/blobs/${ref.slice(REF.length)}`, { credentials: "include" });
+  const res = await fetch(blobUrl(ref.slice(REF.length)), { credentials: "include" });
   if (!res.ok) throw new Error(`Image not found (${res.status})`);
   const dataUrl = await blobToDataUrl(await res.blob());
   cache.set(ref, dataUrl);
@@ -80,10 +99,11 @@ export function dehydrateDoc(doc: ThumbDoc): Promise<ThumbDoc> {
   return mapImageFields(doc, (v) => (isDataUrl(v) ? uploadDataUrl(v, cache) : Promise.resolve(v)));
 }
 
-/** Replace every `blob:<id>` ref with its data URL, fetching bytes from the API. */
-export function hydrateDoc(doc: ThumbDoc): Promise<ThumbDoc> {
+/** Replace every `blob:<id>` ref with its data URL, fetching bytes from the API. `blobUrl`
+ *  picks which route those bytes come from — the owner's, or a public project's. */
+export function hydrateDoc(doc: ThumbDoc, blobUrl: BlobUrl = ownBlobUrl): Promise<ThumbDoc> {
   const cache = new Map<string, string>();
-  return mapImageFields(doc, (v) => (isRef(v) ? fetchRef(v, cache) : Promise.resolve(v)));
+  return mapImageFields(doc, (v) => (isRef(v) ? fetchRef(v, cache, blobUrl) : Promise.resolve(v)));
 }
 
 /** Layer-level variants — used by the starred-elements collection, which stores single
@@ -95,5 +115,5 @@ export function dehydrateLayer(layer: Layer): Promise<Layer> {
 
 export function hydrateLayer(layer: Layer): Promise<Layer> {
   const cache = new Map<string, string>();
-  return mapLayerImages(layer, (v) => (isRef(v) ? fetchRef(v, cache) : Promise.resolve(v)));
+  return mapLayerImages(layer, (v) => (isRef(v) ? fetchRef(v, cache, ownBlobUrl) : Promise.resolve(v)));
 }

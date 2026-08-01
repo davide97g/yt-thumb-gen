@@ -154,9 +154,34 @@ Undo is in-memory, 20 deep, and gone on reload, so an edit that survived a refre
 
 **The blob sweep must scan `project_versions`** (it does) — a restore that found its images collected would be worse than no history at all. Any future table holding a document has to be added there too.
 
+### Guests & the public gallery — `/api/public/*`, `projects.is_public`, `AuthGate`
+
+The site has a front door. A visitor with no credentials picks **Continue as a guest** and gets the whole editor over a read-only session: the designs the owner marked public, freedom to edit any of them, PNG/JPEG export and JSON export/import — and no way to write anything.
+
+**A guest has no server-side identity.** No session row, no cookie, no token. Guest is a client-side state, which is what keeps the security argument short: the server never has to tell a guest from a stranger with curl, because they are the same caller. The only new surface is three `GET`s, and **no mutating endpoint was added or relaxed** — an unauthenticated caller cannot act like an authenticated one because there is no code path that would let them (`app.test.ts` asserts that route by route).
+
+The three live under their own `/api/public` prefix, *not* as unguarded handlers inside `/api/projects`. Hono dispatches in registration order, so a public handler placed above the `app.use(…, requireUser)` block would bypass the guard **by position** — an invariant that survives until someone moves a line. A separate prefix says "no guard here" out loud.
+
+- `GET /api/public/projects` — the gallery. Metadata only; no `user_id`, no private rows. It does expose the **campaign name** for grouping, which is owner-chosen text but is public.
+- `GET /api/public/projects/:id` — one document. Private and absent answer identically, so the route never confirms a private id exists.
+- `GET /api/public/projects/:pid/blobs/:bid` — image bytes, **scoped to the publishing project**. Nested rather than flat because blobs are content-addressed and shared between users: a flat route would have to prove "some public project references this id", i.e. scan every public document per image. Nesting makes it a primary-key lookup plus a containment test on one row. Two conditions, both required — the document must reference the id (or carry it as `preview`, which is how gallery thumbnails paint), **and** the publisher must own the blob, or a document naming someone else's id would lend out their bytes.
+
+`projects.is_public` (migration 004) defaults to false, so everything already saved stays private and every project an agent creates does too. `POST /api/projects` deliberately doesn't read the key: publishing is only ever a `PUT`, and it's **presence-gated** like `campaignId` — `coalesce` can't set a column to false, so a value check would make unpublishing impossible, and a rename (which sends `{name}` only) can't quietly change it either.
+
+Rate limiting: public reads count **every** request (`Limiter.hit`, not the login-shaped check/fail), on two buckets — 120/10min for lists and documents, 400/10min for bytes, since one design pulls several images. `POST /api/auth/register` and `/logout` got limiters for the same reason: a public landing page is an invitation to poke at them. nginx adds a `limit_req` zone on `/api/public/` so a flood dies before it costs a Bun worker.
+
+Client side, `AuthGate` resolves one of three visitors before the editor mounts and is the only place that decides: it probes `/auth/me` first (a real session always beats a remembered guest flag), then sets **`setScope`** — which picks the IndexedDB key namespace *and* arms the read-only flag. Two things follow:
+
+- **Guest and owner autosave into different keys** (`guest:working` vs `working`) in the same `meta` store — a prefix, deliberately not a second object store, so no `VERSION` bump or `onupgradeneeded` branch is needed. A guest's canvas can never overwrite the owner's on a shared browser.
+- **Every mutating function in `storage.ts` and `uploadBlob` calls `assertWritable()`**, which throws before any `fetch`. That's what makes the UI sweep polish rather than correctness: a button missed during gating fires a local exception, not a request. `uploadBlob` matters specifically because it skips the `api.ts` wrapper and runs from the preview capture *before* a save.
+
+A guest adopts an opened design with **`projectId: null`** — that is what the save path and the URL mirror treat as ownership, so a guest holds a local copy and the editor can't pretend otherwise. The `?project=` mirror effect is therefore **skipped in guest mode**, or it would strip the very deep link they arrived on.
+
 ### Hardening & housekeeping — `server/src/ratelimit.ts`, `server/src/maintenance.ts`
 
 `POST /api/auth/login` is rate-limited on two sliding windows: per (address, account) so a targeted guess stalls at 8 tries per 10 minutes, and per address so walking a list of emails stalls at 40. **Only failures count and a success resets** — otherwise a busy legitimate user locks themselves out. The check runs *before* the password comparison, since not paying for the guess is the whole point. Counters are an in-memory `Map` (single API container; a restart forgives everyone) and the limiter is pure apart from an injectable clock, which is what makes `ratelimit.test.ts` possible without sleeping.
+
+`Limiter.hit()` is check-and-record in one step, for limits where the request itself is the cost rather than a failed guess. A refused hit is **not** recorded, so hammering a closed window doesn't push its own reopening further away. The route tests give each helper call its own `x-real-ip`, because the limiters are module state shared by the whole file and the suite would otherwise throttle itself around the tenth registration.
 
 Two sweeps run every six hours, started only under `import.meta.main` so importing the app in a test schedules nothing: expired sessions (previously deleted only on explicit logout, so they accumulated forever), and unreferenced R2 blobs (deleting a project dropped the row and left the bytes paying rent). **The blob sweep is built to under-delete**: a 24h grace period, because an image is uploaded *before* the project that references it is saved; a reference scan that matches any 64-hex run in the raw document JSON, so a field it doesn't know about still counts; and dry-run by default — `BLOB_GC=enforce` arms it, mirroring `THUMBDOC_VALIDATE`. The R2 object goes only when the last owner's row is gone, since blobs are content-addressed and shared.
 

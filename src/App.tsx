@@ -18,7 +18,8 @@ import { Input } from "./components/ui/input";
 import { defaultFileName, exportThumb } from "./lib/export";
 import { loadImageFile } from "./lib/loadImageFile";
 import { makePreview } from "./lib/preview";
-import { getProject, getWorking, loadConfig, renameConfig, saveConfig, setProject, setWorking, starLayer } from "./lib/storage";
+import { getProject, getWorking, loadConfig, loadPublicConfig, renameConfig, saveConfig, setProject, setWorking, starLayer } from "./lib/storage";
+import { useAuth } from "./components/AuthGate";
 import { GRID_W } from "./lib/safeAreas";
 import { FORMATS, canvasSize, historyReducer, initHistory, newImageLayer, primaryId, type AppState, type FontKey, type Layer, type ThumbDoc } from "./state";
 import { TEMPLATES } from "./presets";
@@ -32,6 +33,10 @@ const initial: AppState = { doc: TEMPLATES.dacoder(), selectedIds: [] };
 type RailSection = "layers" | "starred" | "saves";
 
 export default function App() {
+  // The one question the editor asks about the visitor. A guest gets the whole canvas and none
+  // of the persistence: `storage.ts` refuses remote writes outright, and everything below that
+  // would offer one is hidden rather than left to fail.
+  const { canWrite } = useAuth();
   const [hist, dispatch] = useReducer(historyReducer, initial, initHistory);
   const [hydrated, setHydrated] = useState(false);
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -112,6 +117,10 @@ export default function App() {
   // toggles safe areas behind an open modal.
   const modalRef = useRef(false);
   modalRef.current = newOpen || cmdkOpen || manageStarredOpen || settingsOpen || historyOpen || exportingCampaign !== null;
+  // The keydown handler binds once, so the shortcuts that belong to an account read this
+  // rather than closing over a stale `canWrite`.
+  const canWriteRef = useRef(canWrite);
+  canWriteRef.current = canWrite;
 
   const selRef = useRef(selectedIds);
   selRef.current = selectedIds;
@@ -124,13 +133,18 @@ export default function App() {
   //
   // `?project=<id>` overrides that and opens a specific saved project instead. This is how
   // a link handed back by the MCP server lands the agent's design in front of the user.
+  //
+  // A guest resolves the same link against the public gallery instead, and adopts the design
+  // with a **null id**: they hold a local copy, not the project. `projectId` is what the save
+  // path and the URL mirror treat as ownership, so leaving it null is what stops a guest's
+  // editor from ever pretending otherwise.
   useEffect(() => {
     const wanted = new URLSearchParams(window.location.search).get("project");
 
     const open = wanted
-      ? loadConfig(wanted).then((saved) =>
-          adoptProject(saved.doc, saved.name, saved.id, saved.updatedAt)
-        )
+      ? canWrite
+        ? loadConfig(wanted).then((saved) => adoptProject(saved.doc, saved.name, saved.id, saved.updatedAt))
+        : loadPublicConfig(wanted).then((saved) => adoptProject(saved.doc, saved.name, null, null))
       : Promise.reject(new Error("no deep link"));
 
     // Falling back on failure matters: a stale or foreign id must not strand the editor.
@@ -163,15 +177,19 @@ export default function App() {
   // shareable: paste it anywhere and the editor reopens that exact design. Gated on
   // `hydrated` so it can't wipe an incoming deep link before it has been loaded, and
   // `replaceState` so opening projects doesn't stack up Back-button entries.
+  //
+  // Skipped entirely for a guest. Their `projectId` is always null by design (see above), so
+  // this effect would strip the very `?project=` param they arrived on — and a public link has
+  // to stay shareable after it has been opened.
   useEffect(() => {
-    if (!hydrated) return;
+    if (!hydrated || !canWrite) return;
     const url = new URL(window.location.href);
     if (projectId) url.searchParams.set("project", projectId);
     else url.searchParams.delete("project");
     const next = `${url.pathname}${url.search}${url.hash}`;
     if (next !== `${window.location.pathname}${window.location.search}${window.location.hash}`)
       window.history.replaceState(null, "", next);
-  }, [projectId, hydrated]);
+  }, [projectId, hydrated, canWrite]);
 
   // ── Project actions ─────────────────────────────────────────────────────────
   // Load/import/create all funnel through `adoptProject`: clone the doc, make it
@@ -231,9 +249,10 @@ export default function App() {
     if (projectId) void renameConfig(projectId, name).then(() => setSavesKey((k) => k + 1));
   }
 
-  // Latest save closure for the ⌘S handler, refreshed each render (see key handler).
+  // Latest save closure for the ⌘S handler, refreshed each render (see key handler). A guest's
+  // ⌘S still swallows the browser's Save-page dialog, but does nothing else.
   const saveRef = useRef<() => void>(() => {});
-  saveRef.current = () => { if (dirty || !projectId) void saveProject(); };
+  saveRef.current = () => { if (canWrite && (dirty || !projectId)) void saveProject(); };
 
   // Backspace / Delete removes the selected layer, unless focus is in a text field.
   useEffect(() => {
@@ -242,7 +261,8 @@ export default function App() {
       // while a field (e.g. the project name) is focused.
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") { e.preventDefault(); saveRef.current(); return; }
       // ⌘K / Ctrl+K opens the starred-elements palette — like ⌘S, it also fires while typing.
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setCmdkOpen(true); return; }
+      // Favourites are a per-account collection, so a guest has none to open.
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); if (canWriteRef.current) setCmdkOpen(true); return; }
 
       // ⌘D deselects — the way back to the document-level controls in the right rail.
       // Swallowed even while typing, or the browser's "bookmark page" pops up over the editor.
@@ -509,6 +529,7 @@ export default function App() {
                 savedAt={savedAt}
                 archived={projectId !== null}
                 projectId={projectId}
+                canWrite={canWrite}
                 onRename={renameProject}
                 onSave={() => void saveProject()}
                 onNew={() => setNewOpen(true)}
@@ -527,24 +548,34 @@ export default function App() {
                 onToggle={() => toggleRail("layers")}
                 fill
               >
-                <LayerList layers={doc.layers} selectedIds={selectedIds} dispatch={dispatch} onStar={(l) => void starFromList(l)} />
+                <LayerList
+                  layers={doc.layers}
+                  selectedIds={selectedIds}
+                  dispatch={dispatch}
+                  onStar={canWrite ? (l) => void starFromList(l) : undefined}
+                />
               </Section>
 
-              <StarredPanel
-                dispatch={dispatch}
-                onError={setMessage}
-                refreshKey={starredKey}
-                onChanged={() => setStarredKey((k) => k + 1)}
-                onManage={() => setManageStarredOpen(true)}
-                project={{ id: projectId, name: projectName }}
-                open={rail === "starred"}
-                onToggle={() => toggleRail("starred")}
-              />
+              {/* Favourites are a per-account collection — a guest has none, and every action
+                  in the panel is a write. */}
+              {canWrite && (
+                <StarredPanel
+                  dispatch={dispatch}
+                  onError={setMessage}
+                  refreshKey={starredKey}
+                  onChanged={() => setStarredKey((k) => k + 1)}
+                  onManage={() => setManageStarredOpen(true)}
+                  project={{ id: projectId, name: projectName }}
+                  open={rail === "starred"}
+                  onToggle={() => toggleRail("starred")}
+                />
+              )}
 
               <SavesPanel
                 doc={doc}
                 projectId={projectId}
                 projectName={projectName}
+                canWrite={canWrite}
                 onLoad={adoptProject}
                 onError={setMessage}
                 refreshKey={savesKey}
@@ -664,10 +695,16 @@ export default function App() {
         )}
       </div>
 
-      <StarredCommandDialog open={cmdkOpen} onClose={() => setCmdkOpen(false)} dispatch={dispatch} onError={setMessage} />
-      <ManageStarredDialog open={manageStarredOpen} onClose={() => setManageStarredOpen(false)} onError={setMessage} onChanged={() => setStarredKey((k) => k + 1)} />
+      {/* The favourites surfaces, all per-account: the palette, its manager, and the dialogs
+          that create or restore a project. None of them has a guest-shaped version. */}
+      {canWrite && (
+        <>
+          <StarredCommandDialog open={cmdkOpen} onClose={() => setCmdkOpen(false)} dispatch={dispatch} onError={setMessage} />
+          <ManageStarredDialog open={manageStarredOpen} onClose={() => setManageStarredOpen(false)} onError={setMessage} onChanged={() => setStarredKey((k) => k + 1)} />
+        </>
+      )}
 
-      {newOpen && (
+      {newOpen && canWrite && (
         <NewProjectDialog
           doc={doc}
           projectName={projectName}
@@ -678,7 +715,7 @@ export default function App() {
         />
       )}
 
-      {historyOpen && projectId && (
+      {historyOpen && projectId && canWrite && (
         <HistoryDialog
           projectId={projectId}
           dirty={dirty}
