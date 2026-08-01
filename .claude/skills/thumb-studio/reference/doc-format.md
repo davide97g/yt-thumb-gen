@@ -114,6 +114,11 @@ Claude marks (overrides `src`, needs no upload), otherwise pass `brand: null`.
 Optional: `brightness`/`contrast`/`saturation` (%, 100 = neutral), `crop` (`{l,t,r,b}`, all four
 required), `mask` (`{points}`, required).
 
+Border options (all optional, only read when `ring` is true): `ringStyle` (`solid`|`gradient`,
+default solid), `ringColors` (exactly 4 hex stops for the gradient, default the iridescent
+purple→blue→cyan→green set), `ringAngle` (deg, default 135), `ringWidth` (px, default 10),
+`ringGlow` (blur px of the same border repeated behind the picture, default 0 = off).
+
 ### `emoji`
 Required: `glyph`, `size`.
 

@@ -732,10 +732,40 @@
         },
         "ring": {
           "type": "boolean",
-          "description": "Solid border."
+          "description": "Border around the image box."
         },
         "ringColor": {
-          "type": "string"
+          "type": "string",
+          "description": "Border colour when `ringStyle` is \"solid\"."
+        },
+        "ringStyle": {
+          "type": "string",
+          "enum": [
+            "solid",
+            "gradient"
+          ],
+          "description": "Border fill: flat `ringColor`, or a multi-stop gradient traced around the edge. Absent reads as \"solid\"."
+        },
+        "ringColors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 4,
+          "maxItems": 4,
+          "description": "Gradient stops, used when `ringStyle` is \"gradient\". Absent reads as the holo set."
+        },
+        "ringAngle": {
+          "type": "number",
+          "description": "Gradient angle in degrees (135 = top-left to bottom-right). Absent reads as 135."
+        },
+        "ringWidth": {
+          "type": "number",
+          "description": "Border thickness in px, 1280×720 space. Absent reads as 10."
+        },
+        "ringGlow": {
+          "type": "number",
+          "description": "Blur radius of a copy of the border painted behind the image, so the edge glows. 0 or absent = off."
         },
         "glow": {
           "type": "boolean",

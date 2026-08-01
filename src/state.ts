@@ -240,9 +240,22 @@ export type ImageLayer = LayerBase & {
   flip: boolean;
   /** Corner radius in px. */
   radius: number;
-  /** Solid border. */
+  /** Border around the image box. */
   ring: boolean;
+  /** Border colour when `ringStyle` is "solid". */
   ringColor: string;
+  /** Border fill: flat `ringColor`, or a multi-stop gradient traced around the edge.
+   *  Absent reads as "solid". */
+  ringStyle?: "solid" | "gradient";
+  /** Gradient stops, used when `ringStyle` is "gradient". Absent reads as the holo set. */
+  ringColors?: [string, string, string, string];
+  /** Gradient angle in degrees (135 = top-left to bottom-right). Absent reads as 135. */
+  ringAngle?: number;
+  /** Border thickness in px, 1280×720 space. Absent reads as 10. */
+  ringWidth?: number;
+  /** Blur radius of a copy of the border painted behind the image, so the edge glows.
+   *  0 or absent = off. */
+  ringGlow?: number;
   /** Glow tracing the cut-out alpha edge. */
   glow: boolean;
   /** Soft glow vs. solid sticker outline. */
@@ -466,6 +479,30 @@ export function defaultBgBorder(): BgBorder {
 /** Merge stored border with defaults so callers never need to null-check every field. */
 export function resolveBgBorder(border?: BgBorder): BgBorder {
   return { ...defaultBgBorder(), ...border };
+}
+
+/** Iridescent stops of the gradient image border — duck-ui's `--holo`, converted to sRGB hex
+ *  (the colour inputs are hex, and a picker can't round-trip an oklch string). */
+export const HOLO_STOPS: [string, string, string, string] = ["#c27dff", "#5fb6ff", "#00d9d9", "#70ec90"];
+
+export type ResolvedRing = {
+  style: "solid" | "gradient";
+  colors: [string, string, string, string];
+  angle: number;
+  width: number;
+  glow: number;
+};
+
+/** Fill every optional border field of an image layer. The extras are optional so docs written
+ *  before the gradient border still read as the plain 10px ring they were saved as. */
+export function resolveRing(layer: ImageLayer): ResolvedRing {
+  return {
+    style: layer.ringStyle ?? "solid",
+    colors: layer.ringColors ?? HOLO_STOPS,
+    angle: layer.ringAngle ?? 135,
+    width: layer.ringWidth ?? 10,
+    glow: layer.ringGlow ?? 0,
+  };
 }
 
 /** Fresh, sane defaults for an effect preset — the React Bits component defaults. */

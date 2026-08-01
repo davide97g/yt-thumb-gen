@@ -1,5 +1,5 @@
-import { Fragment, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type Dispatch, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
-import { CANVAS_H, CANVAS_W, FONTS, FONT_WEIGHT, SIZE_LIMITS, canvasSize, drawPad, layoutEmojiFx, newDrawLayer, resolveBgBorder, type Action, type DrawCap, type DrawLayer, type EmojiFxLayer, type FormatKey, type ImageLayer, type Layer, type LayerPatch, type TextLayer, type ThumbDoc } from "../state";
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type Dispatch, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
+import { CANVAS_H, CANVAS_W, FONTS, FONT_WEIGHT, SIZE_LIMITS, canvasSize, drawPad, layoutEmojiFx, newDrawLayer, resolveBgBorder, resolveRing, type Action, type DrawCap, type DrawLayer, type EmojiFxLayer, type FormatKey, type ImageLayer, type Layer, type LayerPatch, type TextLayer, type ThumbDoc } from "../state";
 import { SAFE_ZONES } from "../lib/safeAreas";
 import { smoothPath, type Pt } from "../lib/smoothPath";
 import { boxesIntersect, resolveSnap, type Box } from "../lib/layout";
@@ -1079,6 +1079,80 @@ function InlineTextEditor({
   );
 }
 
+/** True when the border needs painting by something other than the content's own CSS border:
+ *  a gradient can't be a `border-color`, and a glow has to be a blurred copy of the ring. */
+function ringNeedsOverlay(layer: ImageLayer): boolean {
+  const r = resolveRing(layer);
+  return layer.ring && (r.style === "gradient" || r.glow > 0);
+}
+
+/** The ring itself: a stroked rounded rect, sized in percentages so it needs no measurement.
+ *  The `<svg>` is inset by half the stroke, so a stroke centred on the rect path covers exactly
+ *  the band a CSS border would — which is why the content keeps its (transparent) border and
+ *  nothing shifts when the style changes.
+ *
+ *  SVG rather than the usual `background-clip: border-box` + mask trick: `html-to-image`
+ *  re-serialises computed styles into a foreignObject, and the mask does not survive that —
+ *  exports came back with the gradient flooding the whole picture. A stroke has no middle to
+ *  flood, and the app already exports SVG (the cut-out outline filter) intact. */
+function RingSvg({ layer, blur }: { layer: ImageLayer; blur?: number }) {
+  const r = resolveRing(layer);
+  const gradId = `thumb-ring-${layer.id}${blur ? "-glow" : ""}`; // the glow is a second copy — ids must not collide
+  // CSS gradient angles run clockwise from "to top"; SVG's box space has y pointing down.
+  const a = (r.angle * Math.PI) / 180;
+  const dx = Math.sin(a) / 2, dy = -Math.cos(a) / 2;
+  return (
+    <svg
+      style={{
+        position: "absolute",
+        left: r.width / 2,
+        top: r.width / 2,
+        // An `<svg>` is a replaced element: `inset` alone leaves it at its default 300×150.
+        width: `calc(100% - ${r.width}px)`,
+        height: `calc(100% - ${r.width}px)`,
+        overflow: "visible", // the stroke straddles the rect edge — don't clip its outer half
+        pointerEvents: "none",
+        ...(blur ? { filter: `blur(${blur}px)`, zIndex: -1 } : null),
+      }}
+    >
+      {r.style === "gradient" && (
+        <defs>
+          <linearGradient id={gradId} x1={0.5 - dx} y1={0.5 - dy} x2={0.5 + dx} y2={0.5 + dy}>
+            {r.colors.map((c, i) => (
+              <stop key={i} offset={i / (r.colors.length - 1)} stopColor={c} />
+            ))}
+          </linearGradient>
+        </defs>
+      )}
+      <rect
+        x={0}
+        y={0}
+        width="100%"
+        height="100%"
+        rx={Math.max(0, layer.radius - r.width / 2)}
+        fill="none"
+        stroke={r.style === "gradient" ? `url(#${gradId})` : layer.ringColor}
+        strokeWidth={r.width}
+      />
+    </svg>
+  );
+}
+
+/** Wraps image content so the border overlays have a positioned box to sit in. The wrapper
+ *  shrink-wraps the content, so a gradient border occupies exactly the space a solid one would
+ *  and nothing else moves. The glow is the same ring blurred, behind the picture. */
+function RingBox({ layer, children }: { layer: ImageLayer; children: ReactNode }) {
+  if (!ringNeedsOverlay(layer)) return <>{children}</>;
+  const r = resolveRing(layer);
+  return (
+    <div style={{ position: "relative", width: "fit-content", isolation: "isolate" }}>
+      {r.glow > 0 && <RingSvg layer={layer} blur={r.glow} />}
+      {children}
+      {r.style === "gradient" && <RingSvg layer={layer} />}
+    </div>
+  );
+}
+
 function ImageContent({ layer, cropMode }: { layer: ImageLayer; cropMode: CropMode }) {
   // Natural aspect ratio (w/h), measured on load — kept out of the doc since it's derived.
   const [aspect, setAspect] = useState<number | null>(null);
@@ -1096,29 +1170,33 @@ function ImageContent({ layer, cropMode }: { layer: ImageLayer; cropMode: CropMo
   }
 
   const Wf = BASE_IMG_W * layer.scale; // full displayed image width
-  const ring = layer.ring ? `10px solid ${layer.ringColor}` : undefined;
+  const r = resolveRing(layer);
+  // A gradient border is painted by RingBox on top; the content still reserves the space.
+  const ring = layer.ring ? `${r.width}px solid ${r.style === "gradient" ? "transparent" : layer.ringColor}` : undefined;
 
   if (!layer.src) {
     return (
-      <div
-        style={{
-          width: Wf,
-          height: Wf * 1.2,
-          background: "#666666",
-          borderRadius: layer.radius,
-          border: ring,
-          boxSizing: "border-box",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          color: "#ffffff",
-          fontFamily: "'Inter', sans-serif",
-          fontSize: 26,
-          textAlign: "center",
-        }}
-      >
-        carica foto →
-      </div>
+      <RingBox layer={layer}>
+        <div
+          style={{
+            width: Wf,
+            height: Wf * 1.2,
+            background: "#666666",
+            borderRadius: layer.radius,
+            border: ring,
+            boxSizing: "border-box",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            color: "#ffffff",
+            fontFamily: "'Inter', sans-serif",
+            fontSize: 26,
+            textAlign: "center",
+          }}
+        >
+          carica foto →
+        </div>
+      </RingBox>
     );
   }
 
@@ -1126,12 +1204,14 @@ function ImageContent({ layer, cropMode }: { layer: ImageLayer; cropMode: CropMo
   // common uncropped path; data URLs load synchronously so this lasts one frame).
   if (!aspect) {
     return (
-      <img
-        src={layer.src}
-        draggable={false}
-        onLoad={(e) => grab(e.currentTarget)}
-        style={{ display: "block", width: Wf, maxWidth: "none", height: "auto", borderRadius: layer.radius, transform: flip, border: ring, boxSizing: "border-box", filter: imageFilter(layer) }}
-      />
+      <RingBox layer={layer}>
+        <img
+          src={layer.src}
+          draggable={false}
+          onLoad={(e) => grab(e.currentTarget)}
+          style={{ display: "block", width: Wf, maxWidth: "none", height: "auto", borderRadius: layer.radius, transform: flip, border: ring, boxSizing: "border-box", filter: imageFilter(layer) }}
+        />
+      </RingBox>
     );
   }
 
@@ -1151,19 +1231,23 @@ function ImageContent({ layer, cropMode }: { layer: ImageLayer; cropMode: CropMo
 
   if (!cropMode) {
     return (
-      <div style={{ ...container, overflow: "hidden" }}>
-        <img src={layer.src} draggable={false} onLoad={(e) => grab(e.currentTarget)} style={{ ...fullImg, clipPath: maskCss }} />
-      </div>
+      <RingBox layer={layer}>
+        <div style={{ ...container, overflow: "hidden" }}>
+          <img src={layer.src} draggable={false} onLoad={(e) => grab(e.currentTarget)} style={{ ...fullImg, clipPath: maskCss }} />
+        </div>
+      </RingBox>
     );
   }
 
   // Crop mode: full image shown faded (what's being cut away) with the kept region clipped bright on top.
   return (
-    <div style={{ ...container, overflow: "visible" }}>
-      <img src={layer.src} draggable={false} style={{ ...fullImg, opacity: 0.35, pointerEvents: "none" }} />
-      <div style={{ position: "absolute", left: 0, top: 0, width: keptW, height: keptH, overflow: "hidden" }}>
-        <img src={layer.src} draggable={false} onLoad={(e) => grab(e.currentTarget)} style={{ ...fullImg, clipPath: maskCss }} />
+    <RingBox layer={layer}>
+      <div style={{ ...container, overflow: "visible" }}>
+        <img src={layer.src} draggable={false} style={{ ...fullImg, opacity: 0.35, pointerEvents: "none" }} />
+        <div style={{ position: "absolute", left: 0, top: 0, width: keptW, height: keptH, overflow: "hidden" }}>
+          <img src={layer.src} draggable={false} onLoad={(e) => grab(e.currentTarget)} style={{ ...fullImg, clipPath: maskCss }} />
+        </div>
       </div>
-    </div>
+    </RingBox>
   );
 }

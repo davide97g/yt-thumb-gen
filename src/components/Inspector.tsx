@@ -12,6 +12,8 @@ import {
   defaultEffect,
   defaultBgBorder,
   defaultFx,
+  resolveRing,
+  HOLO_STOPS,
   EMOJIFX_PRESETS,
   newTextLayer,
   newImageLayer,
@@ -267,6 +269,39 @@ function restoreCrop(layer: ImageLayer, set: Setter) {
   }
 }
 
+const RING_STYLE_OPTIONS: { value: "solid" | "gradient"; label: string }[] = [
+  { value: "solid", label: "Solid" },
+  { value: "gradient", label: "Gradient" },
+];
+
+/** Border controls for an image layer. The gradient stops live behind the "Gradient" style so
+ *  the common solid border stays a two-row affair. */
+function ImageRingControls({ layer, set }: { layer: ImageLayer; set: Setter }) {
+  const r = resolveRing(layer);
+  const setStop = (i: number, v: string) => {
+    const ringColors = [...r.colors] as [string, string, string, string];
+    ringColors[i] = v;
+    set({ ringColors });
+  };
+  return (
+    <>
+      <SelectField label="Border style" value={r.style} options={RING_STYLE_OPTIONS} onChange={(ringStyle) => set({ ringStyle })} />
+      {r.style === "solid" ? (
+        <ColorRow label="Border color" value={layer.ringColor} defaultValue={newImageLayer().ringColor} onChange={(ringColor) => set({ ringColor })} />
+      ) : (
+        <>
+          {r.colors.map((c, i) => (
+            <ColorRow key={i} label={`Color ${i + 1}`} value={c} defaultValue={HOLO_STOPS[i]} onChange={(v) => setStop(i, v)} />
+          ))}
+          <SliderRow label="Angle" min={0} max={360} value={r.angle} defaultValue={135} display={`${r.angle}°`} onChange={(ringAngle) => set({ ringAngle })} />
+        </>
+      )}
+      <SliderRow label="Border width" min={1} max={60} value={r.width} defaultValue={10} onChange={(ringWidth) => set({ ringWidth })} />
+      <SliderRow label="Border glow" min={0} max={60} value={r.glow} defaultValue={0} display={r.glow ? `${r.glow}px` : "off"} onChange={(ringGlow) => set({ ringGlow })} />
+    </>
+  );
+}
+
 function ImageProps({ layer, set, onError, cropMode, setCropMode }: { layer: ImageLayer; set: Setter; onError: (msg: string) => void; cropMode: CropMode; setCropMode: (m: CropMode) => void }) {
   const [busy, setBusy] = useState(false);
   const [showCam, setShowCam] = useState(false);
@@ -353,7 +388,7 @@ function ImageProps({ layer, set, onError, cropMode, setCropMode }: { layer: Ima
         <>
           <SliderRow label="Corner radius" min={0} max={220} value={layer.radius} defaultValue={D.radius} onChange={(radius) => set({ radius })} />
           <SwitchRow label="Border" checked={layer.ring} defaultValue={D.ring} onChange={(ring) => set({ ring })} />
-          {layer.ring && <ColorRow label="Border color" value={layer.ringColor} defaultValue={D.ringColor} onChange={(ringColor) => set({ ringColor })} />}
+          {layer.ring && <ImageRingControls layer={layer} set={set} />}
         </>
       )}
       <SwitchRow label="Mirror" checked={layer.flip} defaultValue={D.flip} onChange={(flip) => set({ flip })} />
