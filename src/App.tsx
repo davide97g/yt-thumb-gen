@@ -636,7 +636,8 @@ export default function App() {
             {selectedIds.length > 0 && (
               <HudChip
                 size="sm"
-                className="h-7 gap-1.5 border-transparent bg-card/70 backdrop-blur-sm"
+                frame={false}
+                className="h-7 gap-1.5 bg-card/70 backdrop-blur-sm"
                 onClick={() => dispatch({ type: "select", ids: [] })}
                 title="Clear the selection and show the document controls (⌘D)"
               >
@@ -743,12 +744,15 @@ function StageToggle({
   on, onClick, title, label, icon,
 }: { on: boolean; onClick: () => void; title: string; label: string; icon: ReactNode }) {
   // A chip that stays lit while the lens is on — HudChip's `active`, which is the same
-  // vocabulary the dock's draw tool and the inspector's crop mode use.
+  // vocabulary the dock's draw tool and the inspector's crop mode use. `frame={false}`
+  // rather than a transparent border: a chip floating over the canvas is not a framed
+  // object, and the edge now reads from `--sticker-width`, so turning it off is a prop.
   return (
     <HudChip
       size="sm"
       active={on}
-      className="size-7 justify-center border-transparent bg-card/70 px-0 backdrop-blur-sm"
+      frame={false}
+      className="size-7 justify-center bg-card/70 px-0 backdrop-blur-sm"
       onClick={onClick}
       title={title}
       aria-label={label}

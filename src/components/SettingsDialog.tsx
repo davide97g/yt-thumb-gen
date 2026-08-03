@@ -2,13 +2,15 @@
 // connection, API tokens, and the current session. Each section is its own panel
 // component; this file is only the shell (dialog, tab strip, scrolling body).
 //
-// The tab rail used to be a column on the left, hand-rolled from `aria-current` buttons.
-// It is duck's DuckTabs now, which brings the real tabs keyboard pattern (arrows, Home,
-// End) and the sliding lime pill — and that pill measures offsetLeft/offsetWidth, so the
-// strip runs across the top rather than down the side. Three tabs fit either way.
+// The tab rail is duck's DuckTabs — the real tabs keyboard pattern (arrows, Home, End)
+// rather than the `aria-current` buttons this used to hand-roll. `orientation="vertical"`
+// gives it back the column on the left it wants at ≥640px: the list measures
+// offsetTop/offsetHeight there and marks the active section with a bar down the edge.
+// Narrower than that a rail plus a panel is too little of each, so it becomes a top strip.
 
 import { useMemo, useState } from "react";
 import { KeyRound, LogIn, LogOut, Plug, UserRound } from "lucide-react";
+import { useIsMobile } from "@/lib/useIsMobile";
 import { useAuth } from "./AuthGate";
 import { McpPanel } from "./McpPanel";
 import { TokensPanel } from "./TokensPanel";
@@ -38,6 +40,7 @@ export function SettingsDialog({ onClose }: Props) {
   // no account, so the tabs would have nothing to show and their one button would throw.
   const tabs = useMemo(() => (canWrite ? TABS : TABS.filter((t) => t.id === "session")), [canWrite]);
   const [tab, setTab] = useState<TabId>(canWrite ? "mcp" : "session");
+  const narrow = useIsMobile(640);
 
   // Escape, the focus trap and the scroll lock are Radix's now — the window keydown
   // listener this component carried did only the first of the three.
@@ -48,25 +51,42 @@ export function SettingsDialog({ onClose }: Props) {
         className="max-h-[86vh] w-[min(720px,94vw)] max-w-none gap-0 overflow-hidden p-0"
         aria-label="Settings"
       >
-        {/* One DuckTabs around both halves: the strip in the header and the scroller under
-            it share a context, which is what wires each panel to its own tab. */}
-        <DuckTabs value={tab} onValueChange={(v) => setTab(v as TabId)} className="min-h-0 flex-1 gap-0">
-          <StickerDialogHeader className="shrink-0 border-b border-border px-5 py-4">
-            <StickerDialogTitle className="sr-only">Settings</StickerDialogTitle>
-            <HudLabel size="sm" tracking="tight">Settings</HudLabel>
-            <DuckTabsList aria-label="Settings sections" className="mt-2">
-              {tabs.map(({ id, label, icon: Icon }) => (
-                <DuckTabsTrigger key={id} value={id} className="flex items-center gap-2">
-                  <Icon className="size-4 shrink-0" />
-                  {label}
-                </DuckTabsTrigger>
-              ))}
-            </DuckTabsList>
-          </StickerDialogHeader>
+        <StickerDialogHeader className="shrink-0 border-b border-border px-5 py-4">
+          <StickerDialogTitle className="sr-only">Settings</StickerDialogTitle>
+          <HudLabel size="sm" tracking="tight">Settings</HudLabel>
+        </StickerDialogHeader>
 
-          {/* One scroller under the strip. The panels are separate components, so each tab's
+        {/* One DuckTabs around both halves: the list and the scroller share a context, which
+            is what wires each panel to its own tab. */}
+        <DuckTabs
+          orientation={narrow ? "horizontal" : "vertical"}
+          value={tab}
+          onValueChange={(v) => setTab(v as TabId)}
+          className="min-h-0 flex-1 gap-0"
+        >
+          {/* `frame={false}` — the dialog is already the frame, and it works because the edge
+              reads from `--sticker-width` now rather than from a border utility a call site
+              would lose to on order. */}
+          <DuckTabsList
+            aria-label="Settings sections"
+            frame={false}
+            className={
+              narrow
+                ? "w-full justify-start gap-1 overflow-x-auto rounded-none border-b border-border px-4 py-2"
+                : "w-44 shrink-0 gap-0.5 rounded-none border-r border-border p-3"
+            }
+          >
+            {tabs.map(({ id, label, icon: Icon }) => (
+              <DuckTabsTrigger key={id} value={id} className="flex items-center gap-2">
+                <Icon className="size-4 shrink-0" />
+                {label}
+              </DuckTabsTrigger>
+            ))}
+          </DuckTabsList>
+
+          {/* One scroller beside the rail. The panels are separate components, so each tab's
               body is its own DuckTabsContent rather than a conditional inside one. */}
-          <div className="panel-scroll min-h-0 flex-1 overflow-y-auto px-5 py-5">
+          <div className="panel-scroll min-h-0 min-w-0 flex-1 overflow-y-auto px-5 py-5">
             {canWrite && (
               <>
                 <DuckTabsContent value="mcp"><McpPanel /></DuckTabsContent>

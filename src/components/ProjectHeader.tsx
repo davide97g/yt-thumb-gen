@@ -127,8 +127,8 @@ export function ProjectHeader({ name, dirty, savedAt, archived, projectId, canWr
               className="h-8"
             />
             <QuackButton
-              size="icon"
-              className="size-8 shrink-0 rounded-md"
+              size="icon-sm"
+              className="shrink-0"
               onMouseDown={(e) => e.preventDefault()}
               onClick={commit}
               aria-label="Confirm name"
@@ -201,11 +201,11 @@ function IconAction({ label, onClick, children }: { label: string; onClick: () =
     <StickerTooltip content={label} delay={400}>
       <QuackButton
         variant="ghost"
-        size="icon"
+        size="icon-xs"
         ripple={false}
         onClick={onClick}
         aria-label={label}
-        className="size-6 rounded-md text-muted-foreground/70"
+        className="size-6 text-muted-foreground/70"
       >
         {children}
       </QuackButton>

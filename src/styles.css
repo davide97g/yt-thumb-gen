@@ -135,7 +135,7 @@
   --font-mono: "Geist Mono", ui-monospace, "SF Mono", SFMono-Regular, monospace;
   --radius: 0.75rem;
   --radius-2xl: calc(var(--radius) * 1.833);
-  --font-display: "Geist", ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-sans);
   --ease-duck: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-squash: cubic-bezier(0.34, 1.56, 0.64, 1);
   --color-surface: var(--surface);
@@ -342,6 +342,7 @@
 @layer base {
   * {
     border-color: var(--border);
+    --sticker-width: initial;
   }
   html, body, #root {
     height: 100%;
@@ -373,20 +374,10 @@
     letter-spacing: var(--tracking-badge, normal);
     text-transform: var(--case-badge, none);
   }
+  [data-slot="holo-button"][data-size="xs"], [data-slot="quack-button"][data-size="xs"], [data-slot="holo-button"][data-size="icon-xs"], [data-slot="quack-button"][data-size="icon-xs"], [data-slot="holo-button"][data-size="icon-sm"], [data-slot="quack-button"][data-size="icon-sm"] {
+    font-size: var(--text-button-sm, 0.75rem);
+  }
 }
-
-/* Native color inputs as compact swatches that read inside the dark theme. */
-input[type="color"] {
-  -webkit-appearance: none;
-  appearance: none;
-  padding: 0;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: transparent;
-  cursor: pointer;
-}
-input[type="color"]::-webkit-color-swatch-wrapper { padding: 2px; }
-input[type="color"]::-webkit-color-swatch { border: none; border-radius: calc(var(--radius-sm) - 2px); }
 
 /* ── Editor shell ──────────────────────────────────────────────────────────── */
 
@@ -650,11 +641,11 @@ input[type="color"]::-webkit-color-swatch { border: none; border-radius: calc(va
 
 @layer utilities {
   .holo-border {
-    border: var(--sticker-border) solid transparent;
+    border: var(--sticker-width, var(--sticker-border)) solid transparent;
     background: linear-gradient(var(--card), var(--card)) padding-box, var(--holo) border-box;
   }
   .holo-border-animated {
-    border: var(--sticker-border) solid transparent;
+    border: var(--sticker-width, var(--sticker-border)) solid transparent;
     background: linear-gradient(var(--card), var(--card)) padding-box, var(--holo) border-box;
     background-size: 100% 100%, 300% 300%;
     animation: holo-shift 4s ease-in-out infinite;
@@ -668,7 +659,7 @@ input[type="color"]::-webkit-color-swatch { border: none; border-radius: calc(va
     animation: holo-shift 6s ease-in-out infinite;
   }
   .sticker {
-    border-width: var(--sticker-border);
+    border-width: var(--sticker-width, var(--sticker-border));
   }
   .foil {
     background-image: radial-gradient(80% 80% at calc(var(--fx) * 1%) calc(var(--fy) * 1%), oklch(1 0 0 / 0.6), oklch(1 0 0 / 0) 60%), var(--foil);
@@ -757,6 +748,9 @@ input[type="color"]::-webkit-color-swatch { border: none; border-radius: calc(va
   }
   .hud-tight {
     letter-spacing: 0.18em;
+  }
+  .sticker-none {
+    --sticker-width: 0px;
   }
 }
 

@@ -251,27 +251,38 @@ Four things about this install are load-bearing:
 - **`@duck/theme` writes into `src/styles.css`.** The `:root` / `.dark` / `@theme inline` block at the
   top of that file is generated — change it by re-running the install, not by hand. Everything below
   the "Editor shell" divider is this project's own CSS (`.stage`, `.dock`, `.panel`, the `rb-*` text
-  effects) and is tinted from tokens with `color-mix`, so it follows a theme swap. The one hand edit
-  inside the generated block is `--font-sans` / `--font-mono` / `--font-display`: the theme resets
-  them to system faces and this app ships Geist + Geist Mono. **Re-declare them after any theme
-  re-install.**
+  effects) and is tinted from tokens with `color-mix`, so it follows a theme swap. `--font-sans` /
+  `--font-mono` are this project's lines inside that block — Geist + Geist Mono, and the mono face is
+  load-bearing since every numeric readout in the chrome is tabular mono. The theme no longer claims
+  either (it used to, and silently replaced them), so a re-install now leaves them alone — **but
+  check them after one anyway**, because that is a promise from one registry version.
 - **The holo budget is one iridescent element per viewport, and it is spent on the sign-in card**
   (`AuthGate`). The editor viewport is lime-only — no `variant="holo"`, no `ring="foil"` — because the
   canvas content is the loud thing. The single lime CTA in the editor is Export.
 - **A duck component's own prop beats a class at the call site.** `.sticker` is declared in the
   theme's `@layer utilities`, which lands after Tailwind's utilities, so a `border-0` in `className`
-  loses on order. That is why `GlowInput` has `frame` and why the local `select.tsx` grew the same
-  prop. Reach for the prop, not the override.
-- **`select.tsx` is the one non-duck primitive.** duck/ui ships no select, so it is plain Radix
-  hand-styled to match `glow-input` (trigger) and `sticker-popover` (menu) — filed as a gap in
-  `docs/feature-requests/editor-app-gaps.md` in the duck-ui repo, along with the colour field, the
-  logarithmic slider track and the vertical tab rail this app also had to work around.
+  loses on order at equal specificity. The edge reads its width from `var(--sticker-width,
+  var(--sticker-border))` now, so the escape hatch is a variable and immune to source order: the
+  `frame` prop (on every component that draws the edge — the four field controls plus `StickerCard`,
+  `HudChip`, `DuckTabsList`, `StickerKbd`), or the `.sticker-none` utility, or
+  `[--sticker-width:1px]` for a hairline. **Reach for `frame={false}`, never a transparent border.**
+- **There is no local primitive left.** `select.tsx` is gone: `@duck/glow-select` is the registry's
+  own, and its trigger *imports* `glow-input`'s class strings rather than copying them, which is the
+  drift the local one couldn't avoid. `@duck/glow-color` owns the colour swatch and the Chromium
+  eyedropper, so `styles.css` no longer patches `input[type="color"]`. Every gap this app filed in
+  `docs/feature-requests/editor-app-gaps.md` (duck-ui repo) shipped in the *instrument panel* release:
+  the two controls, the sub-`sm` sizes (`xs`/`icon-xs`/`icon-sm` on `QuackButton`, `xs` on `HudChip`),
+  `DuckSlider`'s `curve="log"` and row readout, vertical `DuckTabs`, `asChild` on `HudLabel` and
+  `HoloBadge`, `shape="block"`, `wrapDisabled` on `StickerTooltip`, and copy-failure reporting.
 
 Component vocabulary in use, so a new surface picks the same thing the existing ones did: `QuackButton`
 (every button; `state="loading"` carries an in-flight request, `ripple={false}` in dense chrome),
 `HudChip` (a control that can be **on** — draw mode, crop mode, safe-area toggles — plus icon
-toolbars inside `DuckButtonGroup`), `HudLabel`/`hudLabelVariants` (every mono uppercase readout and
-section head), `GlowInput`/`GlowTextarea`/`GlowField`/`GlowFieldset`, `DuckSlider`, `DuckSwitch`,
+toolbars inside `DuckButtonGroup`), `HudLabel` (every mono uppercase readout and section head; a head
+that is also an `<h3>` uses `asChild` rather than pasting `hudLabelVariants()` onto the heading),
+`GlowInput`/`GlowTextarea`/`GlowField`/`GlowFieldset`, `GlowSelect` (every menu-style choice),
+`GlowColor` (every colour row), `DuckSlider` (`curve="log"` for a font size or an image scale;
+`valuePosition="row"` + `action` is the rail's label/readout/reset row), `DuckSwitch`,
 `StickerToggleGroup` (short mutually-exclusive sets), `StickerDialog` (**all five modals** — the
 hand-rolled portals it replaced had no focus trap or scroll lock), `StickerTooltip` + `StickerKbd`
 (labels and keycaps; `watch` presses the cap on the real keystroke), `StickerPopover`, `DuckTabs`,

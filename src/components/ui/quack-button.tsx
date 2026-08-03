@@ -44,10 +44,24 @@ const quackButtonVariants = cva(
         danger:
           "bg-destructive text-destructive-foreground hover:bg-destructive/90",
       },
+      /**
+       * Three scales of instrument, then three of button. A control rail runs on
+       * 24–28px icon buttons — a layer row 32px tall carrying five of them, a
+       * reset beside a slider readout — and the smallest button here used to be
+       * h-8, so every one of those call sites wrote `size="icon"` plus
+       * `size-6 rounded-md` and had to get the radius pair right by hand.
+       *
+       * The radius steps down with the box: `rounded-lg` on a 24px square reads
+       * as a circle with corners. For an exact 24px control take `icon-xs` and
+       * add `size-6` — the radius and the icon scale still come from here.
+       */
       size: {
+        xs: "h-7 gap-1.5 rounded-md px-2 [&_svg:not([class*='size-'])]:size-3.5",
         sm: "h-8 rounded-md px-3",
         default: "h-10 rounded-lg px-5",
         lg: "h-12 rounded-xl px-7",
+        "icon-xs": "size-7 rounded-md [&_svg:not([class*='size-'])]:size-3.5",
+        "icon-sm": "size-8 rounded-md [&_svg:not([class*='size-'])]:size-3.5",
         icon: "size-10 rounded-lg",
       },
     },

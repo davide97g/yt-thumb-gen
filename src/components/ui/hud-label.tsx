@@ -1,4 +1,5 @@
 import * as React from "react";
+import { Slot, Slottable } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
 
 import { cn } from "@/lib/utils";
@@ -86,6 +87,15 @@ export interface HudLabelProps
   dot?: boolean;
   /** Colour the dot against the text, for the failing row in a muted list. */
   dotTone?: keyof typeof dotTones;
+  /**
+   * Render the child element instead of a span. A section heading in a control
+   * rail *is* a HUD label and is also an `<h3>`; without this the choice was a
+   * span that lies about the outline or `hudLabelVariants()` pasted onto the
+   * heading — and then the two ways of getting a HUD label into a page drift.
+   * The `.hud` utility is still the answer when the label is a property of an
+   * element you are not otherwise touching.
+   */
+  asChild?: boolean;
 }
 
 function HudLabel({
@@ -95,11 +105,14 @@ function HudLabel({
   tracking = "default",
   dot = false,
   dotTone,
+  asChild = false,
   children,
   ...props
 }: HudLabelProps) {
+  const Comp = asChild ? Slot : "span";
+
   return (
-    <span
+    <Comp
       data-slot="hud-label"
       data-variant={tone}
       data-size={size}
@@ -125,8 +138,11 @@ function HudLabel({
           )}
         />
       )}
-      {children}
-    </span>
+      {/* Slot counts children with React.Children.only, so the dot and the
+          label together would throw. Slottable marks which one is the consumer's
+          element; the dot keeps its place in front of the cloned children. */}
+      {asChild ? <Slottable>{children}</Slottable> : children}
+    </Comp>
   );
 }
 

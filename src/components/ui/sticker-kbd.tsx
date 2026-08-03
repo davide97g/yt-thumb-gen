@@ -21,9 +21,24 @@ export interface StickerKbdProps extends React.ComponentProps<"kbd"> {
   watch?: string;
   /** Also require the platform's command key: Meta on Apple, Control elsewhere. */
   meta?: boolean;
+  /**
+   * Draw the die-cut edge and the lip. Off for a keycap printed inside a tooltip
+   * or a menu row, where a third border is noise. Same prop, same reason, as on
+   * GlowInput: `.sticker` lands at the end of the utilities layer, so a
+   * `border-0` at the call site loses on order. `sticker-none` is the
+   * class-level version.
+   */
+  frame?: boolean;
 }
 
-function StickerKbd({ className, children, watch, meta, ...props }: StickerKbdProps) {
+function StickerKbd({
+  className,
+  children,
+  watch,
+  meta,
+  frame = true,
+  ...props
+}: StickerKbdProps) {
   const [down, setDown] = React.useState(false);
 
   React.useEffect(() => {
@@ -52,16 +67,24 @@ function StickerKbd({ className, children, watch, meta, ...props }: StickerKbdPr
     <kbd
       data-slot="sticker-kbd"
       data-pressed={down || undefined}
+      data-frame={frame ? "sticker" : "bare"}
       className={cn(
         "inline-flex min-w-6 items-center justify-center rounded-md px-1.5 py-0.5",
         "font-mono text-[11px] leading-none font-semibold",
-        "sticker border-border bg-card text-foreground select-none",
+        "bg-card text-foreground select-none",
+        frame && "sticker border-border",
         // The lip is the cap's depth. Losing it and dropping by the same 2px is
-        // what makes the key look pressed rather than merely recoloured.
-        "shadow-[0_2px_0_var(--border)]",
-        "transition-[box-shadow,transform] duration-75 ease-[var(--ease-duck)]",
-        "active:translate-y-0.5 active:shadow-none",
-        "data-[pressed]:translate-y-0.5 data-[pressed]:border-primary data-[pressed]:shadow-none",
+        // what makes the key look pressed rather than merely recoloured. A
+        // frameless cap has no edge for a lip to belong to, so it only recolours.
+        frame && [
+          "shadow-[0_2px_0_var(--border)]",
+          "active:translate-y-0.5 active:shadow-none",
+          "data-[pressed]:translate-y-0.5 data-[pressed]:shadow-none",
+        ],
+        "transition-[box-shadow,transform,border-color,color] duration-75 ease-[var(--ease-duck)]",
+        frame
+          ? "data-[pressed]:border-primary"
+          : "data-[pressed]:text-primary",
         className
       )}
       {...props}

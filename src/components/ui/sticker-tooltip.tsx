@@ -22,6 +22,14 @@ import { cn } from "@/lib/utils";
  *
  * duck adds the die-cut edge, the arrow cut from the same vinyl, and an arrival
  * short enough not to feel like a decision — 120ms, no bounce.
+ *
+ * The one case Radix cannot handle on its own is the disabled control. A
+ * disabled <button> receives no pointer events and takes no focus, so the label
+ * vanishes exactly when it is most wanted — "why can't I press Save?" is the
+ * question a tooltip exists to answer. The fix is a focusable wrapper around the
+ * dead control, and StickerTooltip applies it itself: pass a child that is
+ * disabled or aria-disabled and the trigger becomes a `tabIndex={0}` span with
+ * the control inside it. Set `wrapDisabled={false}` to opt out.
  */
 
 const StickerTooltipProvider = TooltipPrimitive.Provider;
@@ -81,8 +89,28 @@ export interface StickerTooltipProps
   arrow?: boolean;
   /** Milliseconds of hover before it opens. */
   delay?: number;
+  /**
+   * Wrap a disabled child in a focusable span so the label still opens. On by
+   * default; turn it off when the extra element breaks a layout and the control
+   * is disabled for a reason the page already states.
+   */
+  wrapDisabled?: boolean;
   /** The control being labelled. Rendered as the trigger itself. */
   children: React.ReactNode;
+}
+
+/**
+ * A disabled control is inert to the pointer and out of the tab order, so the
+ * trigger has to be something else. `aria-disabled` counts too: that is the
+ * form a Slot-rendered anchor takes, and it is just as unhoverable in practice
+ * because the component pairs it with pointer-events-none.
+ */
+function isInert(child: React.ReactNode) {
+  if (!React.isValidElement<{ disabled?: boolean; "aria-disabled"?: unknown }>(child)) {
+    return false;
+  }
+  const { disabled, "aria-disabled": ariaDisabled } = child.props;
+  return Boolean(disabled) || ariaDisabled === true || ariaDisabled === "true";
 }
 
 /**
@@ -96,13 +124,25 @@ function StickerTooltip({
   align = "center",
   arrow = true,
   delay = 250,
+  wrapDisabled = true,
   children,
   ...props
 }: StickerTooltipProps) {
+  const trigger =
+    wrapDisabled && isInert(children) ? (
+      // inline-flex so the wrapper takes the control's own box rather than a
+      // line box, and the cursor still reads as refused over the gap.
+      <span data-slot="sticker-tooltip-shield" tabIndex={0} className="inline-flex cursor-not-allowed">
+        {children}
+      </span>
+    ) : (
+      children
+    );
+
   return (
     <StickerTooltipProvider delayDuration={delay}>
       <StickerTooltipRoot {...props}>
-        <StickerTooltipTrigger asChild>{children}</StickerTooltipTrigger>
+        <StickerTooltipTrigger asChild>{trigger}</StickerTooltipTrigger>
         <StickerTooltipContent side={side} align={align} arrow={arrow}>
           {content}
         </StickerTooltipContent>

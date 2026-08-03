@@ -5,7 +5,7 @@ import { CodeSnippet } from "./ui/code-snippet";
 import { GlowField, GlowInput } from "./ui/glow-input";
 import { HudCode } from "./ui/hud-code";
 import { QuackButton } from "./ui/quack-button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
+import { GlowSelect, GlowSelectItem } from "./ui/glow-select";
 
 type Provider = {
   id: string;
@@ -118,16 +118,13 @@ export function McpPanel() {
       </div>
 
       <GlowField label="Client">
-        <Select value={provider} onValueChange={setProvider}>
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {PROVIDERS.map((p) => (
-              <SelectItem key={p.id} value={p.id}>{p.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {/* GlowField hands the label's `id` and `aria-describedby` to its control, which is
+            why GlowSelect forwards them to the trigger rather than to the Radix root. */}
+        <GlowSelect value={provider} onValueChange={setProvider}>
+          {PROVIDERS.map((p) => (
+            <GlowSelectItem key={p.id} value={p.id}>{p.label}</GlowSelectItem>
+          ))}
+        </GlowSelect>
       </GlowField>
 
       {!fresh && (
@@ -163,7 +160,8 @@ export function McpPanel() {
             snippet you can't read in full is hard to trust before pasting it. The copy
             button is CodeSnippet's, and it never claims success on a rejected write —
             clipboard access is denied over plain HTTP and in some embedded browsers, and a
-            false "Copied" costs the user a silently empty paste. */}
+            false "Copied" costs the user a silently empty paste. `onCopyError` is how the
+            panel says so out loud, rather than the button appearing to do nothing. */}
         <CodeSnippet
           code={snippet}
           lang={active.lang}
@@ -171,6 +169,7 @@ export function McpPanel() {
           wrap
           copyable
           chrome="plain"
+          onCopyError={() => setError("Copy failed — select the snippet and copy it manually.")}
         />
         {!fresh && (
           <p className="flex items-start gap-1.5 text-[11px] text-muted-foreground">

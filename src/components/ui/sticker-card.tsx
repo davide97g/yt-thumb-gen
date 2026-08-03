@@ -15,6 +15,7 @@ import { useHoloPointer } from "@/hooks/use-holo-pointer";
  *   ticks    corner brackets that fade in on hover
  *   glass    translucent surface over whatever is behind it
  *   asChild  render as the child element, for a whole-card link
+ *   frame    off drops the edge for a card nested inside another surface
  */
 function StickerCard({
   className,
@@ -23,6 +24,7 @@ function StickerCard({
   peel = false,
   ticks = false,
   glass = false,
+  frame = true,
   asChild = false,
   children,
   ...props
@@ -32,6 +34,14 @@ function StickerCard({
   peel?: boolean;
   ticks?: boolean;
   glass?: boolean;
+  /**
+   * Draw the die-cut edge. Off for a card inside a card, or a panel whose
+   * container is already the frame — the fill, the radius and the padding stay.
+   * The same prop, for the same reason, as on GlowInput: `.sticker` is declared
+   * at the end of the utilities layer, so a `border-0` at the call site loses on
+   * order. `sticker-none` is the class-level version.
+   */
+  frame?: boolean;
   asChild?: boolean;
 }) {
   const ref = useHoloPointer<HTMLDivElement>({ tilt: 5, disabled: !tilt });
@@ -45,20 +55,26 @@ function StickerCard({
       ref={ref}
       data-slot="sticker-card"
       data-variant={holo ? "holo" : "solid"}
+      data-frame={frame ? "sticker" : "bare"}
       className={cn(
         "group/sticker relative flex flex-col gap-4 rounded-2xl p-6 text-card-foreground",
         "transition-[box-shadow,border-color] duration-300 ease-[var(--ease-duck)]",
         // The fill and the edge are one declaration on a holo card — a
         // padding-box gradient — so the translucent case has to restate it
-        // rather than layer a background colour under it.
-        holo
+        // rather than layer a background colour under it. Frameless, there is no
+        // border box to paint a gradient into, so holo has nothing to say.
+        !frame
           ? glass
-            ? "holo-border [background:linear-gradient(var(--glass),var(--glass))_padding-box,var(--holo)_border-box] hover:duck-glow"
-            : "holo-border bg-card hover:duck-glow"
-          : cn(
-              "sticker border-border hover:border-primary/50 hover:duck-glow-primary",
-              glass ? "bg-[var(--glass)]" : "bg-card"
-            ),
+            ? "bg-[var(--glass)]"
+            : "bg-card"
+          : holo
+            ? glass
+              ? "holo-border [background:linear-gradient(var(--glass),var(--glass))_padding-box,var(--holo)_border-box] hover:duck-glow"
+              : "holo-border bg-card hover:duck-glow"
+            : cn(
+                "sticker border-border hover:border-primary/50 hover:duck-glow-primary",
+                glass ? "bg-[var(--glass)]" : "bg-card"
+              ),
         glass && "backdrop-blur-[var(--glass-blur,12px)]",
         tilt && "tilt data-[holo=active]:tilt-live",
         peel && "overflow-hidden",

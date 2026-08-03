@@ -6,6 +6,12 @@ import { cn } from "@/lib/utils";
  * Everything that is the field rather than the frame: the type scale, the
  * caret, the placeholder, the selection colours and the disabled state. A
  * frameless field keeps all of it.
+ *
+ * The three lists below are exported as strings for the same reason
+ * StickerPopover exports STICKER_SURFACE: a second control that has to read as
+ * the same field — a select trigger, a colour swatch — either imports the
+ * recipe or copies it, and a copy drifts the first time this file changes. They
+ * are what GlowInput itself wears, so they cannot.
  */
 const fieldBase = [
   "w-full min-w-0 bg-transparent text-sm outline-none",
@@ -26,6 +32,10 @@ const fieldFrame = [
  * inline field still needs to read as wrong.
  */
 const fieldBare = "aria-invalid:text-destructive aria-invalid:caret-destructive";
+
+const GLOW_FIELD_BASE = fieldBase.join(" ");
+const GLOW_FIELD_FRAME = fieldFrame.join(" ");
+const GLOW_FIELD_BARE = fieldBare;
 
 /**
  * Turning the frame off is a prop rather than a class at the call site because
@@ -222,4 +232,12 @@ function GlowFieldset({
   );
 }
 
-export { GlowInput, GlowTextarea, GlowField, GlowFieldset };
+export {
+  GlowInput,
+  GlowTextarea,
+  GlowField,
+  GlowFieldset,
+  GLOW_FIELD_BASE,
+  GLOW_FIELD_FRAME,
+  GLOW_FIELD_BARE,
+};

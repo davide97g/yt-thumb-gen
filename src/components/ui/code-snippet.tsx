@@ -218,6 +218,13 @@ type CodeSnippetProps = Omit<React.ComponentProps<"div">, "children"> & {
   watermark?: string;
   /** Override the download filename. */
   fileName?: string;
+  onCopied?: (value: string) => void;
+  /**
+   * The clipboard refused — plain HTTP, an embedded browser, a denied prompt.
+   * The block already announces it in its own live region; this is for the page
+   * that wants to say more than "Copy failed".
+   */
+  onCopyError?: (error: unknown) => void;
 };
 
 function CodeSnippet({
@@ -241,6 +248,8 @@ function CodeSnippet({
   exportBackdrop = "holo",
   watermark,
   fileName,
+  onCopied,
+  onCopyError,
   className,
   ...props
 }: CodeSnippetProps) {
@@ -503,8 +512,10 @@ function CodeSnippet({
       const item = new ClipboardItem({ "image/png": toBlob() });
       await navigator.clipboard.write([item]);
       setStatus("Image copied");
-    } catch {
+    } catch (error) {
       setStatus("Copy failed");
+      // Same refusal, same channel: a page that handles one wants both.
+      onCopyError?.(error);
     } finally {
       setBusy(false);
     }
@@ -546,6 +557,14 @@ function CodeSnippet({
           value={code}
           label="Copy code"
           copiedLabel="Code copied"
+          errorLabel="Copy failed"
+          onCopied={onCopied}
+          onError={(error) => {
+            // The code is on the page and selectable, so the honest fallback is
+            // to say so rather than to leave the button looking broken.
+            setStatus("Copy failed — select the code and copy it manually");
+            onCopyError?.(error);
+          }}
           className="size-7 border-transparent bg-transparent text-[var(--cs-muted)] hover:border-transparent hover:text-[var(--cs-fg)]"
         />
       )}

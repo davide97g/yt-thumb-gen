@@ -62,6 +62,8 @@ const hudChipVariants = cva(
           "bg-primary text-primary-foreground hover:bg-primary/92 hover:duck-glow-primary",
       },
       size: {
+        /** The instrument size: a 24px chip in a 32px list row. */
+        xs: "hud-sm h-6 gap-1 px-1.5 [&_svg:not([class*='size-'])]:size-3",
         sm: "hud-sm h-7 gap-1 px-2 [&_svg:not([class*='size-'])]:size-3",
         default: "h-9 gap-1.5 px-2.5",
       },
@@ -88,6 +90,14 @@ export interface HudChipProps
    * The nav case, which is most of them.
    */
   asChild?: boolean;
+  /**
+   * Draw the die-cut edge on `variant="outline"`. Off for a chip that is a row
+   * action inside a surface that already has one. Same prop, same reason, as on
+   * GlowInput: `.sticker` lands at the end of the utilities layer, so a
+   * `border-0` at the call site loses on order. `sticker-none` is the
+   * class-level version.
+   */
+  frame?: boolean;
 }
 
 function HudChip({
@@ -96,6 +106,7 @@ function HudChip({
   size = "default",
   active = false,
   asChild = false,
+  frame = true,
   disabled,
   ...props
 }: HudChipProps) {
@@ -113,8 +124,13 @@ function HudChip({
       data-slot="hud-chip"
       data-variant={variant}
       data-size={size}
+      data-frame={frame ? "sticker" : "bare"}
       data-active={active ? "" : undefined}
-      className={cn(hudChipVariants({ variant, size, active }), className)}
+      className={cn(
+        hudChipVariants({ variant, size, active }),
+        !frame && "sticker-none",
+        className
+      )}
       {...props}
     />
   );

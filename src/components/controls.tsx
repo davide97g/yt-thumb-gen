@@ -1,21 +1,15 @@
 import type { CSSProperties, ReactNode } from "react";
-import { ChevronRight, Pipette, RotateCcw } from "lucide-react";
+import { ChevronRight, RotateCcw } from "lucide-react";
 import { DuckSlider } from "@/components/ui/duck-slider";
 import { DuckSwitch } from "@/components/ui/duck-switch";
+import { GlowColor } from "@/components/ui/glow-color";
 import { GlowFieldset } from "@/components/ui/glow-input";
-import { HudLabel, hudLabelVariants } from "@/components/ui/hud-label";
-import { QuackButton, quackButtonVariants } from "@/components/ui/quack-button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { GlowSelect, GlowSelectItem } from "@/components/ui/glow-select";
+import { HudLabel } from "@/components/ui/hud-label";
+import { QuackButton } from "@/components/ui/quack-button";
 import { StickerToggleGroup, StickerToggleGroupItem } from "@/components/ui/sticker-toggle-group";
 import { StickerTooltip } from "@/components/ui/sticker-tooltip";
 import { cn } from "@/lib/utils";
-
-// Native screen eyedropper (Chromium): its own magnified zoom-preview follows the cursor, click to pick.
-declare global {
-  interface Window {
-    EyeDropper?: new () => { open: (opts?: { signal?: AbortSignal }) => Promise<{ sRGBHex: string }> };
-  }
-}
 
 /** A file picker wearing a QuackButton (label wrapping a hidden input). `asChild`
     exists for exactly this: the control is a `<label>`, not a `<button>`, and the
@@ -108,10 +102,13 @@ export function Section({
 
 /** The rail's section heads are HUD readouts — duck's `HudLabel` is that exact
     typographic role (mono, uppercase, wide tracking), so the rail and the duck
-    components in it can't drift apart. */
+    components in it can't drift apart. A head is also an `<h3>`, which is what
+    `asChild` is for: one component, and the outline still reads correctly. */
 function SectionTitle({ title }: { title: string }) {
   return (
-    <h3 className={cn(hudLabelVariants({ size: "sm", tracking: "tight" }), "shrink-0 font-medium")}>{title}</h3>
+    <HudLabel asChild size="sm" tracking="tight">
+      <h3 className="shrink-0 font-medium">{title}</h3>
+    </HudLabel>
   );
 }
 
@@ -141,13 +138,15 @@ export function Field({ label, children }: { label: string; children: ReactNode 
 function ResetButton({ onReset }: { onReset: () => void }) {
   return (
     <StickerTooltip content="Reset to default" delay={400}>
+      {/* `icon-xs` is the instrument size: it brings `rounded-md` and a 14px icon
+          with it, so a 24px control is the variant plus a height, not a class triple. */}
       <QuackButton
         variant="ghost"
-        size="icon"
+        size="icon-xs"
         ripple={false}
         onClick={onReset}
         aria-label="Reset to default"
-        className="size-6 rounded-md text-muted-foreground"
+        className="size-6 text-muted-foreground"
       >
         <RotateCcw className="size-3" />
       </QuackButton>
@@ -166,9 +165,18 @@ export function SwitchRow({ label, checked, onChange, defaultValue }: { label: s
   );
 }
 
-/** Track resolution for `curve="log"` rows: the slider works in integer positions
- *  0…LOG_TICKS, mapped onto [min, max] geometrically. */
-const LOG_TICKS = 1000;
+/** The rail's row typography, imposed on `DuckSlider`'s own label row. The component
+ *  ships a 12px foreground label and a muted readout; a slider row has to read as the
+ *  same rank as the `Row` and `Field` labels beside it, and the readout is the one
+ *  number in the rail that must not be muted. Slot selectors rather than a fork, so a
+ *  registry update still lands. */
+const RAIL_ROW = [
+  "[&_[data-slot=duck-slider-label]]:text-[13px]",
+  "[&_[data-slot=duck-slider-label]]:font-normal",
+  "[&_[data-slot=duck-slider-label]]:text-muted-foreground",
+  "[&_[data-slot=duck-slider-value]]:text-[11px]",
+  "[&_[data-slot=duck-slider-value]]:text-foreground/85",
+].join(" ");
 
 export function SliderRow({
   label, min, max, value, onChange, step = 1, display, defaultValue, curve,
@@ -177,84 +185,42 @@ export function SliderRow({
   step?: number; display?: string; defaultValue?: number;
   // "log": each track pixel is a constant *percentage* change, so a huge max stays usable —
   // fine control around the middle, exponentially bigger/smaller steps at the extremes.
+  // The mapping is the slider's now, so `min`/`max`/`step` mean what they say and
+  // `aria-valuetext` reports the real value rather than a track position.
   curve?: "log";
 }) {
-  const log = curve === "log" && min > 0 && max > min;
-  const ratio = Math.log(max / min);
-  const quantize = (v: number) => {
-    const q = Math.round(v / step) * step;
-    return step < 1 ? Math.round(q * 1e6) / 1e6 : q;
-  };
-  const toPos = (v: number) => Math.round((Math.log(Math.min(max, Math.max(min, v)) / min) / ratio) * LOG_TICKS);
-  const fromPos = (p: number) => quantize(Math.min(max, Math.max(min, min * Math.exp((p / LOG_TICKS) * ratio))));
-  // The visible number is the mono readout in the row above, so the control keeps
-  // `showValue` off — but a screen reader still gets the real value, log rows
-  // included, which is what `formatValue` is for.
-  const spoken = display ?? String(value);
   return (
-    <div className="space-y-1.5">
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-[13px] text-muted-foreground">{label}</span>
-        <div className="flex items-center gap-1">
-          <span className="readout text-[11px] text-foreground/85">{display ?? value}</span>
-          {defaultValue !== undefined && value !== defaultValue && <ResetButton onReset={() => onChange(defaultValue)} />}
-        </div>
-      </div>
-      {log ? (
-        <DuckSlider
-          aria-label={label}
-          min={0}
-          max={LOG_TICKS}
-          step={1}
-          value={toPos(value)}
-          formatValue={() => spoken}
-          onChange={(e) => onChange(fromPos(Number(e.target.value)))}
-        />
-      ) : (
-        <DuckSlider
-          aria-label={label}
-          min={min}
-          max={max}
-          step={step}
-          value={value}
-          formatValue={() => spoken}
-          onChange={(e) => onChange(Number(e.target.value))}
-        />
-      )}
-    </div>
+    <DuckSlider
+      className={cn("gap-1.5", RAIL_ROW)}
+      label={label}
+      min={min}
+      max={max}
+      step={step}
+      curve={curve ?? "linear"}
+      value={value}
+      // The readout sits on the label row, right-aligned in tabular mono, so a
+      // dragging slider never reflows the row it lives in.
+      showValue
+      valuePosition="row"
+      formatValue={(v) => display ?? String(v)}
+      action={
+        defaultValue !== undefined && value !== defaultValue
+          ? <ResetButton onReset={() => onChange(defaultValue)} />
+          : undefined
+      }
+      onValueChange={onChange}
+    />
   );
 }
 
-async function eyedrop(onChange: (v: string) => void) {
-  if (!window.EyeDropper) return;
-  try {
-    const { sRGBHex } = await new window.EyeDropper().open();
-    onChange(sRGBHex);
-    navigator.clipboard?.writeText(sRGBHex).catch(() => {}); // best-effort copy
-  } catch {
-    // user pressed Esc — ignore
-  }
-}
-
 export function ColorRow({ label, value, onChange, defaultValue }: { label: string; value: string; onChange: (v: string) => void; defaultValue?: string }) {
-  const hasEyeDropper = typeof window !== "undefined" && "EyeDropper" in window;
   return (
     <Row label={label}>
       <div className="flex items-center gap-1.5">
         {defaultValue !== undefined && value.toLowerCase() !== defaultValue.toLowerCase() && <ResetButton onReset={() => onChange(defaultValue)} />}
-        <input type="color" aria-label={label} value={value} onChange={(e) => onChange(e.target.value)} className="h-7 w-10" />
-        {hasEyeDropper && (
-          <StickerTooltip content="Pick a colour from the screen — copies the hex" delay={400}>
-            <button
-              type="button"
-              onClick={() => eyedrop(onChange)}
-              aria-label="Eyedropper"
-              className={cn(quackButtonVariants({ variant: "ghost", size: "icon" }), "size-7 rounded-md text-muted-foreground")}
-            >
-              <Pipette className="size-3.5" />
-            </button>
-          </StickerTooltip>
-        )}
+        {/* GlowColor owns the swatch rules and the Chromium eyedropper both — a picked
+            colour has no DOM event behind it, so the value arrives on `onValueChange`. */}
+        <GlowColor size="sm" aria-label={label} value={value} onValueChange={onChange} />
       </div>
     </Row>
   );
@@ -306,18 +272,20 @@ export function SelectField<T extends string>({
 }) {
   return (
     <Field label={label}>
-      <Select value={value} onValueChange={(v) => onChange(v as T)} onOpenChange={(open) => { if (!open) onPreview?.(null); }}>
-        <SelectTrigger className="h-9">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {options.map((o) => (
-            <SelectItem key={o.value} value={o.value} style={o.style} onFocus={onPreview ? () => onPreview(o.value) : undefined}>
-              {o.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      {/* duck's own select: the trigger imports `GlowInput`'s class strings and the menu
+          imports `StickerPopover`'s surface, so the field family can't drift apart. It is
+          the same h-10 as the GlowInputs it shares a column with. */}
+      <GlowSelect
+        value={value}
+        onValueChange={(v) => onChange(v as T)}
+        onOpenChange={(open) => { if (!open) onPreview?.(null); }}
+      >
+        {options.map((o) => (
+          <GlowSelectItem key={o.value} value={o.value} style={o.style} onFocus={onPreview ? () => onPreview(o.value) : undefined}>
+            {o.label}
+          </GlowSelectItem>
+        ))}
+      </GlowSelect>
     </Field>
   );
 }

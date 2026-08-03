@@ -24,9 +24,9 @@ import { previewUrl } from "../lib/preview";
 import { Hint, Section, UploadButton } from "./controls";
 import { EmptyPond } from "./ui/empty-pond";
 import { GlowInput } from "./ui/glow-input";
-import { hudLabelVariants } from "./ui/hud-label";
+import { HudLabel } from "./ui/hud-label";
 import { QuackButton } from "./ui/quack-button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
+import { GlowSelectContent, GlowSelectItem, GlowSelectRoot, GlowSelectTrigger, GlowSelectValue } from "./ui/glow-select";
 import { StickerTooltip } from "./ui/sticker-tooltip";
 import { cn, relTime } from "@/lib/utils";
 
@@ -295,27 +295,31 @@ function ArchivePanel({ doc, projectId, projectName, onLoad, onError, refreshKey
           {c.isPublic ? <Globe /> : <Lock />}
         </RowIcon>
 
-        <Select
+        {/* A row action rather than a field, so the composed parts: `frame={false}` drops
+            the die-cut edge (through `--sticker-width`, which beats source order) and
+            `chevron={false}` leaves the icon as the whole trigger. */}
+        <GlowSelectRoot
           value={c.campaignId ?? UNGROUPED}
           onValueChange={(v) => void onMove(c.id, v === UNGROUPED ? null : v)}
         >
-          <SelectTrigger
+          <GlowSelectTrigger
             frame={false}
             chevron={false}
-            className="size-7 shrink-0 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100"
+            size="sm"
+            className="size-7 shrink-0 justify-center opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100"
             aria-label={`Move ${c.name} to a campaign`}
             title="Move to campaign"
           >
             <Layers3 className="size-4 text-muted-foreground" />
-            <SelectValue className="hidden" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={UNGROUPED}>No campaign</SelectItem>
+            <GlowSelectValue className="hidden" />
+          </GlowSelectTrigger>
+          <GlowSelectContent>
+            <GlowSelectItem value={UNGROUPED}>No campaign</GlowSelectItem>
             {campaigns.map((g) => (
-              <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>
+              <GlowSelectItem key={g.id} value={g.id}>{g.name}</GlowSelectItem>
             ))}
-          </SelectContent>
-        </Select>
+          </GlowSelectContent>
+        </GlowSelectRoot>
 
         <RowIcon
           label="Export JSON"
@@ -407,10 +411,10 @@ function ArchivePanel({ doc, projectId, projectName, onLoad, onError, refreshKey
                       aria-expanded={expanded}
                     >
                       <ChevronRight className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform", expanded && "rotate-90")} />
-                      <span className={cn(hudLabelVariants({ size: "sm", tracking: "tight" }), "min-w-0 flex-1 truncate font-medium")}>
+                      <HudLabel size="sm" tracking="tight" className="min-w-0 flex-1 truncate font-medium">
                         {g.name}
-                      </span>
-                      <span className={cn(hudLabelVariants({ size: "sm" }), "shrink-0 tabular-nums")}>{designs.length}</span>
+                      </HudLabel>
+                      <HudLabel size="sm" className="shrink-0 tabular-nums">{designs.length}</HudLabel>
                     </button>
                     <RowIcon
                       label={`Download ${g.name} as a ZIP`}
@@ -452,9 +456,9 @@ function ArchivePanel({ doc, projectId, projectName, onLoad, onError, refreshKey
           {groups.loose.length > 0 && (
             <div className="space-y-0.5">
               {campaigns.length > 0 && (
-                <div className={cn(hudLabelVariants({ size: "sm", tracking: "tight" }), "px-1.5 pt-1 font-medium")}>
-                  No campaign
-                </div>
+                <HudLabel asChild size="sm" tracking="tight">
+                  <div className="px-1.5 pt-1 font-medium">No campaign</div>
+                </HudLabel>
               )}
               {groups.loose.map((c) => <ProjectRow key={c.id} c={c} />)}
             </div>
@@ -531,9 +535,9 @@ function PublicGallery({ doc, projectName, onLoad, onError, refreshKey, open, on
           {groups.map(([campaignName, designs]) => (
             <div key={campaignName || "__loose__"} className="space-y-0.5">
               {campaignName && (
-                <div className={cn(hudLabelVariants({ size: "sm", tracking: "tight" }), "px-1.5 pt-1 font-medium")}>
-                  {campaignName}
-                </div>
+                <HudLabel asChild size="sm" tracking="tight">
+                  <div className="px-1.5 pt-1 font-medium">{campaignName}</div>
+                </HudLabel>
               )}
               {designs.map((c) => {
                 const prefixed = !!campaignName && c.name.startsWith(`${campaignName} — `);

@@ -54,7 +54,7 @@ export function ReadabilityPanel({ doc, canvasRef, dispatch }: Props) {
 
       {issues.length === 0 ? (
         // The one verdict in the rail worth a badge: a clean design is a state, not a row.
-        <HoloBadge variant="primary" shape="tag" className="w-full justify-center gap-1.5 py-1.5 text-[11.5px]">
+        <HoloBadge variant="primary" shape="block" className="gap-1.5 py-1.5 text-[11.5px]">
           <Check className="size-3.5 shrink-0" />
           Nothing flagged
         </HoloBadge>

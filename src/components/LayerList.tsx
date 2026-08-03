@@ -322,12 +322,14 @@ function RowAction({
     <StickerTooltip content={label} delay={500}>
       <QuackButton
         variant="ghost"
-        size="icon"
+        size="icon-xs"
         ripple={false}
         disabled={disabled}
         aria-label={label}
         onClick={onClick}
-        className={cn("size-6 rounded-md text-muted-foreground [&_svg]:size-3.5", className)}
+        // An exact 24px control: the variant brings `rounded-md` and the 14px icon, the
+        // height is the one thing left to say.
+        className={cn("size-6 text-muted-foreground", className)}
       >
         {children}
       </QuackButton>

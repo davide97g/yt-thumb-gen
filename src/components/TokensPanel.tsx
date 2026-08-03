@@ -100,8 +100,14 @@ export function TokensPanel() {
           <div className="flex items-center gap-2">
             <code className="readout min-w-0 flex-1 truncate rounded-md bg-background/60 px-2 py-1.5 text-xs">{fresh}</code>
             {/* duck's CopyButton: it owns the copied state and, crucially, does not claim
-                success when the clipboard write is refused. */}
-            <CopyButton value={fresh} />
+                success when the clipboard write is refused — it shows a cross and reports
+                through `onError`, which is the only way this panel can say what to do
+                instead. Clipboard access is denied over plain HTTP and in some embedded
+                browsers, and a token shown once is the worst place to leave a user guessing. */}
+            <CopyButton
+              value={fresh}
+              onError={() => setError("Copy failed — select the token and copy it manually.")}
+            />
           </div>
         </div>
       )}
