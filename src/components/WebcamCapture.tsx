@@ -1,14 +1,22 @@
 import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { Camera } from "lucide-react";
-import { Button } from "./ui/button";
+import { QuackButton } from "./ui/quack-button";
+import {
+  StickerDialog,
+  StickerDialogContent,
+  StickerDialogFooter,
+  StickerDialogHeader,
+  StickerDialogTitle,
+} from "./ui/sticker-dialog";
 
 type Props = {
   onCapture: (dataUrl: string) => void;
   onClose: () => void;
 };
 
-/** Modal that opens the webcam, shows a mirrored live preview, and grabs a still frame. */
+/** Modal that opens the webcam, shows a mirrored live preview, and grabs a still frame.
+ *  Radix underneath via StickerDialog, so the focus trap, the scroll lock and Escape
+ *  come with it — the hand-rolled portal this replaced had none of the three. */
 export function WebcamCapture({ onCapture, onClose }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -50,28 +58,36 @@ export function WebcamCapture({ onCapture, onClose }: Props) {
     onClose();
   }
 
-  return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onPointerDown={onClose}>
-      <div
-        className="flex max-h-[90vh] w-[min(560px,90vw)] flex-col gap-3 rounded-xl border border-border bg-card p-4 shadow-xl"
-        onPointerDown={(e) => e.stopPropagation()}
-      >
-        <h3 className="text-sm font-semibold">📷 Take a photo</h3>
+  return (
+    <StickerDialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <StickerDialogContent size="lg" className="max-h-[90vh] max-w-[min(560px,90vw)]">
+        <StickerDialogHeader>
+          <StickerDialogTitle>Take a photo</StickerDialogTitle>
+        </StickerDialogHeader>
         {error ? (
           <p className="text-sm text-destructive">{error}</p>
         ) : (
-          <video ref={videoRef} playsInline muted className="max-h-[70vh] w-full rounded-lg bg-black object-contain" style={{ transform: "scaleX(-1)" }} />
+          // The preview is mirrored, the way any selfie view is — the captured
+          // frame is not, because the canvas draws the raw video.
+          <video
+            ref={videoRef}
+            playsInline
+            muted
+            className="max-h-[70vh] w-full rounded-xl bg-black object-contain"
+            style={{ transform: "scaleX(-1)" }}
+          />
         )}
-        <div className="flex justify-end gap-2">
-          <Button variant="secondary" size="sm" onClick={onClose}>Cancel</Button>
+        <StickerDialogFooter>
+          <QuackButton variant="ghost" size="sm" onClick={onClose}>
+            Cancel
+          </QuackButton>
           {!error && (
-            <Button size="sm" onClick={snap}>
+            <QuackButton size="sm" onClick={snap}>
               <Camera /> Capture
-            </Button>
+            </QuackButton>
           )}
-        </div>
-      </div>
-    </div>,
-    document.body,
+        </StickerDialogFooter>
+      </StickerDialogContent>
+    </StickerDialog>
   );
 }

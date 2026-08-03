@@ -1,5 +1,4 @@
 import { useEffect, useState, type Dispatch, type ReactNode } from "react";
-import { createPortal } from "react-dom";
 import { Check, FolderInput, FolderOpen, ListFilter, Pencil, Plus, Search, Star, Trash2, X } from "lucide-react";
 import { FONTS, FONT_WEIGHT, type Action, type Layer, type LayerType, type TextLayer } from "../state";
 import {
@@ -16,9 +15,23 @@ import {
   useStarred,
 } from "../lib/storage";
 import { TYPE_ICON } from "./LayerList";
-import { Hint, Section } from "./controls";
-import { Button } from "./ui/button";
-import { Input } from "./ui/input";
+import { Section } from "./controls";
+import { DuckCommand, type DuckCommandItemData } from "./ui/duck-command";
+import { DuckTabs, DuckTabsList, DuckTabsTrigger } from "./ui/duck-tabs";
+import { EmptyPond } from "./ui/empty-pond";
+import { GlowInput } from "./ui/glow-input";
+import { GlowSearch } from "./ui/glow-search";
+import { HudLabel } from "./ui/hud-label";
+import { QuackButton } from "./ui/quack-button";
+import {
+  StickerDialog,
+  StickerDialogContent,
+  StickerDialogDescription,
+  StickerDialogFooter,
+  StickerDialogHeader,
+  StickerDialogTitle,
+} from "./ui/sticker-dialog";
+import { StickerTooltip } from "./ui/sticker-tooltip";
 import { cn, relTime } from "@/lib/utils";
 
 const KIND_LABELS: Record<LayerType, string> = {
@@ -51,6 +64,34 @@ function filterStarred(items: StarredMeta[], query: string): StarredMeta[] {
   const q = query.trim().toLowerCase();
   if (!q) return items;
   return items.filter((i) => i.name.toLowerCase().includes(q) || KIND_LABELS[i.kind].toLowerCase().includes(q));
+}
+
+/** A row's trailing action: ghost QuackButton with the ripple off (a dense list of them
+    splashing is noise) and its label in a tooltip rather than a `title`. */
+function RowIcon({
+  label, onClick, disabled, className, children,
+}: {
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <StickerTooltip content={label} delay={500}>
+      <QuackButton
+        variant="ghost"
+        size="icon"
+        ripple={false}
+        disabled={disabled}
+        aria-label={label}
+        onClick={onClick}
+        className={cn("size-7 shrink-0 rounded-md text-muted-foreground [&_svg]:size-3.5", className)}
+      >
+        {children}
+      </QuackButton>
+    </StickerTooltip>
+  );
 }
 
 type Props = {
@@ -137,56 +178,52 @@ export function StarredPanel({ dispatch, onError, refreshKey, onChanged, onManag
       action={
         <div className="flex items-center gap-0.5">
           {items.length > 0 && !searchOpen && (
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="size-6 text-muted-foreground [&_svg]:size-3.5"
-              title="Search favorites (⌘K)"
-              onClick={() => setSearchOpen(true)}
-            >
+            <RowIcon label="Search favorites (⌘K)" className="size-6" onClick={() => setSearchOpen(true)}>
               <Search />
-            </Button>
+            </RowIcon>
           )}
-          <Button variant="ghost" size="icon-sm" className="size-6 text-muted-foreground [&_svg]:size-3.5" title="Import from another project" onClick={() => setImportOpen(true)}>
+          <RowIcon label="Import from another project" className="size-6" onClick={() => setImportOpen(true)}>
             <FolderInput />
-          </Button>
-          <Button variant="ghost" size="icon-sm" className="size-6 text-muted-foreground [&_svg]:size-3.5" title="Manage favorites" onClick={onManage}>
+          </RowIcon>
+          <RowIcon label="Manage favorites" className="size-6" onClick={onManage}>
             <ListFilter />
-          </Button>
+          </RowIcon>
         </div>
       }
     >
-      {/* Search is collapsed into the header icon by default; the input appears on demand
-          and folds away when it loses focus while empty (Esc always closes it). */}
+      {/* Search is collapsed into the header icon by default; the field appears on demand
+          and folds away when it loses focus while empty (Esc always closes it). The
+          filter is local, so `debounce={0}` — GlowSearch's own clear button flushes. */}
       {searchOpen && (
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            className="h-8 pl-8"
-            value={query}
-            autoFocus
-            onChange={(e) => setQuery(e.target.value)}
-            onBlur={() => { if (!query.trim()) closeSearch(); }}
-            onKeyDown={(e) => { if (e.key === "Escape") closeSearch(); }}
-            placeholder="Search by name or type…"
-            aria-label="Search favorites"
-          />
-        </div>
+        <GlowSearch
+          className="h-8"
+          value={query}
+          autoFocus
+          debounce={0}
+          onChange={(e) => setQuery(e.target.value)}
+          onSearch={setQuery}
+          onBlur={() => { if (!query.trim()) closeSearch(); }}
+          onKeyDown={(e) => { if (e.key === "Escape") closeSearch(); }}
+          placeholder="Search by name or type…"
+          aria-label="Search favorites"
+        />
       )}
 
       {items.length === 0 ? (
-        <Hint>
-          No favorites yet. Use the <Star className="inline size-3 -translate-y-px" aria-label="star" /> on a layer to save it here and reuse it in other projects.
-        </Hint>
+        <EmptyPond
+          compact
+          title="No favorites yet"
+          hint="Star a layer to keep it here and reuse it in another project."
+        />
       ) : visible.length === 0 ? (
-        <Hint>No results for “{query.trim()}”.</Hint>
+        <EmptyPond compact title="No results" hint={`Nothing matches “${query.trim()}”.`} />
       ) : (
         <div className="space-y-0.5">
           {visible.map((m) => (
             <div key={m.id} className="group flex items-center gap-0.5 rounded-md transition-colors hover:bg-accent/40">
               {editingId === m.id ? (
                 <div className="flex min-w-0 flex-1 items-center gap-1 px-1 py-1">
-                  <Input
+                  <GlowInput
                     className="h-7 flex-1"
                     value={editName}
                     autoFocus
@@ -197,18 +234,18 @@ export function StarredPanel({ dispatch, onError, refreshKey, onChanged, onManag
                     }}
                     aria-label="New name"
                   />
-                  <Button variant="ghost" size="icon-sm" className="size-7" title="Confirm" onClick={() => void onRename(m.id)}>
+                  <RowIcon label="Confirm" onClick={() => void onRename(m.id)}>
                     <Check />
-                  </Button>
-                  <Button variant="ghost" size="icon-sm" className="size-7" title="Cancel" onClick={() => setEditingId(null)}>
+                  </RowIcon>
+                  <RowIcon label="Cancel" onClick={() => setEditingId(null)}>
                     <X />
-                  </Button>
+                  </RowIcon>
                 </div>
               ) : (
                 <>
                   <button
                     type="button"
-                    className="flex min-w-0 flex-1 items-center gap-2.5 px-2 py-1.5 text-left disabled:opacity-60"
+                    className="flex min-w-0 flex-1 items-center gap-2.5 rounded-md px-2 py-1.5 text-left disabled:opacity-60"
                     title="Insert into the project"
                     disabled={busyId === m.id}
                     onClick={() => void onInsert(m)}
@@ -220,24 +257,20 @@ export function StarredPanel({ dispatch, onError, refreshKey, onChanged, onManag
                     </span>
                     <Plus className={cn("size-4 shrink-0 text-muted-foreground opacity-100 md:opacity-0 md:group-hover:opacity-100", busyId === m.id && "animate-pulse opacity-100")} />
                   </button>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    className="size-7 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
-                    title="Rename"
+                  <RowIcon
+                    label="Rename"
+                    className="opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
                     onClick={() => { setEditingId(m.id); setEditName(m.name); }}
                   >
                     <Pencil />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    className="size-7 opacity-100 transition-opacity hover:text-destructive md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
-                    title="Delete from favorites"
+                  </RowIcon>
+                  <RowIcon
+                    label="Delete from favorites"
+                    className="opacity-100 transition-opacity hover:text-destructive md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
                     onClick={() => void onDelete(m.id)}
                   >
                     <Trash2 />
-                  </Button>
+                  </RowIcon>
                 </>
               )}
             </div>
@@ -265,125 +298,74 @@ export function StarredPanel({ dispatch, onError, refreshKey, onChanged, onManag
  * text keeps its face, colour and background pill so scanning the library is visual. */
 function FavoritePreview({ item, layer, compact = false }: { item: StarredMeta; layer?: Layer; compact?: boolean }) {
   const size = compact ? "h-9 w-11" : "h-14 w-20";
+  const frame = "grid shrink-0 overflow-hidden rounded-md ring-1 ring-border";
   if (layer?.type === "image" && layer.src) {
-    return <span className={cn("grid shrink-0 overflow-hidden rounded border border-white/10 bg-black/20", size)}><img src={layer.src} alt="" className="h-full w-full object-cover" /></span>;
+    return <span className={cn(frame, "bg-black/20", size)}><img src={layer.src} alt="" className="h-full w-full object-cover" /></span>;
   }
   if (layer?.type === "text") {
     const text = layer as TextLayer;
     return (
-      <span className={cn("grid shrink-0 overflow-hidden rounded border border-white/10 bg-black/20 px-1 text-center", size)} style={{ backgroundColor: text.bg.enabled ? text.bg.color : undefined }}>
+      <span className={cn(frame, "bg-black/20 px-1 text-center", size)} style={{ backgroundColor: text.bg.enabled ? text.bg.color : undefined }}>
         <span className="min-w-0 self-center truncate leading-none" style={{ color: text.color, fontFamily: FONTS[text.font], fontWeight: FONT_WEIGHT[text.font], fontSize: compact ? 11 : 16 }}>
           {text.text.replace(/\n/g, " ")}
         </span>
       </span>
     );
   }
-  return <span className={cn("grid shrink-0 place-items-center rounded border border-white/10 bg-secondary text-muted-foreground", size)}>{TYPE_ICON[item.kind]}</span>;
+  return <span className={cn(frame, "place-items-center bg-secondary text-muted-foreground", size)}>{TYPE_ICON[item.kind]}</span>;
 }
 
-/** Keep dialog layers out of transformed rails: CSS makes `position: fixed` relative
- * to a transformed ancestor, which was clipping the importer to the sidebar. */
-function DialogPortal({ children }: { children: ReactNode }) {
-  return typeof document === "undefined" ? null : createPortal(children, document.body);
-}
-
-/** ⌘K palette: floating search over the starred collection. Type to filter, ↑↓ to move,
- *  ↵ inserts the highlighted element into the current canvas, Esc closes. */
+/** ⌘K palette: floating search over the starred collection. duck's own command palette —
+ *  it owns the query, the ↑↓ roving, ↵ and Esc, so the only thing left here is turning
+ *  starred metadata into items. `shortcut={false}` because App binds ⌘K itself and drives
+ *  `open`; two bindings for one palette would fight. */
 export function StarredCommandDialog({
   open, onClose, dispatch, onError,
 }: { open: boolean; onClose: () => void; dispatch: Dispatch<Action>; onError: (msg: string) => void }) {
   const [items, setItems] = useState<StarredMeta[]>([]);
-  const [query, setQuery] = useState("");
-  const [active, setActive] = useState(0);
-  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     if (!open) return;
-    setQuery("");
-    setActive(0);
     listStarred().then(setItems).catch(() => onError("Couldn't read the favorites."));
   }, [open]);
 
-  if (!open) return null;
-
-  const visible = filterStarred(items, query);
-  const idx = Math.min(active, Math.max(0, visible.length - 1));
-
   async function insert(m: StarredMeta) {
-    setBusy(true);
     try {
       const { layer } = await loadStarred(m.id);
       dispatch({ type: "addLayer", layer: { ...layer, id: crypto.randomUUID() } });
       void useStarred(m.id);
       onError("");
-      onClose();
     } catch {
       onError("Couldn't insert the element.");
-    } finally {
-      setBusy(false);
     }
   }
 
-  function onKey(e: React.KeyboardEvent) {
-    if (e.key === "Escape") { e.preventDefault(); onClose(); return; }
-    if (e.key === "ArrowDown") { e.preventDefault(); setActive((a) => Math.min(a + 1, visible.length - 1)); return; }
-    if (e.key === "ArrowUp") { e.preventDefault(); setActive((a) => Math.max(a - 1, 0)); return; }
-    if (e.key === "Enter" && visible[idx] && !busy) { e.preventDefault(); void insert(visible[idx]); }
-  }
+  const entries: DuckCommandItemData[] = items.map((m) => ({
+    value: m.id,
+    label: m.name,
+    hint: subtitle(m),
+    // The palette matches on the label plus these, so typing "text" finds a text layer
+    // whose name never says so.
+    keywords: [KIND_LABELS[m.kind]],
+    icon: TYPE_ICON[m.kind],
+    onSelect: () => void insert(m),
+  }));
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-center bg-black/60 p-4 pt-[14vh]" onPointerDown={onClose}>
-      <div
-        className="anim-panel flex h-fit max-h-[60vh] w-[min(520px,92vw)] flex-col overflow-hidden rounded-xl border border-border bg-card shadow-xl"
-        onPointerDown={(e) => e.stopPropagation()}
-      >
-        <div className="relative border-b border-border">
-          <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <input
-            className="h-12 w-full bg-transparent pl-10 pr-4 text-sm outline-none placeholder:text-muted-foreground"
-            value={query}
-            autoFocus
-            onChange={(e) => { setQuery(e.target.value); setActive(0); }}
-            onKeyDown={onKey}
-            placeholder="Search favorites by name or type…"
-            aria-label="Search favorites"
-          />
-        </div>
-
-        <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
-          {items.length === 0 ? (
-            <Hint>No favorites yet. Use the star on a layer to save it here.</Hint>
-          ) : visible.length === 0 ? (
-            <p className="px-2.5 py-3 text-sm text-muted-foreground">No results for “{query.trim()}”.</p>
-          ) : (
-            visible.map((m, i) => (
-              <button
-                key={m.id}
-                type="button"
-                className={cn(
-                  "flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left transition-colors",
-                  i === idx ? "bg-accent" : "hover:bg-accent/50",
-                  busy && "opacity-60",
-                )}
-                disabled={busy}
-                onPointerMove={() => setActive(i)}
-                onClick={() => void insert(m)}
-              >
-                <span className={cn("shrink-0", i === idx ? "text-primary" : "text-muted-foreground")}>{TYPE_ICON[m.kind]}</span>
-                <span className="min-w-0 flex-1 truncate text-sm">{m.name}</span>
-                <span className="shrink-0 text-[11px] text-muted-foreground">{subtitle(m)}</span>
-              </button>
-            ))
-          )}
-        </div>
-
-        <div className="flex items-center gap-3 border-t border-border px-3.5 py-2 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-          <span>↑↓ navigate</span>
-          <span>↵ insert</span>
-          <span>esc close</span>
-        </div>
-      </div>
-    </div>
+    <DuckCommand
+      open={open}
+      onOpenChange={(next) => { if (!next) onClose(); }}
+      shortcut={false}
+      items={entries}
+      label="Favorites"
+      description="Insert a saved element into the current project."
+      placeholder="Search favorites by name or type…"
+      emptyMessage={
+        items.length === 0
+          ? "No favorites yet. Star a layer to keep it here."
+          : "Nothing matches that."
+      }
+    />
   );
 }
 
@@ -451,52 +433,64 @@ export function ManageStarredDialog({
   }
 
   return (
-    <DialogPortal>
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4" onPointerDown={onClose}>
-      <section className="anim-panel flex h-[min(620px,82vh)] w-[min(720px,94vw)] flex-col overflow-hidden rounded-xl border border-border bg-card shadow-2xl" onPointerDown={(e) => e.stopPropagation()} aria-label="Manage favorites">
-        <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-4">
-          <div>
-            <h2 className="text-base font-semibold">Manage favorites</h2>
-            <p className="mt-0.5 text-sm text-muted-foreground">Organized by last use, type and source project.</p>
-          </div>
-          <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Close"><X /></Button>
-        </div>
-        <div className="shrink-0 overflow-x-auto border-b border-border px-3 pt-2">
-          <div className="flex min-w-max gap-1" role="tablist" aria-label="Filter favorites">
-            {tabs.map(([id, label]) => (
-              <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)} className={cn("rounded-t-md px-3 py-2 text-sm transition-colors", tab === id ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-foreground")}>
-                {label}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto p-3">
-          {visible.length === 0 ? (
-            <Hint>No favorites in this collection.</Hint>
-          ) : (
-            <div className="divide-y divide-border/70">
-              {visible.map((item) => (
-                <div key={item.id} className="flex items-center gap-3 px-2 py-3">
-                  <FavoritePreview item={item} layer={previews.get(item.id)} />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium">{item.name}</span>
-                    <span className="block truncate text-xs text-muted-foreground">{KIND_LABELS[item.kind]} · {item.sourceProjectName ?? "No project"} · used {shortTime(item.lastUsedAt)}</span>
-                  </span>
-                  <Button variant="ghost" size="icon-sm" className="shrink-0 text-muted-foreground hover:text-destructive" title="Remove from favorites" aria-label={`Remove ${item.name} from favorites`} disabled={removing === item.id} onClick={() => void remove(item.id)}>
-                    <Trash2 />
-                  </Button>
-                </div>
+    <StickerDialog open onOpenChange={(next) => { if (!next) onClose(); }}>
+      <StickerDialogContent
+        size="lg"
+        className="h-[min(620px,82vh)] w-[min(720px,94vw)] max-w-none gap-0 overflow-hidden p-0"
+        aria-label="Manage favorites"
+      >
+        <StickerDialogHeader className="border-b border-border px-5 py-4">
+          <StickerDialogTitle>Manage favorites</StickerDialogTitle>
+          <StickerDialogDescription>Organized by last use, type and source project.</StickerDialogDescription>
+        </StickerDialogHeader>
+
+        {/* DuckTabs implements the tabs keyboard pattern (arrows, Home, End) — the rail
+            of filters used to be a hand-rolled `role="tablist"` with none of it. Only the
+            list is used: the panel is one scroller shared by every filter. */}
+        <DuckTabs value={tab} onValueChange={setTab} className="min-h-0 flex-1 gap-0">
+          <div className="shrink-0 overflow-x-auto border-b border-border px-3 py-2">
+            <DuckTabsList aria-label="Filter favorites" className="min-w-max">
+              {tabs.map(([id, label]) => (
+                <DuckTabsTrigger key={id} value={id}>{label}</DuckTabsTrigger>
               ))}
-            </div>
-          )}
-        </div>
-        <div className="flex justify-between border-t border-border px-5 py-3 text-xs text-muted-foreground">
-          <span>{visible.length} {visible.length === 1 ? "element" : "elements"}</span>
-          <Button variant="ghost" size="sm" onClick={onClose}>Close</Button>
-        </div>
-      </section>
-    </div>
-    </DialogPortal>
+            </DuckTabsList>
+          </div>
+
+          <div className="panel-scroll min-h-0 flex-1 overflow-y-auto p-3">
+            {visible.length === 0 ? (
+              <EmptyPond compact title="Nothing here" hint="No favorites in this collection." />
+            ) : (
+              <div className="divide-y divide-border/70">
+                {visible.map((item) => (
+                  <div key={item.id} className="flex items-center gap-3 px-2 py-3">
+                    <FavoritePreview item={item} layer={previews.get(item.id)} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium">{item.name}</span>
+                      <span className="block truncate text-xs text-muted-foreground">{KIND_LABELS[item.kind]} · {item.sourceProjectName ?? "No project"} · used {shortTime(item.lastUsedAt)}</span>
+                    </span>
+                    <RowIcon
+                      label={`Remove ${item.name} from favorites`}
+                      className="hover:text-destructive"
+                      disabled={removing === item.id}
+                      onClick={() => void remove(item.id)}
+                    >
+                      <Trash2 />
+                    </RowIcon>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </DuckTabs>
+
+        <StickerDialogFooter className="shrink-0 items-center justify-between border-t border-border px-5 py-3 sm:justify-between">
+          <HudLabel size="sm" tracking="tight">
+            {visible.length} {visible.length === 1 ? "element" : "elements"}
+          </HudLabel>
+          <QuackButton variant="ghost" size="sm" onClick={onClose}>Close</QuackButton>
+        </StickerDialogFooter>
+      </StickerDialogContent>
+    </StickerDialog>
   );
 }
 
@@ -539,26 +533,25 @@ function ImportFromProjectDialog({
     }
   }
 
+  // Radix portals the panel to the body, which is also what fixed the old bug this
+  // dialog carried its own portal for: `position: fixed` resolves against a
+  // transformed ancestor, and the rail is transformed.
   return (
-    <DialogPortal>
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4" onPointerDown={onClose}>
-      <div
-        className="anim-panel flex max-h-[80vh] w-[min(440px,92vw)] flex-col gap-4 rounded-xl border border-border bg-card p-5 shadow-xl"
-        onPointerDown={(e) => e.stopPropagation()}
-      >
-        <div className="space-y-1">
-          <h3 className="text-sm font-semibold">{openProject ? openProject.meta.name : "Import from a project"}</h3>
-          <p className="text-sm text-muted-foreground">
+    <StickerDialog open onOpenChange={(next) => { if (!next) onClose(); }}>
+      <StickerDialogContent size="sm" className="max-h-[80vh] w-[min(440px,92vw)] max-w-none">
+        <StickerDialogHeader>
+          <StickerDialogTitle>{openProject ? openProject.meta.name : "Import from a project"}</StickerDialogTitle>
+          <StickerDialogDescription>
             {openProject
               ? "Insert an element into the current project, or save it to favorites."
               : "Pick the project to take elements from."}
-          </p>
-        </div>
+          </StickerDialogDescription>
+        </StickerDialogHeader>
 
-        <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto">
+        <div className="panel-scroll min-h-0 flex-1 space-y-0.5 overflow-y-auto">
           {!openProject ? (
             projects.length === 0 ? (
-              <Hint>Nothing in the archive.</Hint>
+              <EmptyPond compact title="Nothing archived" hint="Save a project first, then import from it." />
             ) : (
               projects.map((p) => (
                 <button
@@ -577,7 +570,7 @@ function ImportFromProjectDialog({
               ))
             )
           ) : openProject.layers.length === 0 ? (
-            <Hint>This project has no layers.</Hint>
+            <EmptyPond compact title="No layers" hint="This project is empty." />
           ) : (
             [...openProject.layers].reverse().map((layer) => (
               <div key={layer.id} className="group flex items-center gap-0.5 rounded-md transition-colors hover:bg-accent/40">
@@ -588,38 +581,29 @@ function ImportFromProjectDialog({
                     <span className="block truncate text-[11px] leading-tight text-muted-foreground">{KIND_LABELS[layer.type]}</span>
                   </span>
                 </span>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  className={cn("size-7", starredIds.has(layer.id) && "text-amber-400")}
-                  title={starredIds.has(layer.id) ? "In favorites" : "Save to favorites"}
+                <RowIcon
+                  label={starredIds.has(layer.id) ? "In favorites" : "Save to favorites"}
+                  className={cn(starredIds.has(layer.id) && "text-primary")}
                   disabled={busy === layer.id}
                   onClick={() => void star(layer)}
                 >
                   <Star className={cn(starredIds.has(layer.id) && "fill-current")} />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  className="size-7"
-                  title="Insert into the current project"
-                  onClick={() => onInsert(layer)}
-                >
+                </RowIcon>
+                <RowIcon label="Insert into the current project" onClick={() => onInsert(layer)}>
                   <Plus />
-                </Button>
+                </RowIcon>
               </div>
             ))
           )}
         </div>
 
-        <div className="flex justify-end gap-2">
+        <StickerDialogFooter>
           {openProject && (
-            <Button variant="ghost" size="sm" onClick={() => setOpenProject(null)}>Back</Button>
+            <QuackButton variant="ghost" size="sm" onClick={() => setOpenProject(null)}>Back</QuackButton>
           )}
-          <Button variant="ghost" size="sm" onClick={onClose}>Close</Button>
-        </div>
-      </div>
-    </div>
-    </DialogPortal>
+          <QuackButton variant="ghost" size="sm" onClick={onClose}>Close</QuackButton>
+        </StickerDialogFooter>
+      </StickerDialogContent>
+    </StickerDialog>
   );
 }

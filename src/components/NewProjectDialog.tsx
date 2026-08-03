@@ -4,8 +4,16 @@ import { DEFAULT_FORMAT, FORMATS, type FormatKey, type ThumbDoc } from "../state
 import { adaptDocToFormat } from "../lib/adapt";
 import { saveConfig } from "../lib/storage";
 import { SelectField, SwitchRow } from "./controls";
-import { Button } from "./ui/button";
-import { Input } from "./ui/input";
+import { GlowField, GlowInput } from "./ui/glow-input";
+import { QuackButton } from "./ui/quack-button";
+import {
+  StickerDialog,
+  StickerDialogContent,
+  StickerDialogDescription,
+  StickerDialogFooter,
+  StickerDialogHeader,
+  StickerDialogTitle,
+} from "./ui/sticker-dialog";
 
 type Props = {
   doc: ThumbDoc; // the current working canvas
@@ -58,52 +66,49 @@ export function NewProjectDialog({ doc, projectName, projectId, onClose, onCreat
     if (e.key === "Enter" && !busy) { e.preventDefault(); action(); }
   };
 
+  // Both steps' primary action is a request, so the button carries its own in-flight
+  // state (`state="loading"`) instead of the dialog greying everything out.
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4" onPointerDown={onClose}>
-      <div
-        className="anim-panel flex w-[min(440px,92vw)] flex-col gap-4 rounded-xl border border-border bg-card p-5 shadow-xl"
-        onPointerDown={(e) => e.stopPropagation()}
-      >
-        <div className="space-y-1">
-          <h3 className="text-sm font-semibold">New project</h3>
-          <p className="text-sm text-muted-foreground">
+    <StickerDialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <StickerDialogContent size="sm" className="w-[min(440px,92vw)] max-w-none">
+        <StickerDialogHeader>
+          <StickerDialogTitle>New project</StickerDialogTitle>
+          <StickerDialogDescription>
             {step === 1
               ? "Save the current project before continuing?"
               : "Name the project and choose where to start from."}
-          </p>
-        </div>
+          </StickerDialogDescription>
+        </StickerDialogHeader>
 
         {step === 1 ? (
           <>
-            <label className="space-y-1.5">
-              <span className="text-sm text-muted-foreground">Save name</span>
-              <Input value={prevName} autoFocus onChange={(e) => setPrevName(e.target.value)} onKeyDown={submitOnEnter(() => void savePrevious())} />
-            </label>
-            <div className="flex justify-end gap-2">
-              <Button variant="ghost" size="sm" onClick={onClose} disabled={busy}>Cancel</Button>
-              <Button variant="ghost" size="sm" onClick={() => setStep(2)} disabled={busy}>Don't save</Button>
-              <Button size="sm" onClick={() => void savePrevious()} disabled={busy}>
+            <GlowField label="Save name">
+              <GlowInput value={prevName} autoFocus onChange={(e) => setPrevName(e.target.value)} onKeyDown={submitOnEnter(() => void savePrevious())} />
+            </GlowField>
+            <StickerDialogFooter>
+              <QuackButton variant="ghost" size="sm" onClick={onClose} disabled={busy}>Cancel</QuackButton>
+              <QuackButton variant="ghost" size="sm" onClick={() => setStep(2)} disabled={busy}>Don't save</QuackButton>
+              <QuackButton size="sm" state={busy ? "loading" : "idle"} loadingLabel="Saving…" onClick={() => void savePrevious()}>
                 <Save /> Save and continue
-              </Button>
-            </div>
+              </QuackButton>
+            </StickerDialogFooter>
           </>
         ) : (
           <>
-            <label className="space-y-1.5">
-              <span className="text-sm text-muted-foreground">Project name</span>
-              <Input value={newName} autoFocus onChange={(e) => setNewName(e.target.value)} onKeyDown={submitOnEnter(() => void create())} />
-            </label>
+            <GlowField label="Project name">
+              <GlowInput value={newName} autoFocus onChange={(e) => setNewName(e.target.value)} onKeyDown={submitOnEnter(() => void create())} />
+            </GlowField>
             <SelectField label="Format" value={format} options={Object.values(FORMATS).map((f) => ({ value: f.key, label: f.label }))} onChange={setFormat} />
             <SwitchRow label="Clone the current project" checked={clone} onChange={setClone} />
-            <div className="flex justify-end gap-2">
-              <Button variant="ghost" size="sm" onClick={() => setStep(1)} disabled={busy}>Back</Button>
-              <Button size="sm" onClick={() => void create()} disabled={busy}>
+            <StickerDialogFooter>
+              <QuackButton variant="ghost" size="sm" onClick={() => setStep(1)} disabled={busy}>Back</QuackButton>
+              <QuackButton size="sm" state={busy ? "loading" : "idle"} loadingLabel="Creating…" onClick={() => void create()}>
                 <FilePlus /> Create
-              </Button>
-            </div>
+              </QuackButton>
+            </StickerDialogFooter>
           </>
         )}
-      </div>
-    </div>
+      </StickerDialogContent>
+    </StickerDialog>
   );
 }

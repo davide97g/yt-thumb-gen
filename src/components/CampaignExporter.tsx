@@ -4,6 +4,8 @@ import { loadCampaign, loadConfig } from "../lib/storage";
 import { safeFileName, uniqueName, zipStore, type ZipEntry } from "../lib/zip";
 import { FORMATS, canvasSize, type ThumbDoc } from "../state";
 import { ThumbCanvas } from "./ThumbCanvas";
+import { StickerCard } from "./ui/sticker-card";
+import { StickerProgress } from "./ui/sticker-progress";
 
 type Props = {
   campaign: { id: string; name: string };
@@ -124,14 +126,22 @@ export function CampaignExporter({ campaign, onDone, onError }: Props) {
 
   return (
     <>
-      {/* Progress, so a five-design campaign doesn't look like a hung click. */}
-      <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4">
-        <div className="panel rounded-xl border border-border px-5 py-4 text-center shadow-2xl">
-          <p className="text-sm font-medium">Exporting “{campaign.name}”</p>
-          <p className="mt-1 text-[11.5px] text-muted-foreground">
-            {progress.total === 0 ? "Reading the campaign…" : `Rendering ${Math.min(progress.done + 1, progress.total)} of ${progress.total}…`}
-          </p>
-        </div>
+      {/* Progress, so a five-design campaign doesn't look like a hung click. A real
+          StickerProgress: determinate once the campaign has been read and the total is
+          known, indeterminate (no `value`) while it is still being read. */}
+      <div className="fixed inset-0 z-50 grid place-items-center bg-[oklch(0_0_0/0.65)] p-4 backdrop-blur-sm">
+        <StickerCard className="w-[min(360px,92vw)] gap-3 text-center">
+          <p className="font-display text-sm font-bold">Exporting “{campaign.name}”</p>
+          <StickerProgress
+            value={progress.total === 0 ? undefined : progress.done}
+            max={progress.total || 1}
+            label={
+              progress.total === 0
+                ? "Reading the campaign…"
+                : `Rendering ${Math.min(progress.done + 1, progress.total)} of ${progress.total}…`
+            }
+          />
+        </StickerCard>
       </div>
 
       {/* The render stage. Parked offscreen rather than hidden, so it still lays out and the

@@ -52,7 +52,8 @@ cd bgremove && docker build -t yt-thumb-bgremove . && docker run --rm -p 8000:80
 
 ## Architecture
 
-Single-page React editor for YouTube thumbnails (fixed 1280×720). No router, no global state library. Output is a PNG downloaded client-side. The UI strings are in **English** — match that when adding user-facing text. (The `dacoder` templates in `src/presets.ts` still carry Italian *design copy*: that's channel content, not UI.) There is now an optional backend (`server/`) for accounts + remote project storage; the editor itself is unchanged and still works fully client-side against IndexedDB for the live working canvas.
+Single-page React editor for YouTube thumbnails (fixed 1280×720). No router, no global state library. The
+chrome is built on **duck/ui** (`@duck` shadcn registry) — see "The design system" below before adding UI. Output is a PNG downloaded client-side. The UI strings are in **English** — match that when adding user-facing text. (The `dacoder` templates in `src/presets.ts` still carry Italian *design copy*: that's channel content, not UI.) There is now an optional backend (`server/`) for accounts + remote project storage; the editor itself is unchanged and still works fully client-side against IndexedDB for the live working canvas.
 
 ### The document model is the core abstraction — `src/state.ts`
 
@@ -233,8 +234,59 @@ One function, two backends chosen by build mode: **production** uses `@imgly/bac
 
 `html-to-image` captures the canvas node at exactly the doc's format size (transform reset for the capture, then restored) and triggers a download. When the platform has a hard limit and the PNG misses it, `fitToLimit` walks a JPEG quality ladder (0.92 → 0.55) and ships the best one that fits — "too big, simplify your background" was true and useless, since the fix is a file format, not a design change. The encoder is injected, so the ladder is unit-tested without a DOM; when even the floor is too big it returns the *smallest* attempt and the caller warns, because downloading something beats downloading nothing. `fileNameFor` keeps the extension honest.
 
+### The design system — `@duck/*` via the shadcn CLI
+
+The chrome is **duck/ui** (`components.json` → `"registries": { "@duck": "https://duckui.davideghiotto.it/r/{name}.json" }`),
+installed with the standard shadcn CLI. `src/components/ui/` is therefore **vendored registry code, not
+this project's code**: edit those files in place when something needs to change (that is the shadcn
+contract), but expect a re-install to overwrite them.
+
+```bash
+bunx --bun shadcn@latest add @duck/theme          # always first — tokens, utilities, keyframes
+bunx --bun shadcn@latest add @duck/quack-button   # then components; registry deps resolve themselves
+```
+
+Four things about this install are load-bearing:
+
+- **`@duck/theme` writes into `src/styles.css`.** The `:root` / `.dark` / `@theme inline` block at the
+  top of that file is generated — change it by re-running the install, not by hand. Everything below
+  the "Editor shell" divider is this project's own CSS (`.stage`, `.dock`, `.panel`, the `rb-*` text
+  effects) and is tinted from tokens with `color-mix`, so it follows a theme swap. The one hand edit
+  inside the generated block is `--font-sans` / `--font-mono` / `--font-display`: the theme resets
+  them to system faces and this app ships Geist + Geist Mono. **Re-declare them after any theme
+  re-install.**
+- **The holo budget is one iridescent element per viewport, and it is spent on the sign-in card**
+  (`AuthGate`). The editor viewport is lime-only — no `variant="holo"`, no `ring="foil"` — because the
+  canvas content is the loud thing. The single lime CTA in the editor is Export.
+- **A duck component's own prop beats a class at the call site.** `.sticker` is declared in the
+  theme's `@layer utilities`, which lands after Tailwind's utilities, so a `border-0` in `className`
+  loses on order. That is why `GlowInput` has `frame` and why the local `select.tsx` grew the same
+  prop. Reach for the prop, not the override.
+- **`select.tsx` is the one non-duck primitive.** duck/ui ships no select, so it is plain Radix
+  hand-styled to match `glow-input` (trigger) and `sticker-popover` (menu) — filed as a gap in
+  `docs/feature-requests/editor-app-gaps.md` in the duck-ui repo, along with the colour field, the
+  logarithmic slider track and the vertical tab rail this app also had to work around.
+
+Component vocabulary in use, so a new surface picks the same thing the existing ones did: `QuackButton`
+(every button; `state="loading"` carries an in-flight request, `ripple={false}` in dense chrome),
+`HudChip` (a control that can be **on** — draw mode, crop mode, safe-area toggles — plus icon
+toolbars inside `DuckButtonGroup`), `HudLabel`/`hudLabelVariants` (every mono uppercase readout and
+section head), `GlowInput`/`GlowTextarea`/`GlowField`/`GlowFieldset`, `DuckSlider`, `DuckSwitch`,
+`StickerToggleGroup` (short mutually-exclusive sets), `StickerDialog` (**all five modals** — the
+hand-rolled portals it replaced had no focus trap or scroll lock), `StickerTooltip` + `StickerKbd`
+(labels and keycaps; `watch` presses the cap on the real keystroke), `StickerPopover`, `DuckTabs`,
+`DuckCommand` (the ⌘K palette; `shortcut={false}` because `App` owns the binding), `EmptyPond` (every
+empty state), `DuckSpinner`, `StickerProgress`, `CodeSnippet`/`CopyButton`/`HudCode`, `HoloBadge`,
+`StickerCard`, `HoloSeparator`.
+
+Notices stay in the header line and in the field they belong to (`GlowField error`) — `@duck/quack-toast`
+is deliberately **not** installed. An editor's messages are about the thing you just clicked, and a
+toast covers the canvas you are judging.
+
 ## Conventions
 
-- `src/components/ui/` are shadcn-style Radix primitives; compose them rather than adding new UI libraries. Styling is Tailwind v4 + `cn()` (`clsx` + `tailwind-merge`) in `src/lib/utils.ts`.
+- Styling is Tailwind v4 + `cn()` (`clsx` + `tailwind-merge`) in `src/lib/utils.ts`. Semantic tokens
+  only (`bg-primary`, `text-muted-foreground`, `border-border`) — no raw hex or oklch in component
+  code; the exceptions are *document* colours, which belong to the user's design, not the chrome.
 - Inline `// ponytail:` comments mark deliberate simplifications with their upgrade path — leave them.
 - Coordinates are always in 1280×720 space (`CANVAS_W`/`CANVAS_H`), never screen pixels.

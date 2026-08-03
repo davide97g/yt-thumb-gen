@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { Check, Copy, Plug, Plus, TriangleAlert } from "lucide-react";
+import { Plug, Plus, TriangleAlert } from "lucide-react";
 import { type ApiToken, createToken, listTokens } from "../lib/storage";
-import { Button } from "./ui/button";
-import { Input } from "./ui/input";
+import { CodeSnippet } from "./ui/code-snippet";
+import { GlowField, GlowInput } from "./ui/glow-input";
+import { HudCode } from "./ui/hud-code";
+import { QuackButton } from "./ui/quack-button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 
 type Provider = {
@@ -10,6 +12,8 @@ type Provider = {
   label: string;
   /** What the user does with the snippet: run it, or paste it into a file. */
   kind: "command" | "file";
+  /** CodeSnippet's highlighter language. TOML has no lexer there, so it reads as text. */
+  lang: "bash" | "json" | "text";
   hint: string;
   snippet: (url: string, token: string) => string;
 };
@@ -23,6 +27,7 @@ const PROVIDERS: Provider[] = [
     id: "claude-code",
     label: "Claude Code",
     kind: "command",
+    lang: "bash",
     hint: "Run this command in your terminal.",
     snippet: (url, token) =>
       `claude mcp add --transport http thumb-studio ${url} --header "Authorization: Bearer ${token}"`,
@@ -31,6 +36,7 @@ const PROVIDERS: Provider[] = [
     id: "codex",
     label: "Codex CLI",
     kind: "file",
+    lang: "text",
     hint: "Add to ~/.codex/config.toml",
     snippet: (url, token) =>
       `[mcp_servers.thumb-studio]\nurl = "${url}"\nhttp_headers = { Authorization = "Bearer ${token}" }`,
@@ -39,6 +45,7 @@ const PROVIDERS: Provider[] = [
     id: "cursor",
     label: "Cursor",
     kind: "file",
+    lang: "json",
     hint: "Add to .cursor/mcp.json (or ~/.cursor/mcp.json)",
     snippet: (url, token) =>
       JSON.stringify(
@@ -51,6 +58,7 @@ const PROVIDERS: Provider[] = [
     id: "json",
     label: "Other (JSON)",
     kind: "file",
+    lang: "json",
     hint: "Standard format: VS Code, Windsurf, Zed and any MCP client.",
     snippet: (url, token) =>
       JSON.stringify(
@@ -69,7 +77,6 @@ export function McpPanel() {
   const [fresh, setFresh] = useState<string | null>(null);
   const [name, setName] = useState("mcp");
   const [busy, setBusy] = useState(false);
-  const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const url = `${window.location.origin}/api/mcp`;
@@ -90,7 +97,6 @@ export function McpPanel() {
     try {
       const made = await createToken(name.trim() || "mcp");
       setFresh(made.token);
-      setCopied(false);
       setTokens(await listTokens());
     } catch {
       setError("Couldn't create the token.");
@@ -99,24 +105,10 @@ export function McpPanel() {
     }
   }
 
-  async function copy() {
-    // Only claim success if the write actually happened — clipboard access is denied over
-    // plain HTTP and in some embedded browsers, and a false "Copied" costs the user a
-    // silently empty paste.
-    try {
-      await navigator.clipboard.writeText(snippet);
-      setCopied(true);
-      setError(null);
-    } catch {
-      setCopied(false);
-      setError("Copy failed — select the text and copy it manually.");
-    }
-  }
-
   return (
     <div className="flex flex-col gap-4">
       <div className="space-y-1">
-        <h3 className="flex items-center gap-2 text-sm font-semibold">
+        <h3 className="flex items-center gap-2 font-display text-sm font-bold">
           <Plug className="size-4 text-primary" /> Add Thumb Studio to your agent
         </h3>
         <p className="text-sm text-muted-foreground">
@@ -125,8 +117,7 @@ export function McpPanel() {
         </p>
       </div>
 
-      <label className="space-y-1.5">
-        <span className="text-sm text-muted-foreground">Client</span>
+      <GlowField label="Client">
         <Select value={provider} onValueChange={setProvider}>
           <SelectTrigger>
             <SelectValue />
@@ -137,26 +128,27 @@ export function McpPanel() {
             ))}
           </SelectContent>
         </Select>
-      </label>
+      </GlowField>
 
       {!fresh && (
-        <div className="space-y-2 rounded-lg border border-border/70 bg-secondary/30 p-3">
+        <div className="sticker space-y-2 rounded-xl border-border bg-secondary/30 p-3">
           <p className="text-xs text-muted-foreground">
             You need a token. Create one now and it lands pre-filled in the snippet below.
           </p>
           <div className="flex gap-2">
-            <Input
+            <GlowInput
               className="h-8"
               value={name}
+              aria-label="Token name"
               placeholder="Token name"
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter") { e.preventDefault(); void mint(); }
               }}
             />
-            <Button size="sm" className="h-8" onClick={() => void mint()} disabled={busy}>
+            <QuackButton size="sm" state={busy ? "loading" : "idle"} loadingLabel="Creating…" onClick={() => void mint()}>
               <Plus /> Create token
-            </Button>
+            </QuackButton>
           </div>
           {tokens && tokens.length > 0 && (
             <p className="text-[11px] text-muted-foreground">
@@ -167,21 +159,23 @@ export function McpPanel() {
       )}
 
       <div className="space-y-1.5">
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-xs text-muted-foreground">{active.hint}</span>
-          <Button variant="ghost" size="sm" onClick={() => void copy()}>
-            {copied ? <Check /> : <Copy />} {copied ? "Copied" : "Copy"}
-          </Button>
-        </div>
-        {/* Wrap rather than scroll: the one-line commands carry a 64-char token, and a
-            snippet you can't read in full is hard to trust before pasting it. */}
-        <pre className="whitespace-pre-wrap break-all rounded-lg border border-border bg-background/60 p-3 font-mono text-[11.5px] leading-relaxed">
-          {snippet}
-        </pre>
+        {/* `wrap` rather than scroll: the one-line commands carry a 64-char token, and a
+            snippet you can't read in full is hard to trust before pasting it. The copy
+            button is CodeSnippet's, and it never claims success on a rejected write —
+            clipboard access is denied over plain HTTP and in some embedded browsers, and a
+            false "Copied" costs the user a silently empty paste. */}
+        <CodeSnippet
+          code={snippet}
+          lang={active.lang}
+          title={active.hint}
+          wrap
+          copyable
+          chrome="plain"
+        />
         {!fresh && (
           <p className="flex items-start gap-1.5 text-[11px] text-muted-foreground">
             <TriangleAlert className="mt-px size-3.5 shrink-0 text-primary" />
-            Replace <code className="font-mono">{TOKEN_PLACEHOLDER}</code> with a valid token, or create one above to
+            Replace <HudCode>{TOKEN_PLACEHOLDER}</HudCode> with a valid token, or create one above to
             have it filled in automatically.
           </p>
         )}

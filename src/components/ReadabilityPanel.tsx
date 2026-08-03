@@ -6,6 +6,7 @@ import { checkReadability, type Issue } from "../lib/readability";
 import { GRID_W } from "../lib/safeAreas";
 import { FORMATS } from "../state";
 import { Section } from "./controls";
+import { HoloBadge } from "./ui/holo-badge";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -52,10 +53,11 @@ export function ReadabilityPanel({ doc, canvasRef, dispatch }: Props) {
       </p>
 
       {issues.length === 0 ? (
-        <div className="flex items-center gap-2 rounded-md bg-secondary/40 px-2.5 py-2 text-[11.5px] text-muted-foreground">
-          <Check className="size-3.5 shrink-0 text-primary" />
-          Nothing flagged.
-        </div>
+        // The one verdict in the rail worth a badge: a clean design is a state, not a row.
+        <HoloBadge variant="primary" shape="tag" className="w-full justify-center gap-1.5 py-1.5 text-[11.5px]">
+          <Check className="size-3.5 shrink-0" />
+          Nothing flagged
+        </HoloBadge>
       ) : (
         <ul className="space-y-1">
           {issues.map((i) => (
@@ -71,7 +73,7 @@ export function ReadabilityPanel({ doc, canvasRef, dispatch }: Props) {
                 onClick={() => i.layerId && dispatch({ type: "select", ids: [i.layerId] })}
               >
                 {i.severity === "warn" ? (
-                  <AlertTriangle className="mt-px size-3.5 shrink-0 text-amber-400" />
+                  <AlertTriangle className="mt-px size-3.5 shrink-0 text-primary" />
                 ) : (
                   <Info className="mt-px size-3.5 shrink-0 text-muted-foreground/70" />
                 )}

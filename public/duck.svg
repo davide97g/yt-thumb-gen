@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="duck/ui">
+  <!--
+    The duck/ui mark as a standalone asset, so the registry can ship it into a
+    consumer's public/ and the loading path stays same-origin. Same geometry as
+    DuckMark (registry/duck/ui/duck-mark.tsx); currentColor is baked to duck
+    lime here because an <img> inherits nothing from the page.
+  -->
+  <path d="M10 36 L1 30 L9 46 Z" fill="#cbda42" />
+  <ellipse cx="28" cy="41" rx="21" ry="12.5" fill="#cbda42" />
+  <circle cx="43" cy="21" r="11" fill="#cbda42" />
+  <path d="M52 17.5 L63.5 21.8 L52 26 Z" fill="#f8910e" />
+  <path d="M17 41 q9 7.5 20 1" stroke="#15151a" stroke-opacity="0.32" stroke-width="2.5" stroke-linecap="round" fill="none" />
+  <circle cx="45.5" cy="18" r="2.3" fill="#15151a" />
+</svg>

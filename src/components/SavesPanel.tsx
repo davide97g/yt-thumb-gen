@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { ChevronRight, FileDown, FileUp, FolderOpen, FolderPlus, Globe, Layers3, Lock, Package, Pencil, Trash2 } from "lucide-react";
 import { FORMATS, type ThumbDoc } from "../state";
 import {
@@ -22,10 +22,43 @@ import {
 } from "../lib/storage";
 import { previewUrl } from "../lib/preview";
 import { Hint, Section, UploadButton } from "./controls";
-import { Button } from "./ui/button";
-import { Input } from "./ui/input";
+import { EmptyPond } from "./ui/empty-pond";
+import { GlowInput } from "./ui/glow-input";
+import { hudLabelVariants } from "./ui/hud-label";
+import { QuackButton } from "./ui/quack-button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
+import { StickerTooltip } from "./ui/sticker-tooltip";
 import { cn, relTime } from "@/lib/utils";
+
+/** A row's trailing action: ghost QuackButton, no ripple (a list of forty of them
+    splashing is noise), labelled by a tooltip rather than a `title`. */
+function RowIcon({
+  label, onClick, disabled, className, pressed, children,
+}: {
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  className?: string;
+  pressed?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <StickerTooltip content={label} delay={500}>
+      <QuackButton
+        variant="ghost"
+        size="icon"
+        ripple={false}
+        disabled={disabled}
+        aria-label={label}
+        aria-pressed={pressed}
+        onClick={onClick}
+        className={cn("size-7 shrink-0 rounded-md text-muted-foreground [&_svg]:size-3.5", className)}
+      >
+        {children}
+      </QuackButton>
+    </StickerTooltip>
+  );
+}
 
 type Props = {
   doc: ThumbDoc; // current working canvas, for "export current"
@@ -248,28 +281,28 @@ function ArchivePanel({ doc, projectId, projectName, onLoad, onError, refreshKey
           </span>
         </button>
 
-        <Button
-          variant="ghost"
-          size="icon-sm"
+        <RowIcon
+          label={c.isPublic ? "Published — click to unpublish" : "Publish to the public gallery"}
+          pressed={!!c.isPublic}
           className={cn(
-            "size-7 transition-opacity",
+            "transition-opacity",
             c.isPublic
               ? "text-primary opacity-100"
               : "opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
           )}
-          title={c.isPublic ? "Published — anyone with the link can view it. Click to unpublish." : "Publish to the public gallery"}
-          aria-pressed={!!c.isPublic}
           onClick={() => void onPublish(c)}
         >
           {c.isPublic ? <Globe /> : <Lock />}
-        </Button>
+        </RowIcon>
 
         <Select
           value={c.campaignId ?? UNGROUPED}
           onValueChange={(v) => void onMove(c.id, v === UNGROUPED ? null : v)}
         >
           <SelectTrigger
-            className="size-7 shrink-0 justify-center border-0 bg-transparent p-0 opacity-100 shadow-none transition-opacity hover:bg-accent md:opacity-0 md:group-hover:opacity-100"
+            frame={false}
+            chevron={false}
+            className="size-7 shrink-0 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100"
             aria-label={`Move ${c.name} to a campaign`}
             title="Move to campaign"
           >
@@ -284,25 +317,21 @@ function ArchivePanel({ doc, projectId, projectName, onLoad, onError, refreshKey
           </SelectContent>
         </Select>
 
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className="size-7 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
-          title="Export JSON"
+        <RowIcon
+          label="Export JSON"
+          className="opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
           disabled={busyId === c.id}
           onClick={() => void onExport(c)}
         >
           <FileDown />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className="size-7 opacity-100 transition-opacity hover:text-destructive md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
-          title="Delete"
+        </RowIcon>
+        <RowIcon
+          label="Delete"
+          className="opacity-100 transition-opacity hover:text-destructive md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
           onClick={() => void onDelete(c.id)}
         >
           <Trash2 />
-        </Button>
+        </RowIcon>
       </div>
     );
   }
@@ -317,24 +346,21 @@ function ArchivePanel({ doc, projectId, projectName, onLoad, onError, refreshKey
       onToggle={onToggle}
       fill
       action={
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className="size-7 text-muted-foreground hover:text-foreground"
-          title="New campaign"
-          aria-label="New campaign"
+        <RowIcon
+          label="New campaign"
           onClick={() => { setCreating((v) => !v); setDraftName(""); setRenaming(null); }}
         >
           <FolderPlus />
-        </Button>
+        </RowIcon>
       }
     >
       {creating && (
         <div className="flex gap-1.5 pb-1">
-          <Input
+          <GlowInput
             className="h-8"
             autoFocus
             value={draftName}
+            aria-label="Campaign name"
             placeholder="Campaign name"
             onChange={(e) => setDraftName(e.target.value)}
             onKeyDown={(e) => {
@@ -342,14 +368,14 @@ function ArchivePanel({ doc, projectId, projectName, onLoad, onError, refreshKey
               if (e.key === "Escape") setCreating(false);
             }}
           />
-          <Button size="sm" className="h-8" onClick={() => void onCreateCampaign()} disabled={!draftName.trim()}>
+          <QuackButton size="sm" onClick={() => void onCreateCampaign()} disabled={!draftName.trim()}>
             Create
-          </Button>
+          </QuackButton>
         </div>
       )}
 
       {empty ? (
-        <Hint>Nothing in the archive yet. <span className="text-foreground">Save</span> to archive the current project.</Hint>
+        <EmptyPond compact title="Nothing archived yet" hint="Press Save to put the current project in the archive." />
       ) : (
         <div className="space-y-1.5">
           {campaigns.map((g) => {
@@ -359,17 +385,18 @@ function ArchivePanel({ doc, projectId, projectName, onLoad, onError, refreshKey
               <div key={g.id} className="space-y-0.5">
                 {renaming === g.id ? (
                   <div className="flex gap-1.5">
-                    <Input
+                    <GlowInput
                       className="h-8"
                       autoFocus
                       value={draftName}
+                      aria-label="Campaign name"
                       onChange={(e) => setDraftName(e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") { e.preventDefault(); void onRenameCampaign(g.id); }
                         if (e.key === "Escape") setRenaming(null);
                       }}
                     />
-                    <Button size="sm" className="h-8" onClick={() => void onRenameCampaign(g.id)}>Save</Button>
+                    <QuackButton size="sm" onClick={() => void onRenameCampaign(g.id)}>Save</QuackButton>
                   </div>
                 ) : (
                   <div className="group flex items-center gap-0.5">
@@ -380,40 +407,33 @@ function ArchivePanel({ doc, projectId, projectName, onLoad, onError, refreshKey
                       aria-expanded={expanded}
                     >
                       <ChevronRight className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform", expanded && "rotate-90")} />
-                      <span className="min-w-0 flex-1 truncate font-mono text-[10.5px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                      <span className={cn(hudLabelVariants({ size: "sm", tracking: "tight" }), "min-w-0 flex-1 truncate font-medium")}>
                         {g.name}
                       </span>
-                      <span className="shrink-0 font-mono text-[10px] text-muted-foreground/70">{designs.length}</span>
+                      <span className={cn(hudLabelVariants({ size: "sm" }), "shrink-0 tabular-nums")}>{designs.length}</span>
                     </button>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      className="size-7 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100"
-                      title="Download every design as a ZIP"
-                      aria-label={`Download ${g.name} as a ZIP`}
+                    <RowIcon
+                      label={`Download ${g.name} as a ZIP`}
+                      className="opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100"
                       disabled={designs.length === 0}
                       onClick={() => onExportCampaign({ id: g.id, name: g.name })}
                     >
                       <Package />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      className="size-7 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100"
-                      title="Rename campaign"
+                    </RowIcon>
+                    <RowIcon
+                      label="Rename campaign"
+                      className="opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100"
                       onClick={() => { setRenaming(g.id); setDraftName(g.name); setCreating(false); }}
                     >
                       <Pencil />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      className="size-7 opacity-100 transition-opacity hover:text-destructive md:opacity-0 md:group-hover:opacity-100"
-                      title="Delete campaign (the designs stay)"
+                    </RowIcon>
+                    <RowIcon
+                      label="Delete campaign (the designs stay)"
+                      className="opacity-100 transition-opacity hover:text-destructive md:opacity-0 md:group-hover:opacity-100"
                       onClick={() => void onDeleteCampaign(g.id)}
                     >
                       <Trash2 />
-                    </Button>
+                    </RowIcon>
                   </div>
                 )}
 
@@ -432,7 +452,7 @@ function ArchivePanel({ doc, projectId, projectName, onLoad, onError, refreshKey
           {groups.loose.length > 0 && (
             <div className="space-y-0.5">
               {campaigns.length > 0 && (
-                <div className="px-1.5 pt-1 font-mono text-[10.5px] font-medium uppercase tracking-[0.16em] text-muted-foreground/70">
+                <div className={cn(hudLabelVariants({ size: "sm", tracking: "tight" }), "px-1.5 pt-1 font-medium")}>
                   No campaign
                 </div>
               )}
@@ -443,9 +463,9 @@ function ArchivePanel({ doc, projectId, projectName, onLoad, onError, refreshKey
       )}
 
       <div className="flex flex-col gap-2 pt-1">
-        <Button variant="outline" size="sm" className="w-full justify-center" onClick={() => exportConfigFile(doc, projectName || "thumb")}>
+        <QuackButton variant="outline" size="sm" className="w-full" onClick={() => exportConfigFile(doc, projectName || "thumb")}>
           <FileDown /> Export project
-        </Button>
+        </QuackButton>
         <UploadButton label="Import from file" icon={<FileUp />} accept="application/json,.json" className="w-full justify-center" onFile={(f) => void onImport(f)} />
       </div>
     </Section>
@@ -505,13 +525,13 @@ function PublicGallery({ doc, projectName, onLoad, onError, refreshKey, open, on
   return (
     <Section title="Gallery" count={items.length} open={open} onToggle={onToggle} fill>
       {items.length === 0 ? (
-        <Hint>No designs have been published yet.</Hint>
+        <EmptyPond compact title="Nothing published yet" hint="Designs the owner publishes show up here." />
       ) : (
         <div className="space-y-1.5">
           {groups.map(([campaignName, designs]) => (
             <div key={campaignName || "__loose__"} className="space-y-0.5">
               {campaignName && (
-                <div className="px-1.5 pt-1 font-mono text-[10.5px] font-medium uppercase tracking-[0.16em] text-muted-foreground/70">
+                <div className={cn(hudLabelVariants({ size: "sm", tracking: "tight" }), "px-1.5 pt-1 font-medium")}>
                   {campaignName}
                 </div>
               )}
@@ -559,9 +579,9 @@ function PublicGallery({ doc, projectName, onLoad, onError, refreshKey, open, on
       <Hint>Opening a design gives you your own copy to play with. Export it to keep it.</Hint>
 
       <div className="flex flex-col gap-2 pt-1">
-        <Button variant="outline" size="sm" className="w-full justify-center" onClick={() => exportConfigFile(doc, projectName || "thumb")}>
+        <QuackButton variant="outline" size="sm" className="w-full" onClick={() => exportConfigFile(doc, projectName || "thumb")}>
           <FileDown /> Export project
-        </Button>
+        </QuackButton>
         <UploadButton label="Import from file" icon={<FileUp />} accept="application/json,.json" className="w-full justify-center" onFile={(f) => void onImport(f)} />
       </div>
     </Section>

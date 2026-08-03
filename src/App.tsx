@@ -13,8 +13,13 @@ import { NewProjectDialog } from "./components/NewProjectDialog";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { Toolbar } from "./components/Toolbar";
 import { Field, Section } from "./components/controls";
-import { Button } from "./components/ui/button";
-import { Input } from "./components/ui/input";
+import { DuckButtonGroup } from "./components/ui/duck-button-group";
+import { GlowInput } from "./components/ui/glow-input";
+import { HudChip } from "./components/ui/hud-chip";
+import { HudLabel } from "./components/ui/hud-label";
+import { QuackButton } from "./components/ui/quack-button";
+import { StickerKbd } from "./components/ui/sticker-kbd";
+import { StickerTooltip } from "./components/ui/sticker-tooltip";
 import { defaultFileName, exportThumb } from "./lib/export";
 import { loadImageFile } from "./lib/loadImageFile";
 import { makePreview } from "./lib/preview";
@@ -381,62 +386,54 @@ export default function App() {
       <header className="flex h-[calc(3.5rem_+_env(safe-area-inset-top))] shrink-0 items-center justify-between gap-4 border-b border-border bg-card px-4 pt-[env(safe-area-inset-top)]">
         <div className="flex items-center gap-2.5">
           {/* Mobile: open the layers/project drawer. Desktop: toggle both rails. */}
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className="text-muted-foreground hover:text-foreground md:hidden"
+          <HeaderIcon
+            label="Open layers and project"
+            className="md:hidden"
             onClick={() => setMobileLeft(true)}
-            title="Layers and project"
-            aria-label="Open layers and project"
           >
             <Layers />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className="hidden text-muted-foreground hover:text-foreground md:inline-flex"
+          </HeaderIcon>
+          <HeaderIcon
+            label={chromeHidden ? "Show panels (\\)" : "Hide panels (\\)"}
+            className="hidden md:inline-flex"
+            pressed={chromeHidden}
             onClick={() => setChromeHidden((v) => !v)}
-            title={chromeHidden ? "Show panels (\\)" : "Hide panels (\\)"}
-            aria-label={chromeHidden ? "Show panels" : "Hide panels"}
-            aria-pressed={chromeHidden}
           >
             {chromeHidden ? <Maximize2 /> : <PanelsTopLeft />}
-          </Button>
+          </HeaderIcon>
           <span className="grid size-7 place-items-center rounded-md bg-primary/15 ring-1 ring-primary/25">
-            <span className="size-2.5 rounded-full bg-primary" />
+            <span className="size-2.5 rounded-full bg-primary duck-glow-primary" />
           </span>
           <div className="leading-tight">
-            <div className="text-[13px] font-semibold tracking-tight">Thumb Studio</div>
-            <div className="readout text-[10px] uppercase tracking-[0.18em] text-muted-foreground">{fmt.platform} · {CW}×{CH}</div>
+            <div className="font-display text-[13px] font-bold tracking-tight">Thumb Studio</div>
+            <HudLabel size="sm" tracking="tight" className="readout block">{fmt.platform} · {CW}×{CH}</HudLabel>
           </div>
         </div>
 
         <div className="flex items-center gap-1.5 md:gap-2.5">
-          {/* Undo/redo read as one instrument: a segmented pair, not two loose icons. */}
-          <div className="flex items-center gap-0.5 rounded-lg border border-border bg-secondary/40 p-0.5">
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="size-6 text-muted-foreground hover:text-foreground"
-              onClick={() => dispatch({ type: "undo" })}
-              disabled={hist.past.length === 0}
+          {/* Undo/redo read as one instrument, which is what DuckButtonGroup draws: two
+              chips sharing one die-cut edge. A `group`, not a `toolbar` — two controls are
+              not the screen's controls, and two tab stops are correct for two buttons. */}
+          <DuckButtonGroup aria-label="History">
+            <HudChip
+              size="sm"
+              aria-label="Undo (⌘Z)"
               title="Undo (⌘Z)"
-              aria-label="Undo"
+              disabled={hist.past.length === 0}
+              onClick={() => dispatch({ type: "undo" })}
             >
               <Undo2 />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="size-6 text-muted-foreground hover:text-foreground"
-              onClick={() => dispatch({ type: "redo" })}
-              disabled={hist.future.length === 0}
+            </HudChip>
+            <HudChip
+              size="sm"
+              aria-label="Redo (⌘⇧Z)"
               title="Redo (⌘⇧Z)"
-              aria-label="Redo"
+              disabled={hist.future.length === 0}
+              onClick={() => dispatch({ type: "redo" })}
             >
               <Redo2 />
-            </Button>
-          </div>
+            </HudChip>
+          </DuckButtonGroup>
           {message && (
             <span
               className={`hidden max-w-64 truncate text-xs md:block ${message.startsWith("Export failed") ? "text-destructive" : "text-muted-foreground"}`}
@@ -446,37 +443,34 @@ export default function App() {
             </span>
           )}
           {/* Mobile: open the properties/inspector drawer. */}
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className="text-muted-foreground hover:text-foreground md:hidden"
-            onClick={() => setMobileRight(true)}
-            title="Properties"
-            aria-label="Open properties"
-          >
+          <HeaderIcon label="Open properties" className="md:hidden" onClick={() => setMobileRight(true)}>
             <SlidersHorizontal />
-          </Button>
-          <Input
-            className="readout hidden h-8 w-40 border-transparent bg-secondary/50 text-xs shadow-none md:block"
+          </HeaderIcon>
+          {/* `frame={false}`: the header bar is already the frame around this field, so the
+              sticker edge would be a second box. A prop, because `.sticker` lands after
+              Tailwind's utilities and a `border-0` here would lose. */}
+          <GlowInput
+            frame={false}
+            className="readout hidden h-8 w-40 rounded-md bg-secondary/50 px-2.5 text-xs md:block"
             value={exportName}
             onChange={(e) => setFileName(e.target.value || null)}
             placeholder={defaultFileName(projectName)}
             aria-label="File name"
           />
-          <Button className="h-8" onClick={onExport} disabled={exporting}>
-            <Download />
-            <span className="hidden sm:inline">{exporting ? "Exporting…" : "Export PNG"}</span>
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className="text-muted-foreground hover:text-foreground"
-            onClick={() => setSettingsOpen(true)}
-            title="Settings"
-            aria-label="Settings"
+          {/* The one lime CTA in the editor viewport. It carries the export's in-flight
+              state itself, so nothing else has to say "busy". */}
+          <QuackButton
+            className="h-8 px-3.5"
+            state={exporting ? "loading" : "idle"}
+            loadingLabel="Exporting…"
+            onClick={onExport}
           >
+            <Download />
+            <span className="hidden sm:inline">Export PNG</span>
+          </QuackButton>
+          <HeaderIcon label="Settings" onClick={() => setSettingsOpen(true)}>
             <Settings />
-          </Button>
+          </HeaderIcon>
         </div>
       </header>
 
@@ -514,7 +508,7 @@ export default function App() {
               {/* File name lives in the header on desktop; on mobile it moves in here. */}
               <div className="md:hidden">
                 <Field label="File name">
-                  <Input
+                  <GlowInput
                     value={exportName}
                     onChange={(e) => setFileName(e.target.value || null)}
                     placeholder={defaultFileName(projectName)}
@@ -586,12 +580,14 @@ export default function App() {
             </div>
 
             {/* Discreet build stamp — tap-and-hold shows the build time. */}
-            <div
-              className="shrink-0 select-text px-4 py-2 text-center font-mono text-[10px] leading-none text-muted-foreground/35"
+            <HudLabel
+              size="sm"
+              tracking="tight"
+              className="shrink-0 select-text px-4 py-2 text-center text-muted-foreground/40"
               title={`Build ${__BUILD_TIME__}`}
             >
               v{__APP_VERSION__} · {__APP_COMMIT__}
-            </div>
+            </HudLabel>
           </aside>
         )}
 
@@ -618,9 +614,9 @@ export default function App() {
           </div>
 
           <div className="absolute bottom-4 left-4 hidden items-center gap-2 md:flex">
-            <span className="readout pointer-events-none text-[10.5px] uppercase tracking-[0.16em] text-muted-foreground/65">
+            <HudLabel size="sm" tracking="tight" className="readout pointer-events-none text-muted-foreground/65">
               {CW} × {CH} · {actualSize ? "actual size" : `${Math.round(scale * 100)}%`}
-            </span>
+            </HudLabel>
             <StageToggle
               on={safeAreas}
               onClick={() => setSafeAreas((v) => !v)}
@@ -638,15 +634,16 @@ export default function App() {
             {/* The rail hides the background controls while a layer is selected, so the way
                 out has to be visible from the stage — not only in a menu nobody opens. */}
             {selectedIds.length > 0 && (
-              <button
-                type="button"
-                className="flex h-7 items-center rounded-md border border-transparent bg-card/70 px-2 text-[10.5px] uppercase tracking-[0.14em] text-muted-foreground backdrop-blur-sm hover:text-foreground"
+              <HudChip
+                size="sm"
+                className="h-7 gap-1.5 border-transparent bg-card/70 backdrop-blur-sm"
                 onClick={() => dispatch({ type: "select", ids: [] })}
                 title="Clear the selection and show the document controls (⌘D)"
               >
                 Deselect
-                <kbd className="dock-key">⌘D</kbd>
-              </button>
+                {/* A real keycap that depresses on the chord itself. */}
+                <StickerKbd watch="d" meta className="min-w-5 px-1 py-0 text-[10px]">⌘D</StickerKbd>
+              </HudChip>
             )}
           </div>
 
@@ -745,21 +742,42 @@ export default function App() {
 function StageToggle({
   on, onClick, title, label, icon,
 }: { on: boolean; onClick: () => void; title: string; label: string; icon: ReactNode }) {
+  // A chip that stays lit while the lens is on — HudChip's `active`, which is the same
+  // vocabulary the dock's draw tool and the inspector's crop mode use.
   return (
-    <Button
-      variant="ghost"
-      size="icon-sm"
-      className={cn(
-        "size-7 border border-transparent bg-card/70 backdrop-blur-sm",
-        on ? "border-primary/40 bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground"
-      )}
+    <HudChip
+      size="sm"
+      active={on}
+      className="size-7 justify-center border-transparent bg-card/70 px-0 backdrop-blur-sm"
       onClick={onClick}
       title={title}
       aria-label={label}
       aria-pressed={on}
     >
       {icon}
-    </Button>
+    </HudChip>
+  );
+}
+
+/** A top-bar icon control: ghost QuackButton, no ripple (the bar is chrome, not a call to
+    action), labelled by a StickerTooltip the way the dock's tools are. */
+function HeaderIcon({
+  label, onClick, className, pressed, children,
+}: { label: string; onClick: () => void; className?: string; pressed?: boolean; children: ReactNode }) {
+  return (
+    <StickerTooltip content={label} delay={400}>
+      <QuackButton
+        variant="ghost"
+        size="icon"
+        ripple={false}
+        onClick={onClick}
+        aria-label={label}
+        aria-pressed={pressed}
+        className={cn("size-8 rounded-md text-muted-foreground", className)}
+      >
+        {children}
+      </QuackButton>
+    </StickerTooltip>
   );
 }
 
@@ -768,10 +786,17 @@ function StageToggle({
 function DrawerClose({ label, onClose }: { label: string; onClose: () => void }) {
   return (
     <div className="flex items-center justify-between md:hidden">
-      <span className="font-mono text-[10.5px] font-medium uppercase tracking-[0.2em] text-muted-foreground">{label}</span>
-      <Button variant="ghost" size="icon-sm" className="text-muted-foreground hover:text-foreground" onClick={onClose} aria-label="Close panel">
+      <HudLabel size="sm" tracking="tight" className="font-medium">{label}</HudLabel>
+      <QuackButton
+        variant="ghost"
+        size="icon"
+        ripple={false}
+        className="size-8 rounded-md text-muted-foreground"
+        onClick={onClose}
+        aria-label="Close panel"
+      >
         <X />
-      </Button>
+      </QuackButton>
     </div>
   );
 }

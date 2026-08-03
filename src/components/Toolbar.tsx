@@ -1,5 +1,13 @@
 import { useEffect, useRef, useState, type Dispatch, type ReactNode } from "react";
 import { Camera, ChevronUp, ImagePlus, Minus, Pencil, Smile, Square, Type, Upload } from "lucide-react";
+import { StickerKbd } from "./ui/sticker-kbd";
+import { StickerPopoverContent, StickerPopoverRoot, StickerPopoverTrigger } from "./ui/sticker-popover";
+import {
+  StickerTooltipContent,
+  StickerTooltipProvider,
+  StickerTooltipRoot,
+  StickerTooltipTrigger,
+} from "./ui/sticker-tooltip";
 import { cn } from "@/lib/utils";
 import {
   newEmojiLayer,
@@ -16,7 +24,8 @@ const MAX_UPLOAD = 8 * 1024 * 1024;
 
 /** A dock entry: a tool with its shortcut, or a visual separator. `shortcut` is the
     bare letter the key handler listens for; `hint` is only what the tip prints, so
-    a tool driven by a chord (image = ⌘O) can still show it. */
+    a tool driven by a chord (image = ⌘O) can still show it. `cap`/`capMeta` are what
+    the tip's keycap depresses on — the printed hint isn't a `KeyboardEvent.key`. */
 type DockItem =
   | { sep: true }
   | {
@@ -25,6 +34,8 @@ type DockItem =
       label: string;
       hint: string;
       shortcut?: string;
+      cap?: string;
+      capMeta?: boolean;
       icon: ReactNode;
       run: () => void;
       toggle?: boolean;
@@ -66,6 +77,8 @@ export function Toolbar({ dispatch, onError, drawMode, setDrawMode, enabled = tr
       id: "image",
       label: "Image",
       hint: "⌘O",
+      cap: "o",
+      capMeta: true,
       icon: <ImagePlus />,
       run: () => fileRef.current?.click(),
       menu: [
@@ -118,49 +131,50 @@ export function Toolbar({ dispatch, onError, drawMode, setDrawMode, enabled = tr
     };
   }, []);
 
-  // Any pointer down outside the open source menu, or Escape, dismisses it.
-  useEffect(() => {
-    if (!menuFor) return;
-    const close = () => setMenuFor(null);
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); close(); } };
-    window.addEventListener("pointerdown", close);
-    window.addEventListener("keydown", onKey, true);
-    return () => {
-      window.removeEventListener("pointerdown", close);
-      window.removeEventListener("keydown", onKey, true);
-    };
-  }, [menuFor]);
-
   return (
     <>
-      <div className="dock anim-dock pointer-events-auto max-w-full overflow-x-auto md:overflow-visible">
-        {tools.map((t, i) =>
-          t.sep ? (
-            <span key={`sep-${i}`} className="dock-sep" />
-          ) : (
-            <span key={t.id} className="dock-slot">
-              <DockButton
-                label={t.toggle && drawMode ? `${t.label} (on)` : t.label}
-                hint={t.hint}
-                active={(t.toggle && drawMode) || fired === t.id}
-                onClick={() => fire(t.id, t.run)}
-              >
-                {t.icon}
-              </DockButton>
-              {t.menu && (
-                <>
-                  <button
-                    type="button"
-                    className={cn("dock-more", menuFor === t.id && "dock-more-on")}
-                    aria-label={`${t.label}: more options`}
-                    aria-expanded={menuFor === t.id}
-                    onPointerDown={(e) => e.stopPropagation()}
-                    onClick={() => setMenuFor((m) => (m === t.id ? null : t.id))}
+      {/* One provider for the whole dock, so the row shares a single hover delay
+          instead of each tool arming its own. */}
+      <StickerTooltipProvider delayDuration={340}>
+        <div className="dock anim-dock pointer-events-auto max-w-full overflow-x-auto md:overflow-visible">
+          {tools.map((t, i) =>
+            t.sep ? (
+              <span key={`sep-${i}`} className="dock-sep" />
+            ) : (
+              <span key={t.id} className="dock-slot">
+                <DockButton
+                  label={t.toggle && drawMode ? `${t.label} (on)` : t.label}
+                  hint={t.hint}
+                  cap={t.cap ?? t.shortcut}
+                  capMeta={t.capMeta}
+                  active={(t.toggle && drawMode) || fired === t.id}
+                  onClick={() => fire(t.id, t.run)}
+                >
+                  {t.icon}
+                </DockButton>
+                {t.menu && (
+                  // Radix owns the dismissal — outside pointerdown, Escape and focus
+                  // return — which is what the hand-rolled window listeners here did.
+                  <StickerPopoverRoot
+                    open={menuFor === t.id}
+                    onOpenChange={(open) => setMenuFor(open ? t.id : null)}
                   >
-                    <ChevronUp />
-                  </button>
-                  {menuFor === t.id && (
-                    <div className="dock-menu" onPointerDown={(e) => e.stopPropagation()}>
+                    <StickerPopoverTrigger asChild>
+                      <button
+                        type="button"
+                        className={cn("dock-more", menuFor === t.id && "dock-more-on")}
+                        aria-label={`${t.label}: more options`}
+                      >
+                        <ChevronUp />
+                      </button>
+                    </StickerPopoverTrigger>
+                    <StickerPopoverContent
+                      side="top"
+                      align="center"
+                      sideOffset={12}
+                      arrow={false}
+                      className="w-44 p-1"
+                    >
                       {t.menu.map((m) => (
                         <button
                           key={m.label}
@@ -172,14 +186,14 @@ export function Toolbar({ dispatch, onError, drawMode, setDrawMode, enabled = tr
                           {m.label}
                         </button>
                       ))}
-                    </div>
-                  )}
-                </>
-              )}
-            </span>
-          )
-        )}
-      </div>
+                    </StickerPopoverContent>
+                  </StickerPopoverRoot>
+                )}
+              </span>
+            )
+          )}
+        </div>
+      </StickerTooltipProvider>
 
       {/* Lives outside the buttons so ⌘O and the source menu can both open the picker. */}
       <input
@@ -200,14 +214,25 @@ export function Toolbar({ dispatch, onError, drawMode, setDrawMode, enabled = tr
   );
 }
 
-function DockButton({ label, hint, onClick, children, active }: { label: string; hint: string; onClick: () => void; children: ReactNode; active?: boolean }) {
+/** A tool plus its tip. The tip carries a real keycap (`StickerKbd`), which depresses
+    on the actual keystroke — so pressing T anywhere shows the dock's own key going
+    down, and the dock keeps teaching its keyboard map. */
+function DockButton({ label, hint, cap, capMeta, onClick, children, active }: { label: string; hint: string; cap?: string; capMeta?: boolean; onClick: () => void; children: ReactNode; active?: boolean }) {
   return (
-    <button type="button" className={cn("dock-btn", active && "dock-btn-on")} onClick={onClick} aria-label={`${label} (${hint})`} aria-pressed={active}>
-      {children}
-      <span className="dock-tip">
-        {label}
-        <kbd className="dock-key">{hint}</kbd>
-      </span>
-    </button>
+    <StickerTooltipRoot>
+      <StickerTooltipTrigger asChild>
+        <button type="button" className={cn("dock-btn", active && "dock-btn-on")} onClick={onClick} aria-label={`${label} (${hint})`} aria-pressed={active}>
+          {children}
+        </button>
+      </StickerTooltipTrigger>
+      <StickerTooltipContent side="top" sideOffset={10} arrow={false}>
+        <span className="flex items-center gap-2">
+          {label}
+          <StickerKbd watch={cap} meta={capMeta} className="min-w-5 px-1 py-0 text-[10px]">
+            {hint}
+          </StickerKbd>
+        </span>
+      </StickerTooltipContent>
+    </StickerTooltipRoot>
   );
 }

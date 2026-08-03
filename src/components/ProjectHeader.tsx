@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Check, Eye, FilePlus, History, Link2, Pencil } from "lucide-react";
-import { Button } from "./ui/button";
-import { Input } from "./ui/input";
+import { GlowInput } from "./ui/glow-input";
+import { HudLabel } from "./ui/hud-label";
+import { QuackButton } from "./ui/quack-button";
+import { StickerTooltip } from "./ui/sticker-tooltip";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -87,49 +89,31 @@ export function ProjectHeader({ name, dirty, savedAt, archived, projectId, canWr
           off the rail. Everything else in the rail is hairlines. */}
       <div className="layer-accent rounded-lg border border-border bg-secondary/35 p-3">
         <div className="flex items-center justify-between gap-2">
-          <span className="font-mono text-[10.5px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
+          <HudLabel size="sm" tracking="tight" className="font-medium">
             Project
-          </span>
+          </HudLabel>
           {!editing && (
-            <span className="flex items-center gap-2">
+            <span className="flex items-center gap-0.5">
               {projectId && canWrite && (
-                <button
-                  type="button"
-                  onClick={onHistory}
-                  className="text-muted-foreground/60 transition-colors hover:text-foreground"
-                  title="Version history"
-                  aria-label="Version history"
-                >
+                <IconAction label="Version history" onClick={onHistory}>
                   <History className="size-3.5" />
-                </button>
+                </IconAction>
               )}
               {projectId && (
-                <button
-                  type="button"
-                  onClick={() => void copyLink()}
-                  className="text-muted-foreground/60 transition-colors hover:text-foreground"
-                  title={copied ? "Link copied" : "Copy project link"}
-                  aria-label="Copy project link"
-                >
+                <IconAction label={copied ? "Link copied" : "Copy project link"} onClick={() => void copyLink()}>
                   {copied ? <Check className="size-3.5 text-primary" /> : <Link2 className="size-3.5" />}
-                </button>
+                </IconAction>
               )}
-              <button
-                type="button"
-                onClick={() => setEditing(true)}
-                className="text-muted-foreground/60 transition-colors hover:text-foreground"
-                title="Rename"
-                aria-label="Rename project"
-              >
+              <IconAction label="Rename project" onClick={() => setEditing(true)}>
                 <Pencil className="size-3.5" />
-              </button>
+              </IconAction>
             </span>
           )}
         </div>
 
         {editing ? (
           <div className="mt-1.5 flex items-center gap-1.5">
-            <Input
+            <GlowInput
               ref={inputRef}
               autoFocus
               value={draft}
@@ -139,17 +123,24 @@ export function ProjectHeader({ name, dirty, savedAt, archived, projectId, canWr
                 if (e.key === "Enter") { e.preventDefault(); commit(); }
                 if (e.key === "Escape") { e.preventDefault(); cancel(); }
               }}
+              aria-label="Project name"
               className="h-8"
             />
-            <Button size="icon-sm" className="size-8 shrink-0" onMouseDown={(e) => e.preventDefault()} onClick={commit} aria-label="Confirm name">
+            <QuackButton
+              size="icon"
+              className="size-8 shrink-0 rounded-md"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={commit}
+              aria-label="Confirm name"
+            >
               <Check />
-            </Button>
+            </QuackButton>
           </div>
         ) : (
           <button
             type="button"
             onClick={() => setEditing(true)}
-            className="mt-1 block w-full truncate text-left text-base font-semibold leading-snug tracking-tight text-foreground transition-colors hover:text-foreground/75"
+            className="mt-1 block w-full truncate rounded-md text-left font-display text-base font-bold leading-snug tracking-tight text-foreground transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             title={name}
           >
             {name || "Untitled"}
@@ -161,28 +152,29 @@ export function ProjectHeader({ name, dirty, savedAt, archived, projectId, canWr
             the note says what's actually true instead. */}
         {canWrite ? (
           <div className="mt-2 flex items-center justify-between gap-2">
-            <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-              <span
-                className={cn(
-                  "size-1.5 shrink-0 rounded-full",
-                  canSave ? "bg-primary" : "bg-muted-foreground/40"
-                )}
-                aria-hidden
-              />
-              <span className="truncate">{status}</span>
-            </span>
-            <button
-              type="button"
-              onClick={onSave}
-              disabled={!canSave}
-              className={cn(
-                "shrink-0 text-xs font-medium transition-colors",
-                canSave ? "text-primary hover:text-primary/80" : "cursor-default text-muted-foreground/40"
-              )}
-              title="Save to the archive (⌘S)"
+            {/* The dot is duck's HUD status dot — square, and lime only when there is
+                actually something to save. */}
+            <HudLabel
+              dot
+              dotTone={canSave ? "primary" : "muted"}
+              size="sm"
+              tracking="tight"
+              className="min-w-0 normal-case tracking-normal"
             >
-              Save
-            </button>
+              <span className="truncate">{status}</span>
+            </HudLabel>
+            <StickerTooltip content="Save to the archive (⌘S)" side="left" delay={400}>
+              <QuackButton
+                variant="ghost"
+                size="sm"
+                ripple={false}
+                onClick={onSave}
+                disabled={!canSave}
+                className={cn("h-6 shrink-0 px-1.5 text-xs", canSave ? "text-primary" : "text-muted-foreground/40")}
+              >
+                Save
+              </QuackButton>
+            </StickerTooltip>
           </div>
         ) : (
           <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -193,10 +185,30 @@ export function ProjectHeader({ name, dirty, savedAt, archived, projectId, canWr
       </div>
 
       {canWrite && (
-        <Button className="w-full justify-center" onClick={onNew}>
+        <QuackButton className="w-full" onClick={onNew}>
           <FilePlus /> New project
-        </Button>
+        </QuackButton>
       )}
     </div>
+  );
+}
+
+/** The header's tiny icon buttons: a ghost QuackButton with its label in a tooltip
+    rather than a `title` attribute, so the whole chrome labels itself the same way
+    the dock does. */
+function IconAction({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
+  return (
+    <StickerTooltip content={label} delay={400}>
+      <QuackButton
+        variant="ghost"
+        size="icon"
+        ripple={false}
+        onClick={onClick}
+        aria-label={label}
+        className="size-6 rounded-md text-muted-foreground/70"
+      >
+        {children}
+      </QuackButton>
+    </StickerTooltip>
   );
 }

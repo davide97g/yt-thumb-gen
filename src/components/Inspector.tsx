@@ -1,4 +1,4 @@
-import { useState, type Dispatch } from "react";
+import { useState, type Dispatch, type ReactNode } from "react";
 import {
   AlignHorizontalJustifyCenter, AlignHorizontalJustifyEnd, AlignHorizontalJustifyStart,
   AlignHorizontalSpaceBetween, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd, AlignVerticalJustifyStart,
@@ -48,10 +48,13 @@ import {
 import type { CropMode } from "./ThumbCanvas";
 import { removeBackground } from "../lib/bgremove";
 import { loadImageFile } from "../lib/loadImageFile";
-import { ColorRow, Field, Hint, Section, SelectField, SliderRow, SwitchRow, UploadButton } from "./controls";
-import { Button } from "./ui/button";
-import { Input } from "./ui/input";
-import { Textarea } from "./ui/textarea";
+import { ColorRow, Field, Section, SelectField, SliderRow, SwitchRow, ToggleRow, UploadButton } from "./controls";
+import { DuckButtonGroup } from "./ui/duck-button-group";
+import { EmptyPond } from "./ui/empty-pond";
+import { GlowInput, GlowTextarea } from "./ui/glow-input";
+import { HudChip } from "./ui/hud-chip";
+import { QuackButton } from "./ui/quack-button";
+import { StickerTooltip } from "./ui/sticker-tooltip";
 import { WebcamCapture } from "./WebcamCapture";
 
 const MAX_UPLOAD = 8 * 1024 * 1024;
@@ -97,26 +100,39 @@ function AlignSection({ selectedIds, layers, dispatch }: { selectedIds: string[]
   const hasGroup = selectedIds.some((id) => layers.find((l) => l.id === id)?.groupId);
   const canDistribute = selectedIds.length >= 3;
 
-  const btn = "flex h-8 flex-1 items-center justify-center rounded-md border border-border hover:bg-accent disabled:opacity-40 disabled:pointer-events-none [&_svg]:size-4";
+  // Icon-only clusters past about four controls: duck's toolbar shape, so the six
+  // alignments are one tab stop with arrow keys inside rather than six stops.
   return (
     <Section title={`Align · ${selectedIds.length} layers`}>
       <div className="space-y-1.5">
-        <div className="flex gap-1">
-          <button className={btn} title="Align left" onClick={() => align("left")}><AlignHorizontalJustifyStart /></button>
-          <button className={btn} title="Center horizontally" onClick={() => align("hcenter")}><AlignHorizontalJustifyCenter /></button>
-          <button className={btn} title="Align right" onClick={() => align("right")}><AlignHorizontalJustifyEnd /></button>
-          <button className={btn} title="Align top" onClick={() => align("top")}><AlignVerticalJustifyStart /></button>
-          <button className={btn} title="Center vertically" onClick={() => align("vcenter")}><AlignVerticalJustifyCenter /></button>
-          <button className={btn} title="Align bottom" onClick={() => align("bottom")}><AlignVerticalJustifyEnd /></button>
-        </div>
-        <div className="flex gap-1">
-          <button className={btn} disabled={!canDistribute} title="Distribute horizontally" onClick={() => distribute("h")}><AlignHorizontalSpaceBetween /></button>
-          <button className={btn} disabled={!canDistribute} title="Distribute vertically" onClick={() => distribute("v")}><AlignVerticalSpaceBetween /></button>
-          <button className={btn} title="Group (⌘G)" onClick={() => dispatch({ type: "group", ids: selectedIds })}><Group /></button>
-          <button className={btn} disabled={!hasGroup} title="Ungroup (⌘⇧G)" onClick={() => dispatch({ type: "ungroup", ids: selectedIds })}><Ungroup /></button>
-        </div>
+        <DuckButtonGroup toolbar aria-label="Align the selection" className="w-full [&>*]:flex-1">
+          <IconChip label="Align left" onClick={() => align("left")}><AlignHorizontalJustifyStart /></IconChip>
+          <IconChip label="Center horizontally" onClick={() => align("hcenter")}><AlignHorizontalJustifyCenter /></IconChip>
+          <IconChip label="Align right" onClick={() => align("right")}><AlignHorizontalJustifyEnd /></IconChip>
+          <IconChip label="Align top" onClick={() => align("top")}><AlignVerticalJustifyStart /></IconChip>
+          <IconChip label="Center vertically" onClick={() => align("vcenter")}><AlignVerticalJustifyCenter /></IconChip>
+          <IconChip label="Align bottom" onClick={() => align("bottom")}><AlignVerticalJustifyEnd /></IconChip>
+        </DuckButtonGroup>
+        <DuckButtonGroup toolbar aria-label="Distribute and group the selection" className="w-full [&>*]:flex-1">
+          <IconChip label="Distribute horizontally" disabled={!canDistribute} onClick={() => distribute("h")}><AlignHorizontalSpaceBetween /></IconChip>
+          <IconChip label="Distribute vertically" disabled={!canDistribute} onClick={() => distribute("v")}><AlignVerticalSpaceBetween /></IconChip>
+          <IconChip label="Group (⌘G)" onClick={() => dispatch({ type: "group", ids: selectedIds })}><Group /></IconChip>
+          <IconChip label="Ungroup (⌘⇧G)" disabled={!hasGroup} onClick={() => dispatch({ type: "ungroup", ids: selectedIds })}><Ungroup /></IconChip>
+        </DuckButtonGroup>
       </div>
     </Section>
+  );
+}
+
+/** One segment of an icon toolbar: a HudChip, named by a tooltip so an icon-only
+    control still says what it does to a pointer as well as to a reader. */
+function IconChip({ label, onClick, disabled, children }: { label: string; onClick: () => void; disabled?: boolean; children: ReactNode }) {
+  return (
+    <StickerTooltip content={label} delay={400}>
+      <HudChip size="sm" aria-label={label} disabled={disabled} onClick={onClick} className="h-8 justify-center px-0 [&_svg]:size-4">
+        {children}
+      </HudChip>
+    </StickerTooltip>
   );
 }
 
@@ -124,7 +140,7 @@ export function Inspector({ selected, selectedIds, layers, dispatch, onError, cr
   if (!selected) {
     return (
       <Section title="Properties">
-        <Hint>Select a layer on the canvas or in the list to edit it.</Hint>
+        <EmptyPond compact title="Nothing selected" hint="Pick a layer on the canvas or in the list to edit it." />
       </Section>
     );
   }
@@ -134,7 +150,7 @@ export function Inspector({ selected, selectedIds, layers, dispatch, onError, cr
       <AlignSection selectedIds={selectedIds} layers={layers} dispatch={dispatch} />
       <Section title={`Properties — ${selected.name}`}>
         <Field label="Name">
-          <Input value={selected.name} onChange={(e) => set({ name: e.target.value })} />
+          <GlowInput value={selected.name} onChange={(e) => set({ name: e.target.value })} />
         </Field>
         {selected.type === "text" && <TextProps layer={selected} set={set} onFontPreview={onFontPreview} />}
         {selected.type === "image" && <ImageProps layer={selected} set={set} onError={onError} cropMode={cropMode} setCropMode={setCropMode} />}
@@ -155,12 +171,12 @@ function TextProps({ layer, set, onFontPreview }: { layer: TextLayer; set: Sette
   return (
     <>
       <Field label="Text">
-        <Textarea rows={2} value={layer.text} onChange={(e) => set({ text: e.target.value })} />
+        <GlowTextarea rows={2} value={layer.text} onChange={(e) => set({ text: e.target.value })} />
       </Field>
       <SelectField label="Font" value={layer.font} options={FONT_OPTIONS} onChange={(font) => set({ font })} onPreview={onFontPreview} />
       <SliderRow label="Size" min={SIZE_LIMITS.textSize[0]} max={SIZE_LIMITS.textSize[1]} curve="log" value={layer.size} defaultValue={D.size} onChange={(size) => set({ size })} />
       <ColorRow label="Color" value={layer.color} defaultValue={D.color} onChange={(color) => set({ color })} />
-      <SelectField label="Alignment" value={layer.align} options={ALIGN_OPTIONS} onChange={(align) => set({ align })} />
+      <ToggleRow label="Alignment" value={layer.align} options={ALIGN_OPTIONS} onChange={(align) => set({ align })} />
       <SliderRow label="Line height" min={0.8} max={2} step={0.05} value={layer.lineHeight} defaultValue={D.lineHeight} display={layer.lineHeight.toFixed(2)} onChange={(lineHeight) => set({ lineHeight })} />
       <SliderRow label="Rotation" min={-180} max={180} value={layer.rotation} defaultValue={D.rotation} display={`${layer.rotation}°`} onChange={(rotation) => set({ rotation })} />
       <SliderRow label="Opacity" min={0} max={100} value={layer.opacity ?? 100} defaultValue={D.opacity} display={`${layer.opacity ?? 100}%`} onChange={(opacity) => set({ opacity })} />
@@ -375,33 +391,43 @@ function ImageProps({ layer, set, onError, cropMode, setCropMode }: { layer: Ima
       ) : (
         <div className="grid grid-cols-2 gap-2">
           <UploadButton label={layer.src ? "Replace" : "From file"} icon={<ImagePlus />} onFile={(f) => void onUpload(f)} />
-          <Button variant="secondary" size="sm" onClick={() => setShowCam(true)}>
+          <QuackButton variant="outline" size="sm" onClick={() => setShowCam(true)}>
             <Camera /> Camera
-          </Button>
+          </QuackButton>
           {layer.src && (
             <>
-              <Button variant="secondary" size="sm" onClick={onRemoveBg} disabled={busy}>
-                <Scissors /> {busy ? "Removing…" : "Remove background"}
-              </Button>
+              {/* The cutout is a request that can be in flight, so the button says so
+                  itself through `state` instead of rewriting its own label. */}
+              <QuackButton
+                variant="outline"
+                size="sm"
+                state={busy ? "loading" : "idle"}
+                loadingLabel="Removing…"
+                onClick={onRemoveBg}
+              >
+                <Scissors /> Remove background
+              </QuackButton>
               {layer.origSrc && (
-                <Button variant="secondary" size="sm" onClick={() => set({ src: layer.origSrc, origSrc: null })}>
+                <QuackButton variant="outline" size="sm" onClick={() => set({ src: layer.origSrc, origSrc: null })}>
                   <Undo2 /> Restore
-                </Button>
+                </QuackButton>
               )}
-              <Button variant={cropMode === "rect" ? "default" : "secondary"} size="sm" onClick={() => setCropMode(cropMode === "rect" ? null : "rect")}>
+              {/* Crop and lasso are modes, not actions: a chip that stays lit while the
+                  mode is on, which is exactly what HudChip's `active` is for. */}
+              <HudChip size="sm" className="h-8 justify-center" active={cropMode === "rect"} onClick={() => setCropMode(cropMode === "rect" ? null : "rect")}>
                 <Crop /> Crop
-              </Button>
-              <Button variant={cropMode === "lasso" ? "default" : "secondary"} size="sm" onClick={() => setCropMode(cropMode === "lasso" ? null : "lasso")}>
+              </HudChip>
+              <HudChip size="sm" className="h-8 justify-center" active={cropMode === "lasso"} onClick={() => setCropMode(cropMode === "lasso" ? null : "lasso")}>
                 <Lasso /> Lasso
-              </Button>
+              </HudChip>
               {(layer.crop || layer.mask) && (
-                <Button variant="secondary" size="sm" className="col-span-2" onClick={() => { restoreCrop(layer, set); setCropMode(null); }}>
+                <QuackButton variant="outline" size="sm" className="col-span-2" onClick={() => { restoreCrop(layer, set); setCropMode(null); }}>
                   <Undo2 /> Reset crop
-                </Button>
+                </QuackButton>
               )}
-              <Button variant="ghost" size="sm" className="col-span-2 text-muted-foreground" onClick={() => set({ src: null, origSrc: null })}>
+              <QuackButton variant="ghost" size="sm" className="col-span-2 text-muted-foreground" onClick={() => set({ src: null, origSrc: null })}>
                 <RotateCcw /> Remove photo
-              </Button>
+              </QuackButton>
             </>
           )}
         </div>
@@ -460,7 +486,7 @@ function EmojiProps({ layer, set }: { layer: EmojiLayer; set: Setter }) {
   return (
     <>
       <Field label="Emoji">
-        <Input value={layer.glyph} onChange={(e) => set({ glyph: e.target.value })} />
+        <GlowInput value={layer.glyph} onChange={(e) => set({ glyph: e.target.value })} />
       </Field>
       <SliderRow label="Size" min={SIZE_LIMITS.emojiSize[0]} max={SIZE_LIMITS.emojiSize[1]} curve="log" value={layer.size} defaultValue={D.size} onChange={(size) => set({ size })} />
       <SliderRow label="Rotation" min={-180} max={180} value={layer.rotation} defaultValue={D.rotation} display={`${layer.rotation}°`} onChange={(rotation) => set({ rotation })} />
@@ -491,13 +517,13 @@ function EmojiFxProps({ layer, set, layers }: { layer: EmojiFxLayer; set: Setter
       <SelectField label="Pattern" value={layer.pattern} options={EMOJIFX_PATTERN_OPTIONS} onChange={(pattern) => set({ pattern })} />
       <Field label="Emoji">
         {/* ponytail: space-separated glyphs — avoids grapheme-cluster splitting; presets below fill it. */}
-        <Input value={layer.glyphs.join(" ")} onChange={(e) => set({ glyphs: e.target.value.split(/\s+/).filter(Boolean) })} />
+        <GlowInput value={layer.glyphs.join(" ")} onChange={(e) => set({ glyphs: e.target.value.split(/\s+/).filter(Boolean) })} />
       </Field>
       <div className="flex flex-wrap gap-1">
         {EMOJIFX_PRESETS.map((p) => (
-          <Button key={p.label} variant="outline" size="sm" onClick={() => set({ glyphs: [...p.glyphs] })}>
+          <HudChip key={p.label} size="sm" onClick={() => set({ glyphs: [...p.glyphs] })}>
             {p.label}
-          </Button>
+          </HudChip>
         ))}
       </div>
       <SliderRow label="Count" min={3} max={80} value={layer.count} defaultValue={D.count} onChange={(count) => set({ count })} />
@@ -509,9 +535,9 @@ function EmojiFxProps({ layer, set, layers }: { layer: EmojiFxLayer; set: Setter
       )}
       <SliderRow label="Depth" min={0} max={100} value={layer.depth} defaultValue={D.depth} display={`${layer.depth}%`} onChange={(depth) => set({ depth })} />
       <SliderRow label="Random spin" min={0} max={100} value={layer.spin} defaultValue={D.spin} display={`${layer.spin}%`} onChange={(spin) => set({ spin })} />
-      <Button variant="outline" size="sm" onClick={() => set({ seed: Math.floor(Math.random() * 1e9) })}>
+      <QuackButton variant="outline" size="sm" onClick={() => set({ seed: Math.floor(Math.random() * 1e9) })}>
         Shuffle
-      </Button>
+      </QuackButton>
     </>
   );
 }
@@ -685,14 +711,14 @@ function EffectProps({ layer, set, cw, ch }: { layer: EffectLayer; set: Setter; 
   const D = newEffectLayer();
   return (
     <Section title="Effect">
-      <Button
-        variant="secondary"
+      <QuackButton
+        variant="outline"
         size="sm"
         className="w-full"
         onClick={() => set({ x: 0, y: 0, w: cw, h: ch, rotation: 0, radius: 0 })}
       >
         <Maximize /> Full screen
-      </Button>
+      </QuackButton>
       <EffectControls effect={layer.effect} set={set} />
       <SliderRow label="Corner radius" min={0} max={400} value={layer.radius} defaultValue={D.radius} onChange={(radius) => set({ radius })} />
     </Section>
@@ -733,10 +759,10 @@ export function BackgroundInspector({
       <UploadButton label="Upload background…" icon={<ImagePlus />} className="w-full" onFile={(f) => void onUploadBg(f)} />
       {background.mode === "image" && background.image ? (
         <>
-          <img className="max-h-24 w-full rounded-md border border-border object-contain" src={background.image} alt="" />
-          <Button variant="ghost" size="sm" className="w-full text-muted-foreground" onClick={() => set({ mode: "gradient", image: null })}>
+          <img className="sticker max-h-24 w-full rounded-lg border-border object-contain" src={background.image} alt="" />
+          <QuackButton variant="ghost" size="sm" className="w-full text-muted-foreground" onClick={() => set({ mode: "gradient", image: null })}>
             Remove background
-          </Button>
+          </QuackButton>
           <SliderRow label="Darken" min={0} max={100} value={background.overlay} display={`${background.overlay}%`} onChange={(overlay) => set({ overlay })} />
           <SliderRow label="Zoom" min={100} max={200} value={background.imageZoom ?? 100} defaultValue={100} display={`${background.imageZoom ?? 100}%`} onChange={(imageZoom) => set({ imageZoom })} />
           <SliderRow label="Position X" min={-25} max={25} value={background.imageX ?? 0} defaultValue={0} display={`${background.imageX ?? 0}%`} onChange={(imageX) => set({ imageX })} />

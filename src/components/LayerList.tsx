@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type Dispatch, type ReactNode } from "react";
 import { ChevronDown, ChevronUp, Copy, Eye, EyeOff, GripVertical, Image as ImageIcon, Link2, PartyPopper, Pencil, Smile, Sparkles, Square, Star, Trash2, Type } from "lucide-react";
 import type { Action, Layer, LayerType } from "../state";
-import { Button } from "./ui/button";
-import { Hint } from "./controls";
+import { EmptyPond } from "./ui/empty-pond";
+import { QuackButton } from "./ui/quack-button";
+import { StickerTooltip } from "./ui/sticker-tooltip";
 import { cn } from "@/lib/utils";
 
 export const TYPE_ICON: Record<LayerType, ReactNode> = {
@@ -72,7 +73,15 @@ export function LayerList({ layers, selectedIds, dispatch, onStar }: Props) {
     listRef.current?.querySelector(`[data-layer-id="${id}"]`)?.scrollIntoView({ block: "nearest" });
   }, [selectionKey]);
 
-  if (layers.length === 0) return <Hint>No layers yet. Add one from the dock or load a template.</Hint>;
+  if (layers.length === 0) {
+    return (
+      <EmptyPond
+        compact
+        title="No layers yet"
+        hint="Add one from the dock below, or load a template."
+      />
+    );
+  }
 
   const groupMates = (layer: Layer): string[] =>
     layer.groupId ? layers.filter((l) => l.groupId === layer.groupId).map((l) => l.id) : [layer.id];
@@ -186,7 +195,7 @@ export function LayerList({ layers, selectedIds, dispatch, onStar }: Props) {
 
   return (
     // Hairlines instead of one card per layer: the stack reads as a single list,
-    // and the selected row is marked by its terracotta tick, not by a border.
+    // and the selected row is marked by its lime tick, not by a border.
     // `relative` so the drop indicator can float over the rows without shifting them.
     <div ref={listRef} className={cn("relative -mx-1.5 divide-y divide-border/45", dragIds && "select-none")}>
       {drop && (
@@ -228,15 +237,13 @@ export function LayerList({ layers, selectedIds, dispatch, onStar }: Props) {
               >
                 <GripVertical className="size-3" />
               </span>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                className="size-6 shrink-0 text-muted-foreground [&_svg]:size-3.5"
-                title={layer.visible ? "Hide" : "Show"}
+              <RowAction
+                label={layer.visible ? "Hide" : "Show"}
+                className="shrink-0"
                 onClick={(e) => { e.stopPropagation(); dispatch({ type: "updateLayer", id: layer.id, patch: { visible: !layer.visible } }); }}
               >
                 {layer.visible ? <Eye /> : <EyeOff />}
-              </Button>
+              </RowAction>
               <span className="flex shrink-0 items-center gap-1">
                 <span className={active ? "text-primary" : "text-muted-foreground"}>{TYPE_ICON[layer.type]}</span>
                 {layer.groupId && <Link2 className="size-3 text-muted-foreground" aria-label="Grouped" />}
@@ -253,61 +260,77 @@ export function LayerList({ layers, selectedIds, dispatch, onStar }: Props) {
                     buttons cost the layer name a third of the row — dragging the grip does
                     the same job with the finger. */}
                 <span className="hidden items-center gap-0.5 md:flex">
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    className="size-6 [&_svg]:size-3.5"
+                  <RowAction
+                    label="Bring forward"
                     disabled={front}
-                    title="Bring forward"
                     onClick={(e) => { e.stopPropagation(); dispatch({ type: "reorder", id: layer.id, dir: 1 }); }}
                   >
                     <ChevronUp />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    className="size-6 [&_svg]:size-3.5"
+                  </RowAction>
+                  <RowAction
+                    label="Send backward"
                     disabled={back}
-                    title="Send backward"
                     onClick={(e) => { e.stopPropagation(); dispatch({ type: "reorder", id: layer.id, dir: -1 }); }}
                   >
                     <ChevronDown />
-                  </Button>
+                  </RowAction>
                   <span className="mx-0.5 h-4 w-px bg-border/70" aria-hidden />
                 </span>
                 {onStar && (
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    className="size-6 text-muted-foreground hover:text-amber-400 [&_svg]:size-3.5"
-                    title="Add to favorites"
+                  <RowAction
+                    label="Add to favourites"
+                    className="hover:text-primary"
                     onClick={(e) => { e.stopPropagation(); onStar(layer); }}
                   >
                     <Star />
-                  </Button>
+                  </RowAction>
                 )}
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  className="size-6 text-muted-foreground [&_svg]:size-3.5"
-                  title="Duplicate"
+                <RowAction
+                  label="Duplicate"
                   onClick={(e) => { e.stopPropagation(); dispatch({ type: "select", ids: [layer.id] }); dispatch({ type: "pasteLayer", layer }); }}
                 >
                   <Copy />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  className="size-6 text-muted-foreground hover:text-destructive [&_svg]:size-3.5"
-                  title="Delete"
+                </RowAction>
+                <RowAction
+                  label="Delete"
+                  className="hover:text-destructive"
                   onClick={(e) => { e.stopPropagation(); dispatch({ type: "removeLayer", id: layer.id }); }}
                 >
                   <Trash2 />
-                </Button>
+                </RowAction>
               </div>
             </div>
           );
         })}
     </div>
+  );
+}
+
+/** One row action. A ghost QuackButton with its ripple off — a list this dense reads
+    as noise if every row can splash — and its label in a StickerTooltip rather than a
+    `title`, matching the dock. */
+function RowAction({
+  label, onClick, disabled, className, children,
+}: {
+  label: string;
+  onClick: (e: React.MouseEvent) => void;
+  disabled?: boolean;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <StickerTooltip content={label} delay={500}>
+      <QuackButton
+        variant="ghost"
+        size="icon"
+        ripple={false}
+        disabled={disabled}
+        aria-label={label}
+        onClick={onClick}
+        className={cn("size-6 rounded-md text-muted-foreground [&_svg]:size-3.5", className)}
+      >
+        {children}
+      </QuackButton>
+    </StickerTooltip>
   );
 }

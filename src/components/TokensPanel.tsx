@@ -1,8 +1,13 @@
 import { useEffect, useState } from "react";
-import { Check, Copy, KeyRound, Plus, Trash2 } from "lucide-react";
+import { KeyRound, Plus, Trash2 } from "lucide-react";
 import { type ApiToken, createToken, deleteToken, listTokens } from "../lib/storage";
-import { Button } from "./ui/button";
-import { Input } from "./ui/input";
+import { CopyButton } from "./ui/copy-button";
+import { DuckSpinner } from "./ui/duck-spinner";
+import { EmptyPond } from "./ui/empty-pond";
+import { GlowInput } from "./ui/glow-input";
+import { HudLabel } from "./ui/hud-label";
+import { QuackButton } from "./ui/quack-button";
+import { StickerTooltip } from "./ui/sticker-tooltip";
 
 const when = (ms: number | null) => (ms ? new Date(ms).toLocaleDateString("en-GB") : "never");
 
@@ -13,7 +18,6 @@ export function TokensPanel() {
   const [tokens, setTokens] = useState<ApiToken[] | null>(null);
   const [name, setName] = useState("");
   const [fresh, setFresh] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -30,7 +34,6 @@ export function TokensPanel() {
     try {
       const made = await createToken(name.trim());
       setFresh(made.token);
-      setCopied(false);
       setName("");
       setTokens(await listTokens());
     } catch {
@@ -53,16 +56,10 @@ export function TokensPanel() {
     }
   }
 
-  async function copy() {
-    if (!fresh) return;
-    await navigator.clipboard.writeText(fresh).catch(() => {});
-    setCopied(true);
-  }
-
   return (
     <div className="flex flex-col gap-4">
       <div className="space-y-1">
-        <h3 className="flex items-center gap-2 text-sm font-semibold">
+        <h3 className="flex items-center gap-2 font-display text-sm font-bold">
           <KeyRound className="size-4 text-primary" /> API tokens
         </h3>
         <p className="text-sm text-muted-foreground">
@@ -72,8 +69,9 @@ export function TokensPanel() {
       </div>
 
       <div className="flex gap-2">
-        <Input
+        <GlowInput
           value={name}
+          aria-label="Token name"
           placeholder="Token name (e.g. mcp-local)"
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => {
@@ -83,22 +81,27 @@ export function TokensPanel() {
             }
           }}
         />
-        <Button size="sm" onClick={() => void create()} disabled={busy || !name.trim()}>
+        <QuackButton
+          size="sm"
+          state={busy ? "loading" : "idle"}
+          loadingLabel="Creating…"
+          disabled={!name.trim()}
+          onClick={() => void create()}
+        >
           <Plus /> Create
-        </Button>
+        </QuackButton>
       </div>
 
       {fresh && (
-        <div className="space-y-2 rounded-lg border border-primary/30 bg-primary/10 p-3">
+        <div className="sticker space-y-2 rounded-xl border-primary/40 bg-primary/10 p-3">
           <p className="text-xs text-muted-foreground">
             Copy it now — it won't be shown again.
           </p>
           <div className="flex items-center gap-2">
-            <code className="readout min-w-0 flex-1 truncate rounded bg-background/60 px-2 py-1.5 text-xs">{fresh}</code>
-            <Button variant="ghost" size="sm" onClick={() => void copy()}>
-              {copied ? <Check /> : <Copy />}
-              {copied ? "Copied" : "Copy"}
-            </Button>
+            <code className="readout min-w-0 flex-1 truncate rounded-md bg-background/60 px-2 py-1.5 text-xs">{fresh}</code>
+            {/* duck's CopyButton: it owns the copied state and, crucially, does not claim
+                success when the clipboard write is refused. */}
+            <CopyButton value={fresh} />
           </div>
         </div>
       )}
@@ -107,30 +110,34 @@ export function TokensPanel() {
 
       <div className="space-y-1">
         {tokens === null ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
+          <div className="grid place-items-center py-4">
+            <DuckSpinner size="sm" label="Reading your tokens" />
+          </div>
         ) : tokens.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No tokens yet.</p>
+          <EmptyPond compact title="No tokens yet" hint="Create one above to let an agent design for you." />
         ) : (
           tokens.map((t) => (
-            <div key={t.id} className="flex items-center gap-2 rounded-lg border border-border/60 px-3 py-2">
+            <div key={t.id} className="sticker flex items-center gap-2 rounded-xl border-border px-3 py-2">
               <KeyRound className="size-4 shrink-0 text-muted-foreground" />
               <div className="min-w-0 flex-1">
                 <div className="truncate text-sm">{t.name}</div>
-                <div className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+                <HudLabel size="sm" tracking="tight" className="block truncate">
                   created {when(t.createdAt)} · used {when(t.lastUsedAt)}
-                </div>
+                </HudLabel>
               </div>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                className="text-muted-foreground hover:text-destructive"
-                onClick={() => void remove(t.id)}
-                disabled={busy}
-                title="Revoke"
-                aria-label={`Revoke ${t.name}`}
-              >
-                <Trash2 />
-              </Button>
+              <StickerTooltip content="Revoke" delay={400}>
+                <QuackButton
+                  variant="ghost"
+                  size="icon"
+                  ripple={false}
+                  className="size-7 rounded-md text-muted-foreground hover:text-destructive [&_svg]:size-3.5"
+                  onClick={() => void remove(t.id)}
+                  disabled={busy}
+                  aria-label={`Revoke ${t.name}`}
+                >
+                  <Trash2 />
+                </QuackButton>
+              </StickerTooltip>
             </div>
           ))
         )}

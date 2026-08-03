@@ -18,8 +18,12 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { apiGet, apiSend } from "../lib/api";
 import { clearWorking, setScope } from "../lib/storage";
-import { Button } from "./ui/button";
-import { Input } from "./ui/input";
+import { DuckSpinner } from "./ui/duck-spinner";
+import { GlowField, GlowInput } from "./ui/glow-input";
+import { HoloSeparator } from "./ui/holo-separator";
+import { HudLabel } from "./ui/hud-label";
+import { QuackButton } from "./ui/quack-button";
+import { StickerCard } from "./ui/sticker-card";
 
 type User = { id: string; email: string };
 
@@ -90,7 +94,11 @@ export function AuthGate({ children }: { children: ReactNode }) {
   }
 
   if (status === "loading") {
-    return <div className="grid h-full place-items-center bg-background text-sm text-muted-foreground">Loading…</div>;
+    return (
+      <div className="grid h-full place-items-center bg-background">
+        <DuckSpinner label="Checking your session" />
+      </div>
+    );
   }
   if (status === "out") {
     return <AuthForm onAuthed={enterOwner} onGuest={enterGuest} />;
@@ -138,67 +146,81 @@ function AuthForm({ onAuthed, onGuest }: { onAuthed: (u: User) => void; onGuest:
     }
   }
 
+  // The whole product's holo budget is spent here: the front door is the one screen
+  // with a single object on it, so the iridescent ring has nothing to compete with.
+  // Every other viewport in the editor is lime-only — see the note in styles.css.
   return (
     <div className="grid h-full place-items-center bg-background p-4">
-      <form onSubmit={submit} className="flex w-[min(380px,92vw)] flex-col gap-4 rounded-xl border border-border bg-card p-6 shadow-xl">
-        <div className="flex items-center gap-2.5">
-          <span className="grid size-7 place-items-center rounded-lg bg-primary/15 ring-1 ring-primary/25">
-            <span className="size-2.5 rounded-full bg-primary shadow-[0_0_8px_var(--color-primary)]" />
-          </span>
-          <div className="leading-tight">
-            <div className="text-sm font-semibold tracking-tight">Thumb Studio</div>
-            <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-              {mode === "register" ? "Create account" : "Sign in"}
+      {/* asChild so the card *is* the form: one element, no wrapper between the
+          sticker edge and the fields. */}
+      <StickerCard holo asChild className="w-[min(380px,92vw)]">
+        <form onSubmit={submit}>
+          <div className="flex items-center gap-2.5">
+            <span className="grid size-7 place-items-center rounded-lg bg-primary/15 ring-1 ring-primary/25">
+              <span className="size-2.5 rounded-full bg-primary duck-glow-primary" />
+            </span>
+            <div className="leading-tight">
+              <div className="font-display text-sm font-bold tracking-tight">Thumb Studio</div>
+              <HudLabel size="sm" tracking="tight">
+                {mode === "register" ? "Create account" : "Sign in"}
+              </HudLabel>
             </div>
           </div>
-        </div>
 
-        <label className="space-y-1.5">
-          <span className="text-sm text-muted-foreground">Email</span>
-          <Input type="email" autoComplete="email" value={email} autoFocus required onChange={(e) => setEmail(e.target.value)} />
-        </label>
-        <label className="space-y-1.5">
-          <span className="text-sm text-muted-foreground">Password</span>
-          <Input
-            type="password"
-            autoComplete={mode === "register" ? "new-password" : "current-password"}
-            value={password}
-            required
-            minLength={8}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-        </label>
+          {/* `required` goes on the field, not the control: GlowField clones the child
+              and passes its own `required` through, so setting it on the input would be
+              overwritten with undefined. */}
+          <GlowField label="Email" required>
+            <GlowInput type="email" autoComplete="email" value={email} autoFocus onChange={(e) => setEmail(e.target.value)} />
+          </GlowField>
+          <GlowField label="Password" required helper="At least 8 characters">
+            <GlowInput
+              type="password"
+              autoComplete={mode === "register" ? "new-password" : "current-password"}
+              value={password}
+              minLength={8}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+          </GlowField>
 
-        {error && <p className="text-xs text-destructive">{error}</p>}
+          {/* One credential pair, one server verdict: this failure belongs to the form
+              rather than to either field, so it stays in the form — never in a toast. */}
+          {error && (
+            <p role="alert" className="text-xs text-destructive">
+              {error}
+            </p>
+          )}
 
-        <Button type="submit" className="w-full justify-center" disabled={busy}>
-          {busy ? "Please wait…" : mode === "register" ? "Sign up" : "Sign in"}
-        </Button>
-
-        {signupOpen && (
-          <button
-            type="button"
-            className="text-center text-xs text-muted-foreground hover:text-foreground"
-            onClick={() => { setError(null); setMode((m) => (m === "login" ? "register" : "login")); }}
+          <QuackButton
+            type="submit"
+            className="w-full"
+            state={busy ? "loading" : "idle"}
+            loadingLabel="Please wait…"
           >
-            {mode === "login" ? "No account yet? Sign up" : "Already have an account? Sign in"}
-          </button>
-        )}
+            {mode === "register" ? "Sign up" : "Sign in"}
+          </QuackButton>
 
-        <div className="flex items-center gap-3 pt-1">
-          <span className="h-px flex-1 bg-border" />
-          <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">or</span>
-          <span className="h-px flex-1 bg-border" />
-        </div>
+          {signupOpen && (
+            <button
+              type="button"
+              className="text-center text-xs text-muted-foreground transition-colors hover:text-foreground"
+              onClick={() => { setError(null); setMode((m) => (m === "login" ? "register" : "login")); }}
+            >
+              {mode === "login" ? "No account yet? Sign up" : "Already have an account? Sign in"}
+            </button>
+          )}
 
-        {/* No account needed and no request made: this only flips a client-side state. */}
-        <Button type="button" variant="outline" className="w-full justify-center" onClick={onGuest}>
-          Continue as a guest
-        </Button>
-        <p className="text-center text-[11px] leading-relaxed text-muted-foreground">
-          Browse the published designs and edit them freely. Nothing a guest changes is saved.
-        </p>
-      </form>
+          <HoloSeparator label="or" />
+
+          {/* No account needed and no request made: this only flips a client-side state. */}
+          <QuackButton type="button" variant="outline" className="w-full" onClick={onGuest}>
+            Continue as a guest
+          </QuackButton>
+          <p className="text-center text-[11px] leading-relaxed text-muted-foreground">
+            Browse the published designs and edit them freely. Nothing a guest changes is saved.
+          </p>
+        </form>
+      </StickerCard>
     </div>
   );
 }

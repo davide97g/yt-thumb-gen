@@ -2,54 +2,107 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* Warm "darkroom" editor chrome. The canvas content is loud and colourful, so the
-   tool around it stays quiet, warm, and precise — Claude terracotta is the single
-   accent, monospace is the instrument readout.
-   Direction "camera oscura": panels are matte and recede, the dock is the only
-   floating glass object, hierarchy comes from hairlines and type — never from cards. */
+/* duck/ui theme (`@duck/theme`, installed through the shadcn CLI) plus the editor
+   shell this app adds on top of it. The token block below is generated — edit it by
+   re-running `bunx shadcn@latest add @duck/theme`, not by hand.
+
+   The design direction the shell keeps: the canvas content is loud and colourful, so
+   the tool around it stays quiet. Duck lime is the single accent, monospace is the
+   instrument readout, panels are matte and recede, the dock is the only floating
+   object, hierarchy comes from hairlines and type — never from cards. The holo
+   budget (one iridescent element per viewport) is spent on the sign-in card, so the
+   editor viewport itself carries none. */
 :root {
   --radius: 0.75rem;
-  --background: oklch(0.985 0.004 70);
-  --foreground: oklch(0.18 0.01 55);
+  --background: oklch(0.985 0.004 285);
+  --foreground: oklch(0.18 0.012 285);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.18 0.01 55);
+  --card-foreground: oklch(0.18 0.012 285);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.18 0.01 55);
-  --primary: oklch(0.64 0.16 40);
-  --primary-foreground: oklch(0.99 0.01 80);
-  --secondary: oklch(0.96 0.006 70);
-  --secondary-foreground: oklch(0.22 0.01 55);
-  --muted: oklch(0.96 0.006 70);
-  --muted-foreground: oklch(0.52 0.012 60);
-  --accent: oklch(0.95 0.008 65);
-  --accent-foreground: oklch(0.22 0.01 55);
-  --destructive: oklch(0.6 0.21 25);
-  --destructive-foreground: oklch(0.99 0.01 80);
-  --border: oklch(0.2 0.01 55 / 12%);
-  --input: oklch(0.2 0.01 55 / 14%);
-  --ring: oklch(0.64 0.16 40);
+  --popover-foreground: oklch(0.18 0.012 285);
+  --primary: oklch(0.76 0.16 115);
+  --primary-foreground: oklch(0.22 0.06 115);
+  --secondary: oklch(0.945 0.006 285);
+  --secondary-foreground: oklch(0.25 0.012 285);
+  --muted: oklch(0.955 0.005 285);
+  --muted-foreground: oklch(0.48 0.012 285);
+  --accent: oklch(0.93 0.03 200);
+  --accent-foreground: oklch(0.25 0.05 220);
+  --destructive: oklch(0.58 0.22 27);
+  --destructive-foreground: oklch(0.98 0 0);
+  --border: oklch(0.895 0.006 285);
+  --input: oklch(0.895 0.006 285);
+  --ring: oklch(0.62 0.14 115);
+  --chart-1: oklch(0.72 0.2 305);
+  --chart-2: oklch(0.75 0.14 220);
+  --chart-3: oklch(0.78 0.14 160);
+  --chart-4: oklch(0.8 0.17 115);
+  --chart-5: oklch(0.7 0.19 350);
+  --holo: linear-gradient(135deg, oklch(0.72 0.2 305), oklch(0.76 0.15 250), oklch(0.8 0.14 195), oklch(0.85 0.17 150));
+  --foil: conic-gradient(from 200deg at 50% 50%, oklch(0.79 0.19 20), oklch(0.85 0.16 72), oklch(0.88 0.18 118), oklch(0.84 0.14 172), oklch(0.78 0.16 236), oklch(0.74 0.21 304), oklch(0.79 0.19 20));
+  --glow: 0 0 24px oklch(0.78 0.15 195 / 0.2);
+  --glow-primary: 0 0 24px oklch(0.76 0.16 115 / 0.35);
+  --sticker-border: 3px;
+  --sheen: oklch(1 0 0 / 0.16);
+  --surface: oklch(1 0 0);
+  --surface-raised: oklch(0.975 0.004 285);
+  --glass: oklch(1 0 0 / 0.72);
+  --glass-blur: 12px;
+  --font-button: var(--font-sans);
+  --weight-button: 600;
+  --tracking-button: normal;
+  --case-button: none;
+  --text-button-sm: 0.75rem;
+  --text-button: 0.875rem;
+  --text-button-lg: 1rem;
+  --font-badge: var(--font-sans);
+  --weight-badge: 600;
+  --tracking-badge: normal;
+  --case-badge: none;
+  --text-badge: 0.75rem;
+  --vinyl: oklch(0.975 0.004 285);
+  --sheet: oklch(0.97 0.004 285);
+  --sheet-line: oklch(0.9 0.006 285);
+  --cut: oklch(0.78 0.01 285);
+  --fx: 50;
+  --fy: 50;
+  --rx: 0deg;
+  --ry: 0deg;
 }
 
 .dark {
-  --background: oklch(0.135 0.007 52); /* warm near-black — the stage void */
-  --foreground: oklch(0.955 0.008 78);
-  --card: oklch(0.183 0.008 54); /* matte warm charcoal — the rails */
-  --card-foreground: oklch(0.955 0.008 78);
-  --popover: oklch(0.212 0.009 55); /* lifted surfaces: dock, menus, tips */
-  --popover-foreground: oklch(0.955 0.008 78);
-  --primary: oklch(0.67 0.17 42); /* Claude terracotta — the only accent */
-  --primary-foreground: oklch(0.99 0.012 80);
-  --secondary: oklch(0.243 0.009 55);
-  --secondary-foreground: oklch(0.955 0.008 78);
-  --muted: oklch(0.243 0.009 55);
-  --muted-foreground: oklch(0.685 0.014 62);
-  --accent: oklch(0.272 0.011 54); /* hover fill */
-  --accent-foreground: oklch(0.965 0.008 78);
-  --destructive: oklch(0.64 0.2 22);
-  --destructive-foreground: oklch(0.99 0.012 80);
-  --border: oklch(0.9 0.02 70 / 8%);
-  --input: oklch(0.9 0.02 70 / 12%);
-  --ring: oklch(0.67 0.17 42);
+  --background: oklch(0.145 0.006 285);
+  --foreground: oklch(0.965 0.004 285);
+  --card: oklch(0.185 0.007 285);
+  --card-foreground: oklch(0.965 0.004 285);
+  --popover: oklch(0.175 0.007 285);
+  --popover-foreground: oklch(0.965 0.004 285);
+  --primary: oklch(0.85 0.17 115);
+  --primary-foreground: oklch(0.24 0.07 115);
+  --secondary: oklch(0.235 0.008 285);
+  --secondary-foreground: oklch(0.965 0.004 285);
+  --muted: oklch(0.225 0.008 285);
+  --muted-foreground: oklch(0.68 0.012 285);
+  --accent: oklch(0.26 0.03 200); /* hover fill */
+  --accent-foreground: oklch(0.9 0.05 200);
+  --destructive: oklch(0.65 0.2 25);
+  --destructive-foreground: oklch(0.98 0 0);
+  --border: oklch(0.275 0.009 285);
+  --input: oklch(0.275 0.009 285);
+  --ring: oklch(0.85 0.17 115);
+  --chart-1: oklch(0.72 0.2 305);
+  --chart-2: oklch(0.75 0.14 220);
+  --chart-3: oklch(0.78 0.14 160);
+  --chart-4: oklch(0.85 0.17 115);
+  --chart-5: oklch(0.7 0.19 350);
+  --glow: 0 0 32px oklch(0.78 0.15 195 / 0.25);
+  --glow-primary: 0 0 32px oklch(0.85 0.17 115 / 0.35);
+  --surface: oklch(0.185 0.007 285);
+  --surface-raised: oklch(0.225 0.008 285);
+  --glass: oklch(0.185 0.007 285 / 0.72);
+  --sheet: oklch(0.175 0.006 285);
+  --sheet-line: oklch(0.225 0.008 285);
+  --cut: oklch(0.34 0.01 285);
 }
 
 @theme inline {
@@ -72,12 +125,218 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) * 0.667);
+  --radius-md: calc(var(--radius) * 0.833);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-  --font-sans: "Geist", "Inter", system-ui, sans-serif;
-  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, "JetBrains Mono", monospace;
+  --radius-xl: calc(var(--radius) * 1.333);
+  /* The duck theme leaves the faces to the project. Geist for the chrome, Geist Mono
+     for every readout — both are imported in main.tsx. */
+  --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "SF Mono", SFMono-Regular, monospace;
+  --radius: 0.75rem;
+  --radius-2xl: calc(var(--radius) * 1.833);
+  --font-display: "Geist", ui-sans-serif, system-ui, sans-serif;
+  --ease-duck: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-squash: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-sheet: var(--sheet);
+  --color-sheet-line: var(--sheet-line);
+  --color-cut: var(--cut);
+  --color-vinyl: var(--vinyl);
+  --ry: var(--ry);
+  --rx: var(--rx);
+  --fy: var(--fy);
+  --fx: var(--fx);
+  --text-badge: var(--text-badge);
+  --case-badge: var(--case-badge);
+  --tracking-badge: var(--tracking-badge);
+  --weight-badge: var(--weight-badge);
+  --font-badge: var(--font-badge);
+  --text-button-lg: var(--text-button-lg);
+  --text-button: var(--text-button);
+  --text-button-sm: var(--text-button-sm);
+  --case-button: var(--case-button);
+  --tracking-button: var(--tracking-button);
+  --weight-button: var(--weight-button);
+  --font-button: var(--font-button);
+  --glass-blur: var(--glass-blur);
+  --color-glass: var(--glass);
+  --color-sheen: var(--sheen);
+  --sticker-border: var(--sticker-border);
+  --glow-primary: var(--glow-primary);
+  --glow: var(--glow);
+  --foil: var(--foil);
+  --holo: var(--holo);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+  @keyframes holo-shift {
+  0%, 100% {
+    background-position: 0% 0%, 0% 50%;
+    }
+  50% {
+    background-position: 0% 0%, 100% 50%;
+    }
+  }
+  @keyframes duck-waddle {
+  0%, 100% {
+    transform: rotate(-12deg) translateY(0);
+    }
+  25% {
+    transform: rotate(0deg) translateY(-2px);
+    }
+  50% {
+    transform: rotate(12deg) translateY(0);
+    }
+  75% {
+    transform: rotate(0deg) translateY(-2px);
+    }
+  }
+  @keyframes duck-idle {
+  0%, 90%, 100% {
+    transform: translateY(0) scale(1);
+    }
+  95% {
+    transform: translateY(-1.5px) scale(1.012);
+    }
+  }
+  @keyframes duck-sheen {
+  0%, 72%, 100% {
+    background-position: 170% 0;
+    }
+  88% {
+    background-position: -50% 0;
+    }
+  }
+  @keyframes duck-squash {
+  0% {
+    transform: scale(1, 1);
+    }
+  40% {
+    transform: scale(1.06, 0.9);
+    }
+  70% {
+    transform: scale(0.97, 1.04);
+    }
+  100% {
+    transform: scale(1, 1);
+    }
+  }
+  @keyframes duck-pop {
+  0% {
+    transform: scale(0.6);
+    opacity: 0;
+    }
+  60% {
+    transform: scale(1.14);
+    opacity: 1;
+    }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+    }
+  }
+  @keyframes duck-ripple {
+  0% {
+    transform: scale(0);
+    opacity: 0.35;
+    }
+  100% {
+    transform: scale(2.8);
+    opacity: 0;
+    }
+  }
+  @keyframes duck-paddle {
+  0%, 100% {
+    transform: translateY(0) rotate(-7deg);
+    }
+  50% {
+    transform: translateY(-3px) rotate(7deg);
+    }
+  }
+  @keyframes duck-float {
+  0%, 100% {
+    transform: translateY(0) rotate(-1.5deg);
+    }
+  50% {
+    transform: translateY(-9px) rotate(1.5deg);
+    }
+  }
+  @keyframes duck-caret {
+  0%, 49% {
+    opacity: 1;
+    }
+  50%, 100% {
+    opacity: 0;
+    }
+  }
+  @keyframes duck-marquee {
+  from {
+    transform: translateX(0);
+    }
+  to {
+    transform: translateX(-50%);
+    }
+  }
+  @keyframes duck-shimmer {
+  from {
+    background-position: -180% 0;
+    }
+  to {
+    background-position: 180% 0;
+    }
+  }
+  @keyframes duck-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+    }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    }
+  }
+  @keyframes duck-fade-in {
+  from {
+    opacity: 0;
+    }
+  to {
+    opacity: 1;
+    }
+  }
+  @keyframes duck-fade-out {
+  from {
+    opacity: 1;
+    }
+  to {
+    opacity: 0;
+    }
+  }
+  @keyframes duck-dialog-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, calc(-50% + 10px)) scale(0.98);
+    }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+    }
+  }
+  @keyframes duck-dialog-out {
+  from {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+    }
+  to {
+    opacity: 0;
+    transform: translate(-50%, calc(-50% + 6px)) scale(0.98);
+    }
+  }
 }
 
 @layer base {
@@ -93,6 +352,26 @@
     color: var(--foreground);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
+  }
+  [data-slot="holo-button"], [data-slot="quack-button"] {
+    font-family: var(--font-button, var(--font-sans));
+    font-size: var(--text-button, 0.875rem);
+    font-weight: var(--weight-button, 600);
+    letter-spacing: var(--tracking-button, normal);
+    text-transform: var(--case-button, none);
+  }
+  [data-slot="holo-button"][data-size="sm"], [data-slot="quack-button"][data-size="sm"] {
+    font-size: var(--text-button-sm, 0.75rem);
+  }
+  [data-slot="holo-button"][data-size="lg"], [data-slot="quack-button"][data-size="lg"] {
+    font-size: var(--text-button-lg, 1rem);
+  }
+  [data-slot="holo-badge"] {
+    font-family: var(--font-badge, var(--font-sans));
+    font-size: var(--text-badge, 0.75rem);
+    font-weight: var(--weight-badge, 600);
+    letter-spacing: var(--tracking-badge, normal);
+    text-transform: var(--case-badge, none);
   }
 }
 
@@ -111,14 +390,15 @@ input[type="color"]::-webkit-color-swatch { border: none; border-radius: calc(va
 
 /* ── Editor shell ──────────────────────────────────────────────────────────── */
 
-/* The stage the canvas floats in: faint dotted grid + a warm glow up top, the way
+/* The stage the canvas floats in: faint dotted grid + a lime wash up top, the way
    an infinite-canvas editor signals "this is a workspace, not a page." The grid is
-   deliberately below the threshold of "pattern" — it reads as tooth on paper. */
+   deliberately below the threshold of "pattern" — it reads as tooth on paper.
+   Both layers are mixed from tokens, so a different duck theme restains the stage. */
 .stage {
   background-color: var(--background);
   background-image:
-    radial-gradient(120% 85% at 50% -12%, oklch(0.67 0.17 42 / 6%), transparent 62%),
-    radial-gradient(oklch(0.92 0.02 70 / 5%) 1px, transparent 1.4px);
+    radial-gradient(120% 85% at 50% -12%, color-mix(in oklch, var(--primary) 7%, transparent), transparent 62%),
+    radial-gradient(color-mix(in oklch, var(--foreground) 7%, transparent) 1px, transparent 1.4px);
   background-size: auto, 24px 24px;
   background-position: center, center;
 }
@@ -145,7 +425,7 @@ input[type="color"]::-webkit-color-swatch { border: none; border-radius: calc(va
     inset 0 1px 0 oklch(1 0 0 / 7%),
     0 2px 6px oklch(0 0 0 / 35%),
     0 22px 48px -16px oklch(0 0 0 / 75%),
-    0 0 0 1px oklch(0.67 0.17 42 / 6%);
+    0 0 0 1px color-mix(in oklch, var(--primary) 7%, transparent);
 }
 .dock-sep {
   width: 1px;
@@ -155,7 +435,7 @@ input[type="color"]::-webkit-color-swatch { border: none; border-radius: calc(va
   background: var(--border);
 }
 
-/* Icon button inside the dock + its hover label. */
+/* Icon button inside the dock. Its label is a StickerTooltip. */
 .dock-btn {
   position: relative;
   display: inline-flex;
@@ -187,32 +467,9 @@ input[type="color"]::-webkit-color-swatch { border: none; border-radius: calc(va
   box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--primary) 45%, transparent);
 }
 .dock-btn-on:hover { color: var(--primary); }
-.dock-tip {
-  position: absolute;
-  bottom: calc(100% + 0.625rem);
-  left: 50%;
-  transform: translateX(-50%) translateY(0.25rem);
-  padding: 0.25rem 0.5rem;
-  border-radius: 0.5rem;
-  border: 1px solid var(--border);
-  background: var(--popover);
-  color: var(--popover-foreground);
-  font-family: var(--font-mono);
-  font-size: 0.6875rem;
-  letter-spacing: 0.02em;
-  white-space: nowrap;
-  opacity: 0;
-  pointer-events: none;
-  box-shadow: 0 6px 16px oklch(0 0 0 / 45%);
-  transition: opacity 0.12s ease, transform 0.12s ease;
-}
-.dock-btn:hover .dock-tip,
-.dock-btn:focus-visible .dock-tip {
-  opacity: 1;
-  transform: translateX(-50%) translateY(0);
-}
-/* A tool plus its optional "more sources" chevron and popover menu. Relative so the
-   menu anchors to the tool, not the dock. */
+/* A tool plus its optional "more sources" chevron. The tip is a StickerTooltip and
+   the menu a StickerPopover, so both are portalled — this only has to be the anchor
+   the trigger sits in. */
 .dock-slot {
   position: relative;
   display: inline-flex;
@@ -233,22 +490,6 @@ input[type="color"]::-webkit-color-swatch { border: none; border-radius: calc(va
 }
 .dock-more svg { width: 0.75rem; height: 0.75rem; }
 .dock-more:hover, .dock-more-on { background: var(--accent); color: var(--foreground); }
-.dock-menu {
-  position: absolute;
-  bottom: calc(100% + 0.5rem);
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 20;
-  display: flex;
-  flex-direction: column;
-  min-width: 10rem;
-  padding: 0.25rem;
-  border-radius: 0.75rem;
-  border: 1px solid var(--border);
-  background: var(--popover);
-  color: var(--popover-foreground);
-  box-shadow: 0 10px 28px oklch(0 0 0 / 55%);
-}
 .dock-menu-item {
   display: flex;
   align-items: center;
@@ -262,17 +503,6 @@ input[type="color"]::-webkit-color-swatch { border: none; border-radius: calc(va
 .dock-menu-item:hover { background: var(--accent); }
 .dock-menu-icon { display: inline-flex; color: var(--muted-foreground); }
 .dock-menu-icon svg { width: 0.9375rem; height: 0.9375rem; }
-
-/* The shortcut letter inside a tip — the dock documents its own keyboard map. */
-.dock-key {
-  margin-left: 0.375rem;
-  padding: 0.0625rem 0.25rem;
-  border-radius: 0.25rem;
-  border: 1px solid var(--border);
-  background: color-mix(in oklch, var(--foreground) 8%, transparent);
-  color: var(--muted-foreground);
-  font-size: 0.625rem;
-}
 
 /* Side rails: matte, opaque, no glass. They are the wall the tools hang on, so
    they stay flat and let the dock be the only object that floats. */
@@ -292,25 +522,28 @@ input[type="color"]::-webkit-color-swatch { border: none; border-radius: calc(va
   background: var(--card);
 }
 
-/* Layer-row left accent — a terracotta tick that marks the selected layer,
-   echoing the dock's single-accent restraint. */
+/* Layer-row left accent — a lime tick that marks the selected layer, echoing the
+   dock's single-accent restraint. */
 .layer-accent {
   box-shadow: inset 2px 0 0 var(--primary);
 }
 
-/* Thin, warm panel scrollbars. */
+/* Thin panel scrollbars, tinted from the foreground token. */
 .panel-scroll {
   scrollbar-width: thin;
   scrollbar-color: var(--border) transparent;
 }
 .panel-scroll::-webkit-scrollbar { width: 8px; }
 .panel-scroll::-webkit-scrollbar-thumb {
-  background: oklch(0.92 0.02 70 / 12%);
+  background: color-mix(in oklch, var(--foreground) 14%, transparent);
   border-radius: 99px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
-.panel-scroll::-webkit-scrollbar-thumb:hover { background: oklch(0.92 0.02 70 / 20%); background-clip: padding-box; }
+.panel-scroll::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklch, var(--foreground) 24%, transparent);
+  background-clip: padding-box;
+}
 
 /* One orchestrated page-load settle — dock rises, panels fade. (The dock is
    horizontally centred by its wrapper, so the keyframe only moves Y.) */
@@ -339,9 +572,21 @@ input[type="color"]::-webkit-color-swatch { border: none; border-radius: calc(va
 
 @media (prefers-reduced-motion: reduce) {
   .anim-dock, .anim-panel, .anim-panel-l, .anim-panel-r { animation: none; }
-  .dock-btn, .dock-tip { transition: none; }
+  .dock-btn { transition: none; }
   [role="slider"] { transition: none; }
   .rb-glitch::before, .rb-glitch::after { animation: none; }
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .tilt {
+    transform: none !important;
+  }
+  .duck-stream-edge {
+    mask-image: none !important;
+  }
 }
 
 /* ── React Bits text effects ──────────────────────────────────────────────────
@@ -401,4 +646,182 @@ input[type="color"]::-webkit-color-swatch { border: none; border-radius: calc(va
   90% { clip-path: inset(15% 0 55% 0); }
   95% { clip-path: inset(25% 0 35% 0); }
   100% { clip-path: inset(30% 0 40% 0); }
+}
+
+@layer utilities {
+  .holo-border {
+    border: var(--sticker-border) solid transparent;
+    background: linear-gradient(var(--card), var(--card)) padding-box, var(--holo) border-box;
+  }
+  .holo-border-animated {
+    border: var(--sticker-border) solid transparent;
+    background: linear-gradient(var(--card), var(--card)) padding-box, var(--holo) border-box;
+    background-size: 100% 100%, 300% 300%;
+    animation: holo-shift 4s ease-in-out infinite;
+  }
+  .holo-text {
+    background: var(--holo);
+    background-size: 200% 200%;
+    background-clip: text;
+    -webkit-background-clip: text;
+    color: transparent;
+    animation: holo-shift 6s ease-in-out infinite;
+  }
+  .sticker {
+    border-width: var(--sticker-border);
+  }
+  .foil {
+    background-image: radial-gradient(80% 80% at calc(var(--fx) * 1%) calc(var(--fy) * 1%), oklch(1 0 0 / 0.6), oklch(1 0 0 / 0) 60%), var(--foil);
+    background-size: 170% 170%, 230% 230%;
+    background-position: center, calc(50% + (var(--fx) - 50) * 0.6%) calc(50% + (var(--fy) - 50) * 0.6%);
+    background-blend-mode: overlay, normal;
+  }
+  .sheen {
+    position: relative;
+    overflow: hidden;
+  }
+  .sheen::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(105deg, transparent 42%, var(--sheen, oklch(1 0 0 / 0.16)) 49%, transparent 56%);
+    background-size: 250% 100%;
+    background-position: 160% 0;
+    transition: background-position 0.7s var(--ease-duck);
+  }
+  .sheen:hover::after, .sheen:focus-visible::after {
+    background-position: -40% 0;
+  }
+  .tilt {
+    transform: perspective(900px) rotateX(var(--rx)) rotateY(var(--ry));
+    transform-style: preserve-3d;
+    transition: transform 0.4s var(--ease-duck);
+  }
+  .tilt-live {
+    transition: transform 0.08s linear;
+  }
+  .kiss-cut {
+    background-color: var(--sheet);
+    background-image: repeating-linear-gradient(to right, var(--sheet-line) 0 1px, transparent 1px 100%), repeating-linear-gradient(to bottom, var(--sheet-line) 0 1px, transparent 1px 100%);
+    background-size: 28px 28px;
+  }
+  .cut-line {
+    border: 1.5px dashed var(--cut);
+  }
+  .grain {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    pointer-events: none;
+    opacity: 0.04;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  .balance {
+    text-wrap: balance;
+  }
+  :where(.display-xl) {
+    font-family: var(--font-display);
+    font-size: clamp(2.5rem, 6.5vw, 4.5rem);
+    font-weight: 800;
+    line-height: 0.98;
+    letter-spacing: -0.03em;
+  }
+  :where(.display-lg) {
+    font-family: var(--font-display);
+    font-size: clamp(2rem, 4.5vw, 3rem);
+    font-weight: 700;
+    line-height: 1.05;
+    letter-spacing: -0.025em;
+  }
+  :where(.display-md) {
+    font-family: var(--font-display);
+    font-size: clamp(1.5rem, 3vw, 2rem);
+    font-weight: 700;
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+  }
+  .hud {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    font-weight: 400;
+    letter-spacing: 0.3em;
+    line-height: 1;
+    text-transform: uppercase;
+  }
+  :where(.hud) {
+    color: var(--muted-foreground);
+  }
+  .hud-sm {
+    font-size: 0.625rem;
+  }
+  .hud-tight {
+    letter-spacing: 0.18em;
+  }
+}
+
+@utility duck-glow {
+    box-shadow: var(--glow);
+}
+
+@utility duck-glow-primary {
+    box-shadow: var(--glow-primary);
+}
+
+@utility duck-stream-edge {
+    mask-image: linear-gradient(to bottom, #000 calc(100% - 1.4em), transparent);
+}
+
+@media print {
+  :root, .dark {
+    --background: oklch(1 0 0);
+    --foreground: oklch(0.18 0.012 285);
+    --card: oklch(0.985 0.004 285);
+    --card-foreground: oklch(0.18 0.012 285);
+    --popover: oklch(1 0 0);
+    --popover-foreground: oklch(0.18 0.012 285);
+    --secondary: oklch(0.945 0.006 285);
+    --secondary-foreground: oklch(0.25 0.012 285);
+    --muted: oklch(0.955 0.005 285);
+    --muted-foreground: oklch(0.48 0.012 285);
+    --accent-foreground: oklch(0.25 0.05 220);
+    --destructive: oklch(0.58 0.22 27);
+    --border: oklch(0.895 0.006 285);
+    --input: oklch(0.895 0.006 285);
+    --primary: oklch(0.62 0.14 115);
+    --primary-foreground: oklch(1 0 0);
+    --ring: oklch(0.62 0.14 115);
+    --glow: none;
+    --glow-primary: none;
+    --sticker-border: 1px;
+    --sheet: oklch(1 0 0);
+    --sheet-line: oklch(0.895 0.006 285);
+    --cut: oklch(0.78 0.01 285);
+    --vinyl: oklch(1 0 0);
+  }
+  html, body {
+    background: var(--background) !important;
+    color: var(--foreground) !important;
+  }
+  .holo-border, .holo-border-animated, .foil, .sheen {
+    background: none !important;
+    border-color: var(--border) !important;
+  }
+  .holo-text {
+    background: none !important;
+    -webkit-text-fill-color: var(--foreground) !important;
+    color: var(--foreground) !important;
+  }
+  :where(.duck-prose) {
+    max-width: none;
+  }
+  :where(.duck-prose) :is(pre, code, blockquote, mark) {
+    background: none;
+  }
+  :where(.duck-prose) :is(figure, blockquote, pre, table, li) {
+    break-inside: avoid;
+  }
+  :where(.duck-prose) :is(h2, h3, h4) {
+    break-after: avoid;
+  }
 }

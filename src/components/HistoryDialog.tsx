@@ -1,8 +1,17 @@
 import { useEffect, useState } from "react";
-import { History, RotateCcw, X } from "lucide-react";
+import { History, RotateCcw } from "lucide-react";
 import { listVersions, restoreVersion, type VersionMeta } from "../lib/storage";
 import { FORMATS, type ThumbDoc } from "../state";
-import { Button } from "./ui/button";
+import { DuckSpinner } from "./ui/duck-spinner";
+import { EmptyPond } from "./ui/empty-pond";
+import { HudLabel } from "./ui/hud-label";
+import { QuackButton } from "./ui/quack-button";
+import {
+  StickerDialog,
+  StickerDialogContent,
+  StickerDialogHeader,
+  StickerDialogTitle,
+} from "./ui/sticker-dialog";
 import { relTime } from "@/lib/utils";
 
 type Props = {
@@ -32,12 +41,6 @@ export function HistoryDialog({ projectId, dirty, onClose, onRestored, onError }
       });
   }, [projectId]);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
   async function restore(v: VersionMeta) {
     // Unsaved edits are the one thing history can't give back, so they're worth a question.
     if (dirty && !confirm("You have unsaved changes. Restoring replaces them. Continue?")) return;
@@ -52,33 +55,32 @@ export function HistoryDialog({ projectId, dirty, onClose, onRestored, onError }
     }
   }
 
+  // Escape, the focus trap and the scroll lock come from Radix via StickerDialog. This
+  // component used to bind Escape itself and had neither of the other two.
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4" onClick={onClose}>
-      <div
-        className="panel flex max-h-[70vh] w-full max-w-md flex-col gap-3 rounded-xl border border-border p-4 shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-label="Version history"
-      >
-        <div className="flex items-center justify-between gap-3">
-          <span className="flex items-center gap-2 font-mono text-[10.5px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
+    <StickerDialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <StickerDialogContent size="sm" className="max-h-[70vh] w-full max-w-md" aria-label="Version history">
+        <StickerDialogHeader>
+          <StickerDialogTitle className="sr-only">Version history</StickerDialogTitle>
+          <HudLabel size="sm" tracking="tight" className="flex items-center gap-2 font-medium">
             <History className="size-3.5" /> History
-          </span>
-          <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Close">
-            <X />
-          </Button>
-        </div>
+          </HudLabel>
+        </StickerDialogHeader>
 
         {versions === null ? (
-          <p className="text-[11.5px] text-muted-foreground">Loading…</p>
+          <div className="grid place-items-center py-6">
+            <DuckSpinner size="sm" label="Reading the history" />
+          </div>
         ) : versions.length === 0 ? (
-          <p className="text-[11.5px] leading-snug text-muted-foreground">
-            No history yet. Every save that changes the design files the previous one here.
-          </p>
+          <EmptyPond
+            compact
+            title="No history yet"
+            hint="Every save that changes the design files the previous one here."
+          />
         ) : (
           <ul className="panel-scroll min-h-0 flex-1 space-y-1 overflow-y-auto">
             {versions.map((v) => (
-              <li key={v.id} className="group flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-accent/40">
+              <li key={v.id} className="group flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-accent/40">
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[12.5px] leading-tight">{v.name}</span>
                   <span className="block truncate text-[11px] leading-tight text-muted-foreground">
@@ -86,15 +88,19 @@ export function HistoryDialog({ projectId, dirty, onClose, onRestored, onError }
                     {v.format && FORMATS[v.format] ? ` · ${FORMATS[v.format].label}` : ""}
                   </span>
                 </span>
-                <Button
+                {/* One restore at a time: the row that fired it shows the progress, the
+                    others just stop being clickable. */}
+                <QuackButton
                   variant="outline"
                   size="sm"
                   className="h-7 shrink-0"
-                  disabled={busy !== null}
+                  disabled={busy !== null && busy !== v.id}
+                  state={busy === v.id ? "loading" : "idle"}
+                  loadingLabel="Restoring…"
                   onClick={() => void restore(v)}
                 >
-                  <RotateCcw /> {busy === v.id ? "Restoring…" : "Restore"}
-                </Button>
+                  <RotateCcw /> Restore
+                </QuackButton>
               </li>
             ))}
           </ul>
@@ -103,7 +109,7 @@ export function HistoryDialog({ projectId, dirty, onClose, onRestored, onError }
         <p className="text-[10.5px] leading-snug text-muted-foreground/70">
           Restoring is itself a save — the design being replaced becomes the newest entry, so nothing is lost by trying one.
         </p>
-      </div>
-    </div>
+      </StickerDialogContent>
+    </StickerDialog>
   );
 }
