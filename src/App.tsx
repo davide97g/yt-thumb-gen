@@ -10,6 +10,7 @@ import { ProjectHeader } from "./components/ProjectHeader";
 import { CampaignExporter } from "./components/CampaignExporter";
 import { HistoryDialog } from "./components/HistoryDialog";
 import { NewProjectDialog } from "./components/NewProjectDialog";
+import { ProjectLoading } from "./components/ProjectLoading";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { Toolbar } from "./components/Toolbar";
 import { Field, Section } from "./components/controls";
@@ -44,6 +45,12 @@ export default function App() {
   const { canWrite } = useAuth();
   const [hist, dispatch] = useReducer(historyReducer, initial, initHistory);
   const [hydrated, setHydrated] = useState(false);
+  // The name of the project being fetched, or null. Boot is a load too (`hydrated`), so the
+  // two together are what the stage's loader covers — see `loadingLabel` below.
+  const [opening, setOpening] = useState<string | null>(null);
+  // Whether this page was opened on a deep link, read once: it's the difference between
+  // "restoring your canvas" and "opening a project" while the first fetch is in flight.
+  const [deepLinked] = useState(() => new URLSearchParams(window.location.search).has("project"));
   const canvasRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
   const [fitScale, setFitScale] = useState(0.4);
@@ -99,6 +106,14 @@ export default function App() {
   // platform. Editing at 40% of 1280px flatters everything.
   const scale = actualSize ? GRID_W[doc.format] / CW : fitScale;
   const dirty = hydrated && doc !== savedDocRef.current;
+  // One cover for both ways a document arrives: the first hydrate on mount, and every
+  // project opened afterwards from the archive or the gallery.
+  const loadingProject = !hydrated || opening !== null;
+  const loadingLabel = opening
+    ? `Opening “${opening}”`
+    : deepLinked
+      ? "Opening project"
+      : "Restoring your canvas";
   // The PNG is named after the open project unless the user typed something else, so
   // renaming the project (or opening another one) retargets the export for free.
   const exportName = fileName ?? defaultFileName(projectName);
@@ -571,6 +586,9 @@ export default function App() {
                 projectName={projectName}
                 canWrite={canWrite}
                 onLoad={adoptProject}
+                // On mobile the archive is a drawer over the stage, so it has to get out of
+                // the way — otherwise the load, and then the design, happen behind it.
+                onOpening={(name) => { setOpening(name); if (name) setMobileLeft(false); }}
                 onError={setMessage}
                 refreshKey={savesKey}
                 onExportCampaign={setExportingCampaign}
@@ -612,6 +630,10 @@ export default function App() {
               dispatch={dispatch}
             />
           </div>
+
+          {/* Covers the stage while a document is in flight — including the first hydrate,
+              where the canvas underneath is still the seeded template. */}
+          <ProjectLoading active={loadingProject} label={loadingLabel} aspect={CW / CH} />
 
           <div className="absolute bottom-4 left-4 hidden items-center gap-2 md:flex">
             <HudLabel size="sm" tracking="tight" className="readout pointer-events-none text-muted-foreground/65">

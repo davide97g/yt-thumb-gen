@@ -65,6 +65,10 @@ type Props = {
   projectId: string | null; // which archived project is live, if any
   projectName: string; // live name, mirrored onto the active row
   onLoad: (doc: ThumbDoc, name: string, id: string | null, savedAt: number | null) => void;
+  /** Names the project being fetched, then null when it lands — drives the stage's loader
+   *  (`ProjectLoading`). A row going dim is not enough feedback: the doc carries its images
+   *  inline, so the wait is long enough to look broken. */
+  onOpening: (name: string | null) => void;
   onError: (msg: string) => void;
   /** false for a guest: the archive is replaced by the public gallery, which is a list of
    *  published designs and one action — open a local copy. */
@@ -88,7 +92,7 @@ export function SavesPanel(props: Props) {
   return props.canWrite ? <ArchivePanel {...props} /> : <PublicGallery {...props} />;
 }
 
-function ArchivePanel({ doc, projectId, projectName, onLoad, onError, refreshKey, onExportCampaign, open, onToggle }: Props) {
+function ArchivePanel({ doc, projectId, projectName, onLoad, onOpening, onError, refreshKey, onExportCampaign, open, onToggle }: Props) {
   const [configs, setConfigs] = useState<ConfigMeta[]>([]);
   const [campaigns, setCampaigns] = useState<CampaignMeta[]>([]);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -134,6 +138,7 @@ function ArchivePanel({ doc, projectId, projectName, onLoad, onError, refreshKey
   // The list carries only metadata; the full doc (with images) is fetched on demand.
   async function onOpen(c: ConfigMeta) {
     setBusyId(c.id);
+    onOpening(c.name);
     try {
       const full = await loadConfig(c.id);
       onLoad(full.doc, full.name, full.id, full.updatedAt);
@@ -142,6 +147,7 @@ function ArchivePanel({ doc, projectId, projectName, onLoad, onError, refreshKey
       onError("Couldn't load the project.");
     } finally {
       setBusyId(null);
+      onOpening(null);
     }
   }
 
@@ -480,7 +486,7 @@ function ArchivePanel({ doc, projectId, projectName, onLoad, onError, refreshKey
  *  row. Opening one adopts it with a **null id** — a guest holds a local copy, not the
  *  project, and nothing here can write. The JSON export/import stay, because both are entirely
  *  client-side and are how a guest takes their work with them. */
-function PublicGallery({ doc, projectName, onLoad, onError, refreshKey, open, onToggle }: Props) {
+function PublicGallery({ doc, projectName, onLoad, onOpening, onError, refreshKey, open, onToggle }: Props) {
   const [items, setItems] = useState<PublicConfigMeta[]>([]);
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -504,6 +510,7 @@ function PublicGallery({ doc, projectName, onLoad, onError, refreshKey, open, on
 
   async function onOpen(c: PublicConfigMeta) {
     setBusyId(c.id);
+    onOpening(c.name);
     try {
       const full = await loadPublicConfig(c.id);
       onLoad(full.doc, full.name, null, null);
@@ -512,6 +519,7 @@ function PublicGallery({ doc, projectName, onLoad, onError, refreshKey, open, on
       onError("Couldn't load the design.");
     } finally {
       setBusyId(null);
+      onOpening(null);
     }
   }
 
