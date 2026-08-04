@@ -21,9 +21,11 @@ if (DB && !usable) {
   console.warn(`[app.test] refusing to run against ${DB} — the suite truncates, so the database name must contain "test".`);
 }
 
-// Bun loads `.env` automatically, and a developer's has ALLOW_SIGNUP=true — which would quietly
-// turn the "signup locks after the first user" test into a no-op. Pin it before the app reads it.
-process.env.ALLOW_SIGNUP = "false";
+// Bun loads `.env` automatically, and a developer's has a real ALLOWED_EMAILS with one address
+// in it — which would refuse every user these tests create. Most of the file wants "anyone may
+// have an account", i.e. the empty-allowlist arm, so pin it before the app reads it; the two
+// tests that are *about* the allowlist set it themselves (it's read per call, see identity.ts).
+process.env.ALLOWED_EMAILS = "";
 
 // The object store stands in for R2. The blob routes are about *authorization* — which caller
 // is allowed which bytes — and that decision is made in SQL, before the store is ever asked.
@@ -33,6 +35,21 @@ mock.module("./r2", () => ({
   putBlob: async (id: string, bytes: Uint8Array) => { objects.set(id, bytes); },
   deleteBlob: async (id: string) => { objects.delete(id); },
   getBlob: async (id: string) => objects.get(id)?.buffer ?? null,
+}));
+
+// Clerk stands in the same place R2 does: it is the network edge, so it is what gets replaced.
+// Everything downstream of it is real — the allowlist, the provisioning, the email-matching that
+// claims an existing row, and every `user_id` scoping rule in the file — which is the point of
+// splitting verification (`clerk.ts`) from identity (`identity.ts`) at all. A verified session is
+// therefore just a cookie naming an address, and one Clerk id per address, deterministically.
+mock.module("./clerk", () => ({
+  clerkConfigured: () => true,
+  verifyClerkRequest: async (req: Request) => {
+    const email = req.headers.get("cookie")?.match(/(?:^|;\s*)clerk=([^;]+)/)?.[1];
+    if (!email) return null;
+    const address = decodeURIComponent(email).toLowerCase();
+    return { clerkId: `user_${address}`, email: async () => address };
+  },
 }));
 
 type Api = { app: { request: (path: string, init?: RequestInit) => Promise<Response> } };
@@ -85,31 +102,31 @@ const fromIp = (init: RequestInit, ip = nextIp()): RequestInit => ({
   headers: { ...(init.headers as Record<string, string>), "x-real-ip": ip },
 });
 
-/** Registers through the real endpoint. Only usable while signup is open — i.e. for the
- *  first user of a truncated database. */
-async function register(email = nextEmail(), password = "password123"): Promise<Session> {
-  const res = await api.request("/api/auth/register", fromIp(json({ email, password })));
-  expect(res.status).toBe(200);
-  const { id } = (await res.json()) as { id: string };
-  return { id, email, cookie: cookieOf(res) };
+/** The header a signed-in browser would carry, for a given address. */
+const sessionCookie = (email: string): string => `clerk=${encodeURIComponent(email)}`;
+
+/** Addresses this suite has put on the allowlist. Every test that needs two users needs both of
+ *  them admitted: with `ALLOWED_EMAILS` empty the rule is "the first account claims the
+ *  instance", which would refuse the second one. Reset per test by `beforeEach`. */
+let admitted: string[] = [];
+function admit(email: string): void {
+  admitted.push(email.toLowerCase());
+  process.env.ALLOWED_EMAILS = admitted.join(",");
 }
 
-/** Signup locks after the first user, which is the point — so extra users are seeded the way
- *  an operator would (straight into the table) and then log in for real. */
-async function seedUser(email = nextEmail(), password = "password123", ip = nextIp()): Promise<Session> {
-  const hash = await Bun.password.hash(password);
-  await sql`INSERT INTO users (email, password_hash) VALUES (${email}, ${hash})`;
-  const res = await api.request("/api/auth/login", fromIp(json({ email, password }), ip));
+/** Signs in as `email`, provisioning the row on the way through exactly as a first Google
+ *  sign-in does, and hands back what the rest of the file needs to act as that user.
+ *
+ *  Always a fresh address by default, and that matters: `identity.ts` caches its resolution per
+ *  Clerk id, and the cache is module state that `TRUNCATE` between tests cannot reach. Reusing
+ *  an address across tests would hand back a uuid whose row no longer exists. */
+async function signIn(email = nextEmail()): Promise<Session> {
+  admit(email);
+  const cookie = sessionCookie(email);
+  const res = await api.request("/api/auth/me", fromIp(auth(cookie)));
   expect(res.status).toBe(200);
   const { id } = (await res.json()) as { id: string };
-  return { id, email, cookie: cookieOf(res) };
-}
-
-function cookieOf(res: Response): string {
-  const header = res.headers.get("set-cookie") ?? "";
-  const sid = /(^|,\s*)(sid=[^;]+)/.exec(header)?.[2];
-  if (!sid) throw new Error(`no session cookie in ${header || "(empty)"}`);
-  return sid;
+  return { id, email, cookie };
 }
 
 describe.skipIf(!usable)("api", () => {
@@ -122,40 +139,82 @@ describe.skipIf(!usable)("api", () => {
   beforeEach(async () => {
     // Every dependent table is named explicitly rather than left to CASCADE — same effect,
     // minus a wall of "truncate cascades to …" notices on every single test.
-    await sql`TRUNCATE users, sessions, projects, campaigns, blobs, api_tokens, starred_items RESTART IDENTITY CASCADE`;
+    await sql`TRUNCATE users, projects, campaigns, blobs, api_tokens, starred_items RESTART IDENTITY CASCADE`;
+    // The allowlist is module *environment*, not database state, so the truncate above can't
+    // reach it. Cleared here rather than in each test's `finally`, so a failing assertion can
+    // never leak an allowlist into the next test.
+    admitted = [];
+    process.env.ALLOWED_EMAILS = "";
   });
 
   // ── auth ───────────────────────────────────────────────────────────────────
-  test("the first account is free, the second is refused", async () => {
-    expect(await (await api.request("/api/auth/status")).json()).toEqual({ signupOpen: true });
-    await register();
-    expect(await (await api.request("/api/auth/status")).json()).toEqual({ signupOpen: false });
-    const second = await api.request("/api/auth/register", fromIp(json({ email: nextEmail(), password: "password123" })));
-    expect(second.status).toBe(403);
-  });
-
-  test("login rejects a wrong password without saying which half was wrong", async () => {
-    const user = await register(nextEmail(), "password123");
-    const res = await api.request("/api/auth/login", fromIp(json({ email: user.email, password: "wrong-one" })));
-    expect(res.status).toBe(401);
-    expect((await res.json()).error).toBe("Invalid credentials");
-  });
-
-  test("a session cookie identifies its user; no cookie is a 401", async () => {
-    const user = await register();
+  test("a Clerk session identifies its user; no session is a 401", async () => {
+    const user = await signIn();
     expect((await api.request("/api/auth/me", auth(user.cookie))).status).toBe(200);
     expect((await api.request("/api/auth/me")).status).toBe(401);
   });
 
-  test("logout kills the session server-side, not just the cookie", async () => {
-    const user = await register();
-    await api.request("/api/auth/logout", fromIp({ method: "POST", headers: { cookie: user.cookie } }));
-    expect((await api.request("/api/auth/me", auth(user.cookie))).status).toBe(401);
+  test("a first sign-in provisions one row and reuses it thereafter", async () => {
+    const user = await signIn();
+    const [row] = await sql`SELECT id, email, clerk_id, password_hash FROM users`;
+    expect(row).toMatchObject({ id: user.id, email: user.email, clerk_id: `user_${user.email}` });
+    // Nothing writes a password any more, which is why migration 008 dropped the NOT NULL.
+    expect(row.password_hash).toBeNull();
+
+    // Signing in again is the same account, not a second one.
+    expect((await signIn(user.email)).id).toBe(user.id);
+    expect(await sql`SELECT 1 FROM users`).toHaveLength(1);
+  });
+
+  // The whole migration story, in one test. An account created under password auth is matched
+  // **by email** and claimed — if this were an insert instead, the owner would sign in with
+  // Google and find an empty workspace while their designs sat on an orphaned row.
+  test("an existing account is claimed by email, keeping everything it owns", async () => {
+    const email = nextEmail();
+    const [legacy] = await sql<{ id: string }[]>`
+      INSERT INTO users (email, password_hash) VALUES (${email}, 'argon2-from-the-old-world') RETURNING id`;
+    await sql`INSERT INTO projects (user_id, name, doc, format)
+      VALUES (${legacy.id}, 'Made before Clerk', ${sql.json(doc())}, 'youtube')`;
+
+    const user = await signIn(email);
+    expect(user.id).toBe(legacy.id); // the same row, now linked
+    expect(await sql`SELECT 1 FROM users`).toHaveLength(1);
+    const list = await (await api.request("/api/projects", auth(user.cookie))).json();
+    expect(list).toHaveLength(1);
+    expect(list[0].name).toBe("Made before Clerk");
+  });
+
+  // A Google button is reachable by every Google account there is, so the gate has to be stated
+  // somewhere. 403 rather than 401 on purpose: the credential is valid, the account isn't
+  // welcome, and only the server knows which of those two things went wrong.
+  test("the allowlist refuses an address it doesn't name, and admits one it does", async () => {
+    const [welcome, stranger] = [nextEmail(), nextEmail()];
+    process.env.ALLOWED_EMAILS = `  ${welcome.toUpperCase()} `; // trimmed and lowercased on read
+    expect((await api.request("/api/auth/me", auth(sessionCookie(welcome)))).status).toBe(200);
+    const refused = await api.request("/api/auth/me", auth(sessionCookie(stranger)));
+    expect(refused.status).toBe(403);
+    // Refused means refused everywhere, not just at the front door.
+    expect((await api.request("/api/projects", auth(sessionCookie(stranger)))).status).toBe(403);
+    // And no row was created for them.
+    expect(await sql`SELECT 1 FROM users`).toHaveLength(1);
+  });
+
+  // With no allowlist configured the rule is the one this replaced: the first account claims
+  // the instance. That is what keeps a deployment whose operator hasn't set ALLOWED_EMAILS from
+  // handing a workspace to whoever finds the URL. Signs in by hand rather than through the
+  // `signIn` helper, precisely because that helper's job is to put an address on the allowlist.
+  test("with no allowlist, the first account is free and the second is refused", async () => {
+    expect((await api.request("/api/auth/me", auth(sessionCookie(nextEmail())))).status).toBe(200);
+    expect((await api.request("/api/auth/me", auth(sessionCookie(nextEmail())))).status).toBe(403);
+  });
+
+  test("sign-in reports whether it is configured at all", async () => {
+    expect(await (await api.request("/api/auth/status")).json()).toEqual({ clerk: true });
   });
 
   // ── tokens ─────────────────────────────────────────────────────────────────
   test("a bearer token reaches the API but can never mint another token", async () => {
-    const user = await register();
+    const user = await signIn();
     const made = await api.request("/api/tokens", send("POST", { name: "agent" }, user.cookie));
     const { token } = (await made.json()) as { token: string };
     expect(token).toStartWith("tsk_");
@@ -168,7 +227,7 @@ describe.skipIf(!usable)("api", () => {
   });
 
   test("only the hash of a token is stored", async () => {
-    const user = await register();
+    const user = await signIn();
     const { token } = (await (await api.request("/api/tokens", send("POST", { name: "agent" }, user.cookie))).json()) as {
       token: string;
     };
@@ -179,7 +238,7 @@ describe.skipIf(!usable)("api", () => {
 
   // ── projects ───────────────────────────────────────────────────────────────
   test("a project round-trips, and the list carries metadata only", async () => {
-    const user = await register();
+    const user = await signIn();
     const created = await (await api.request("/api/projects", send("POST", { name: "One", doc: doc() }, user.cookie))).json();
     const list = await (await api.request("/api/projects", auth(user.cookie))).json();
     expect(list).toHaveLength(1);
@@ -189,7 +248,7 @@ describe.skipIf(!usable)("api", () => {
   });
 
   test("a rename leaves the document alone", async () => {
-    const user = await register();
+    const user = await signIn();
     // Shaped like `newShapeLayer("rect")`, so the document contract passes cleanly and the
     // test isn't quietly riding on validation being in warn mode.
     const layered = doc({
@@ -209,7 +268,7 @@ describe.skipIf(!usable)("api", () => {
   // now *disagree* with the document it labels — so every path that stores a doc has to
   // restate it, and every path that doesn't must leave it alone. That's what these pin.
   test("the archive's format label follows the document it labels", async () => {
-    const user = await register();
+    const user = await signIn();
     const format = async (id: string) =>
       ((await (await api.request("/api/projects", auth(user.cookie))).json()) as { id: string; format: string }[]).find((p) => p.id === id)?.format;
 
@@ -232,7 +291,7 @@ describe.skipIf(!usable)("api", () => {
   });
 
   test("a save without a preview keeps the last one", async () => {
-    const user = await register();
+    const user = await signIn();
     const sha = "a".repeat(64);
     const created = await (await api.request("/api/projects", send("POST", { name: "One", doc: doc(), preview: sha }, user.cookie))).json();
     expect(created.preview).toBe(sha);
@@ -241,15 +300,15 @@ describe.skipIf(!usable)("api", () => {
   });
 
   test("a preview that isn't a blob id is dropped, not fatal", async () => {
-    const user = await register();
+    const user = await signIn();
     const res = await api.request("/api/projects", send("POST", { name: "One", doc: doc(), preview: "../../etc/passwd" }, user.cookie));
     expect(res.status).toBe(200);
     expect((await res.json()).preview).toBeNull();
   });
 
   test("one user's projects are invisible to another", async () => {
-    const owner = await register();
-    const other = await seedUser();
+    const owner = await signIn();
+    const other = await signIn();
     const mine = await (await api.request("/api/projects", send("POST", { name: "Mine", doc: doc() }, owner.cookie))).json();
 
     expect(await (await api.request("/api/projects", auth(other.cookie))).json()).toEqual([]);
@@ -263,7 +322,7 @@ describe.skipIf(!usable)("api", () => {
 
   // ── version history ────────────────────────────────────────────────────────
   test("a changed document files the previous one; an unchanged save files nothing", async () => {
-    const user = await register();
+    const user = await signIn();
     const p = await (await api.request("/api/projects", send("POST", { name: "One", doc: doc() }, user.cookie))).json();
     const versions = () => api.request(`/api/projects/${p.id}/versions`, auth(user.cookie)).then((r) => r.json());
 
@@ -278,14 +337,14 @@ describe.skipIf(!usable)("api", () => {
   });
 
   test("a rename doesn't spend a version", async () => {
-    const user = await register();
+    const user = await signIn();
     const p = await (await api.request("/api/projects", send("POST", { name: "One", doc: doc() }, user.cookie))).json();
     await api.request(`/api/projects/${p.id}`, send("PUT", { name: "Two" }, user.cookie));
     expect(await (await api.request(`/api/projects/${p.id}/versions`, auth(user.cookie))).json()).toEqual([]);
   });
 
   test("restoring puts the old document back, and is itself undoable", async () => {
-    const user = await register();
+    const user = await signIn();
     const p = await (await api.request("/api/projects", send("POST", { name: "One", doc: doc() }, user.cookie))).json();
     await api.request(`/api/projects/${p.id}`, send("PUT", { doc: doc({ format: "shorts" }) }, user.cookie));
 
@@ -300,7 +359,7 @@ describe.skipIf(!usable)("api", () => {
   });
 
   test("history is capped, keeping the most recent", async () => {
-    const user = await register();
+    const user = await signIn();
     const p = await (await api.request("/api/projects", send("POST", { name: "One", doc: doc() }, user.cookie))).json();
     // 32 distinct documents against a limit of 30.
     for (let i = 0; i < 32; i++) {
@@ -311,8 +370,8 @@ describe.skipIf(!usable)("api", () => {
   });
 
   test("a version id is not a capability — another user can't read or restore it", async () => {
-    const owner = await register();
-    const other = await seedUser();
+    const owner = await signIn();
+    const other = await signIn();
     const p = await (await api.request("/api/projects", send("POST", { name: "One", doc: doc() }, owner.cookie))).json();
     await api.request(`/api/projects/${p.id}`, send("PUT", { doc: doc({ format: "shorts" }) }, owner.cookie));
     const [v] = await (await api.request(`/api/projects/${p.id}/versions`, auth(owner.cookie))).json();
@@ -323,7 +382,7 @@ describe.skipIf(!usable)("api", () => {
   });
 
   test("deleting a project takes its history with it", async () => {
-    const user = await register();
+    const user = await signIn();
     const p = await (await api.request("/api/projects", send("POST", { name: "One", doc: doc() }, user.cookie))).json();
     await api.request(`/api/projects/${p.id}`, send("PUT", { doc: doc({ format: "shorts" }) }, user.cookie));
     await api.request(`/api/projects/${p.id}`, { method: "DELETE", headers: { cookie: user.cookie } });
@@ -331,7 +390,7 @@ describe.skipIf(!usable)("api", () => {
   });
 
   test("images referenced only by an old version are not collected", async () => {
-    const user = await register();
+    const user = await signIn();
     const { sweepBlobs } = await import("./maintenance");
     const id = "d".repeat(64);
     await seedBlob(user, id);
@@ -350,7 +409,7 @@ describe.skipIf(!usable)("api", () => {
 
   // ── campaigns ──────────────────────────────────────────────────────────────
   test("campaignId is tri-state: absent leaves it, null unfiles, an id files", async () => {
-    const user = await register();
+    const user = await signIn();
     const camp = await (await api.request("/api/campaigns", send("POST", { name: "Launch" }, user.cookie))).json();
     const p = await (await api.request("/api/projects", send("POST", { name: "One", doc: doc(), campaignId: camp.id }, user.cookie))).json();
     expect(p.campaignId).toBe(camp.id);
@@ -363,15 +422,15 @@ describe.skipIf(!usable)("api", () => {
   });
 
   test("a project can't be filed into someone else's campaign", async () => {
-    const owner = await register();
-    const other = await seedUser();
+    const owner = await signIn();
+    const other = await signIn();
     const camp = await (await api.request("/api/campaigns", send("POST", { name: "Theirs" }, owner.cookie))).json();
     const res = await api.request("/api/projects", send("POST", { name: "One", doc: doc(), campaignId: camp.id }, other.cookie));
     expect(res.status).toBe(404);
   });
 
   test("deleting a campaign keeps its designs", async () => {
-    const user = await register();
+    const user = await signIn();
     const camp = await (await api.request("/api/campaigns", send("POST", { name: "Launch" }, user.cookie))).json();
     const p = await (await api.request("/api/projects", send("POST", { name: "One", doc: doc(), campaignId: camp.id }, user.cookie))).json();
     await api.request(`/api/campaigns/${camp.id}`, { method: "DELETE", headers: { cookie: user.cookie } });
@@ -381,7 +440,7 @@ describe.skipIf(!usable)("api", () => {
   });
 
   test("the campaign list counts its designs", async () => {
-    const user = await register();
+    const user = await signIn();
     const camp = await (await api.request("/api/campaigns", send("POST", { name: "Launch" }, user.cookie))).json();
     await api.request("/api/projects", send("POST", { name: "One", doc: doc(), campaignId: camp.id }, user.cookie));
     await api.request("/api/projects", send("POST", { name: "Two", doc: doc(), campaignId: camp.id }, user.cookie));
@@ -390,21 +449,23 @@ describe.skipIf(!usable)("api", () => {
   });
 
   // ── hardening ──────────────────────────────────────────────────────────────
-  test("guessing a password runs out of guesses", async () => {
+  //
+  // The brute-force windows that used to live here left with the password they defended: there
+  // is no credential to guess against this API any more, and Clerk owns the one there is. What
+  // is still worth bounding is an unauthenticated caller hammering the routes that answer them,
+  // which is what the `/auth/me` and `/api/public` limiters do.
+  test("an unverified caller runs out of attempts on /auth/me", async () => {
     const attacker = nextIp();
-    const user = await register(nextEmail(), "password123");
-    const guess = () => api.request("/api/auth/login", fromIp(json({ email: user.email, password: "nope" }), attacker));
+    const knock = () => api.request("/api/auth/me", fromIp({}, attacker));
 
-    let last = await guess();
-    for (let i = 0; i < 8 && last.status === 401; i++) last = await guess();
+    let last = await knock();
+    for (let i = 0; i < 130 && last.status === 401; i++) last = await knock();
     expect(last.status).toBe(429);
     expect(Number(last.headers.get("retry-after"))).toBeGreaterThan(0);
 
-    // …and it's the credential that's locked out, not the whole endpoint: another account
-    // logs in fine *from the same address*, which is the half that per-address limiting
-    // could otherwise break.
-    const other = await seedUser(nextEmail(), "password123", attacker);
-    expect(other.cookie).toBeTruthy();
+    // …and it's that address that's throttled, not the endpoint: a real session from anywhere
+    // else still resolves, which is the half a global limit would have broken.
+    expect((await signIn()).id).toBeTruthy();
   });
 
   test("health fails loudly when the database is unreachable", async () => {
@@ -413,17 +474,8 @@ describe.skipIf(!usable)("api", () => {
     // try/catch is the contract; this asserts the happy path actually touches the database.
   });
 
-  test("the session sweep clears what has expired and keeps what hasn't", async () => {
-    const user = await register();
-    const { sweepSessions } = await import("./maintenance");
-    await sql`INSERT INTO sessions (token, user_id, expires_at) VALUES ('stale', ${user.id}, now() - interval '1 day')`;
-
-    expect(await sweepSessions()).toBe(1);
-    expect((await api.request("/api/auth/me", auth(user.cookie))).status).toBe(200);
-  });
-
   test("the blob reference scan over-matches on purpose", async () => {
-    const user = await register();
+    const user = await signIn();
     const { sweepBlobs, collectBlobIds } = await import("./maintenance");
     const [asRef, unknownField, orphan] = ["b".repeat(64), "c".repeat(64), "e".repeat(64)];
     for (const id of [asRef, unknownField, orphan]) await seedBlob(user, id);
@@ -448,8 +500,8 @@ describe.skipIf(!usable)("api", () => {
   // was read once at import, so no test could enter this branch, and a mistake in its SQL
   // (it batches now) would have been found by a deployment collecting real photos.
   test("armed, the sweep drops the ownership row and the bytes — and spares the shared ones", async () => {
-    const user = await register();
-    const other = await seedUser();
+    const user = await signIn();
+    const other = await signIn();
     const { sweepBlobs } = await import("./maintenance");
     const [orphan, shared] = ["a".repeat(64), "f".repeat(64)];
     await seedBlob(user, orphan);
@@ -487,7 +539,7 @@ describe.skipIf(!usable)("api", () => {
   }
 
   test("the public list shows published designs and hides everything else", async () => {
-    const user = await register();
+    const user = await signIn();
     await project(user, "Published", true);
     await project(user, "Private", false);
 
@@ -499,7 +551,7 @@ describe.skipIf(!usable)("api", () => {
   });
 
   test("a private project is a 404 to a logged-out caller, published or not by id", async () => {
-    const user = await register();
+    const user = await signIn();
     const open = await project(user, "Published", true);
     const shut = await project(user, "Private", false);
 
@@ -510,7 +562,7 @@ describe.skipIf(!usable)("api", () => {
   });
 
   test("publishing is presence-gated, so a rename can't quietly change it", async () => {
-    const user = await register();
+    const user = await signIn();
     const p = await project(user, "One", true);
 
     await api.request(`/api/projects/${p.id}`, send("PUT", { name: "Renamed" }, user.cookie));
@@ -524,7 +576,7 @@ describe.skipIf(!usable)("api", () => {
   });
 
   test("a new project is private, whoever made it", async () => {
-    const user = await register();
+    const user = await signIn();
     // Even when the caller asks for it: POST doesn't read the key at all.
     const row = await (
       await api.request("/api/projects", send("POST", { name: "Sneaky", doc: doc(), isPublic: true }, user.cookie))
@@ -534,8 +586,8 @@ describe.skipIf(!usable)("api", () => {
   });
 
   test("publishing someone else's project is a 404, and leaves it private", async () => {
-    const owner = await register();
-    const other = await seedUser();
+    const owner = await signIn();
+    const other = await signIn();
     const p = await project(owner, "Mine", false);
 
     expect((await api.request(`/api/projects/${p.id}`, send("PUT", { isPublic: true }, other.cookie))).status).toBe(404);
@@ -551,7 +603,7 @@ describe.skipIf(!usable)("api", () => {
   }
 
   test("public blobs are scoped to the design that publishes them", async () => {
-    const user = await register();
+    const user = await signIn();
     const referenced = "a".repeat(64);
     const elsewhere = "b".repeat(64);
     await seedBlob(user, referenced);
@@ -575,8 +627,8 @@ describe.skipIf(!usable)("api", () => {
   });
 
   test("a published document can't lend out someone else's bytes", async () => {
-    const owner = await register();
-    const stranger = await seedUser();
+    const owner = await signIn();
+    const stranger = await signIn();
     const theirs = "c".repeat(64);
     await seedBlob(stranger, theirs);
     // The document names an id the publisher doesn't own. It resolves to nothing — the same
@@ -588,7 +640,7 @@ describe.skipIf(!usable)("api", () => {
   });
 
   test("a published preview is reachable, an unreferenced one is not", async () => {
-    const user = await register();
+    const user = await signIn();
     const preview = "d".repeat(64);
     await seedBlob(user, preview, "image/jpeg");
     const p = await project(user, "Published", true);
@@ -601,7 +653,7 @@ describe.skipIf(!usable)("api", () => {
   });
 
   test("no credentials means no write, anywhere", async () => {
-    const user = await register();
+    const user = await signIn();
     const p = await project(user, "One", true);
     const camp = await (await api.request("/api/campaigns", send("POST", { name: "Launch" }, user.cookie))).json();
 
@@ -646,7 +698,7 @@ describe.skipIf(!usable)("api", () => {
 
   // ── contract ───────────────────────────────────────────────────────────────
   test("a malformed document is refused up front", async () => {
-    const user = await register();
+    const user = await signIn();
     const res = await api.request("/api/projects", send("POST", { name: "One", doc: "not a document" }, user.cookie));
     expect(res.status).toBe(400);
   });

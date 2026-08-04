@@ -13,6 +13,7 @@
     "check": "tsc --noEmit && bun run schema:check && bun test"
   },
   "dependencies": {
+    "@clerk/clerk-react": "^5.61.3",
     "@fontsource/anton": "^5.2.7",
     "@fontsource/archivo-black": "^5.2.5",
     "@fontsource/bangers": "^5.2.8",

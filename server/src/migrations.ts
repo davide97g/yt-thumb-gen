@@ -222,6 +222,38 @@ export const MIGRATIONS: Migration[] = [
       await sql`CREATE INDEX IF NOT EXISTS blobs_created_idx ON blobs(created_at)`;
     },
   },
+  {
+    id: 8,
+    name: "clerk identity",
+    // Clerk owns the credential now; this table still owns the row every project, blob,
+    // campaign, favourite and version hangs off. So `clerk_id` is a link beside the uuid, not
+    // a new primary key — see identity.ts for why the alternative was six foreign-key rewrites
+    // to change nothing observable.
+    //
+    // Nullable, because a row can exist before its first Clerk sign-in claims it: that is
+    // exactly what carries the accounts created under password auth, and everything they own,
+    // across. UNIQUE because one Clerk user must never be able to answer as two rows.
+    up: async (sql) => {
+      await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS clerk_id text`;
+      await sql`CREATE UNIQUE INDEX IF NOT EXISTS users_clerk_id_key ON users(clerk_id)`;
+      // There are no passwords any more, so the column cannot stay required — a row created by
+      // a Clerk sign-in has nothing to put in it. Kept rather than dropped: it is the only
+      // evidence left of how an existing account was originally created, it costs nothing, and
+      // dropping a column is the one change this file cannot walk back.
+      await sql`ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL`;
+    },
+  },
+  {
+    id: 9,
+    name: "drop local sessions",
+    // The `sessions` table backed the `sid` cookie. Clerk issues and revokes its own sessions,
+    // so nothing reads or writes this any more — including the maintenance sweep that existed
+    // solely to clear its expired rows. Left in place it would be a table of live-looking
+    // credentials that authenticate nobody, which is worse than no table at all.
+    up: async (sql) => {
+      await sql`DROP TABLE IF EXISTS sessions`; // takes sessions_expires_idx (migration 007) with it
+    },
+  },
 ];
 
 /** Guards the one mistake this design can't survive: two migrations sharing an id, where

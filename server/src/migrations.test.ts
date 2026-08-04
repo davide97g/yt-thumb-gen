@@ -45,9 +45,14 @@ describe.skipIf(!usable)("migrate", () => {
     const rows: { table_name: string }[] = await sql`
       SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'`;
     const tables = rows.map((r) => r.table_name);
-    for (const t of ["users", "sessions", "projects", "blobs", "campaigns", "api_tokens", "starred_items", "project_versions"]) {
+    for (const t of ["users", "projects", "blobs", "campaigns", "api_tokens", "starred_items", "project_versions"]) {
       expect(tables).toContain(t);
     }
+    // The baseline still *creates* `sessions` — it records what a database had, not what it
+    // wants — and migration 009 drops it, because Clerk issues and revokes its own sessions.
+    // So the end state must not have it: a table of live-looking credentials that authenticate
+    // nobody is worse than no table.
+    expect(tables).not.toContain("sessions");
   });
 
   test("the columns later migrations added are there", async () => {
@@ -58,6 +63,16 @@ describe.skipIf(!usable)("migrate", () => {
     };
     expect(await columns("projects")).toEqual(expect.arrayContaining(["preview", "is_public", "format"]));
     expect(await columns("project_versions")).toEqual(expect.arrayContaining(["format", "layer_count"]));
+    expect(await columns("users")).toEqual(expect.arrayContaining(["clerk_id"]));
+  });
+
+  // Migration 008 had to drop this, or a Clerk sign-in could not create a row at all: there is
+  // no password to put in the column any more.
+  test("password_hash is nullable", async () => {
+    const [row] = await sql`
+      SELECT is_nullable FROM information_schema.columns
+      WHERE table_name = 'users' AND column_name = 'password_hash'`;
+    expect(row.is_nullable).toBe("YES");
   });
 
   // The single-column indexes migration 007 replaced are dropped, not left alongside their
@@ -71,8 +86,8 @@ describe.skipIf(!usable)("migrate", () => {
         "projects_user_updated_idx",
         "projects_campaign_updated_idx",
         "projects_public_updated_idx",
-        "sessions_expires_idx",
         "blobs_created_idx",
+        "users_clerk_id_key",
       ])
     );
     for (const gone of ["projects_user_idx", "projects_campaign_idx", "projects_public_idx"]) {

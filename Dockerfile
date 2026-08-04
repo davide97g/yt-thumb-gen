@@ -10,6 +10,14 @@ RUN bun install --frozen-lockfile
 
 # Build the static site. git is absent here, so vite's build stamp
 # falls back to commit "dev" (see vite.config.ts) — harmless.
+#
+# The Clerk frontend key has to be present *now*: Vite inlines `import.meta.env` at build time,
+# so this is a build arg rather than a container environment variable, and a rebuild — not a
+# restart — is what a key change needs. It is the publishable half, safe to ship to a browser;
+# CLERK_SECRET_KEY belongs to the api service and must never appear here. Built without it, the
+# app still serves and the front door explains that sign-in isn't configured.
+ARG VITE_CLERK_PUBLISHABLE_KEY
+ENV VITE_CLERK_PUBLISHABLE_KEY=$VITE_CLERK_PUBLISHABLE_KEY
 COPY . .
 RUN bun run build
 

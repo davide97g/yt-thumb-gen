@@ -24,6 +24,7 @@ import "@fontsource/libre-baskerville/700.css";
 import "@fontsource/lobster/400.css";
 import "@fontsource/space-grotesk/700.css";
 import "./fonts/anthropic-sans.css";
+import { ClerkProvider } from "@clerk/clerk-react";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
@@ -31,11 +32,23 @@ import { AuthGate } from "./components/AuthGate";
 import "./styles.css";
 import { registerServiceWorker } from "./lib/pwa";
 
+// Clerk holds the credential (Google sign-in); `AuthGate` still decides who gets the editor,
+// because being signed in and being allowed into *this* workspace are different questions —
+// only the API can answer the second one.
+//
+// Baked in at build time and public by design: this is the frontend key, never the secret. An
+// empty string keeps the provider from throwing on a build made without it — `/auth/status`
+// then tells the front door that sign-in isn't configured, which is a legible screen rather
+// than a blank one.
+const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY ?? "";
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <AuthGate>
-      <App />
-    </AuthGate>
+    <ClerkProvider publishableKey={PUBLISHABLE_KEY} afterSignOutUrl="/">
+      <AuthGate>
+        <App />
+      </AuthGate>
+    </ClerkProvider>
   </StrictMode>
 );
 

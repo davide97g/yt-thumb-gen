@@ -32,8 +32,13 @@ DATABASE_URL=postgres://postgres:postgres@localhost:55432/thumbtest bun test ser
 
 They truncate every table, so the suite **refuses to run unless the database name contains
 "test"** — never point `DATABASE_URL` at anything you care about. They also pin
-`ALLOW_SIGNUP=false`, because bun auto-loads `.env` and a developer's has it on, which would
-turn the "signup locks after the first user" test into a no-op.
+`ALLOWED_EMAILS=""`, because bun auto-loads `.env` and a developer's names one real address,
+which would refuse every user the suite creates; the helper that signs a test user in adds that
+address to the allowlist itself (it is read per call — see `identity.ts`), and the two tests
+that are *about* the allowlist set it directly. They **mock `./clerk`**, not the database: a
+verified session is a cookie naming an address, and everything downstream of it — the allowlist,
+provisioning, the email match that claims an existing row, every `user_id` scoping rule — runs
+for real.
 
 CI (`.github/workflows/ci.yml`) runs exactly that on every push and PR — root `check`, then the
 three package typechecks (`server`, `mcp`, `render` — `render/` is a package like the others and
@@ -99,7 +104,59 @@ The list paints **front-first** (row 0 = last layer in the array), and rows are 
 
 ### Backend, accounts & blob storage — `server/` + `src/lib/blobs.ts`, `src/components/AuthGate.tsx`
 
-`server/` is a Bun + Hono API (Postgres + Cloudflare R2). Accounts are email+password with an httpOnly session cookie; **signup locks after the first user** unless `ALLOW_SIGNUP=true`. `AuthGate` wraps `<App/>` in `main.tsx` so the editor's mount/autosave effects never run until logged in. **Critical blob rule:** the doc keeps images as data URLs *at runtime* (so `html-to-image` export never hits cross-origin canvas taint); R2 offload happens only at the storage boundary — `dehydrateDoc` (data URL → `blob:<id>` ref, uploaded to R2) on save, `hydrateDoc` (ref → data URL, streamed back through our same-origin API) on load. Never make `ThumbCanvas`/`export.ts` consume remote image URLs directly.
+`server/` is a Bun + Hono API (Postgres + Cloudflare R2). **Authentication is Clerk — Google sign-in, and nothing else.** There is no password in this codebase and no local session table: `/auth/login`, `/auth/register`, `/auth/logout` and `sessions` are gone (migration 009). See "Identity" below for the two-file split and the rules that hold it together. `AuthGate` wraps `<App/>` in `main.tsx` so the editor's mount/autosave effects never run until logged in. **Critical blob rule:** the doc keeps images as data URLs *at runtime* (so `html-to-image` export never hits cross-origin canvas taint); R2 offload happens only at the storage boundary — `dehydrateDoc` (data URL → `blob:<id>` ref, uploaded to R2) on save, `hydrateDoc` (ref → data URL, streamed back through our same-origin API) on load. Never make `ThumbCanvas`/`export.ts` consume remote image URLs directly.
+
+### Identity — `server/src/clerk.ts` + `server/src/identity.ts`, `src/components/AuthGate.tsx`
+
+Clerk owns the credential; Postgres still owns the row. That split is the whole design, and it is
+two files on purpose:
+
+- **`clerk.ts` is the network edge** — it verifies a request's session and reports whose it is,
+  and touches no database. Verification is local (a session token is a JWT and the SDK caches the
+  JWKS), but the token carries **no email**, so the address comes from Clerk's API behind a thunk
+  so a caller that already knows the user never pays for it. This is the file the route tests
+  replace, exactly where they replace `./r2`.
+- **`identity.ts` is the application's own two questions.** *Who is allowed* — `ALLOWED_EMAILS`,
+  because a password login was its own gate (you couldn't sign in without a credential someone
+  made for you) and a Google button has no such property. Unset, it falls back to the rule it
+  replaced: the first account claims the instance. *Which row* — `users.clerk_id` is a **link
+  beside the uuid, never a replacement**; making `user_xxx` the primary key would have meant
+  rewriting six foreign keys to change nothing observable.
+
+**The migration path is the `ON CONFLICT (email)` in `resolveClerkUser`**: a first sign-in matches
+an existing row by email and *claims* it, which is what carries an account created under password
+auth — and every project, blob, campaign, favourite and version it owns — across untouched. So
+`ALLOWED_EMAILS` must contain the address that account was created under; `auditAllowlist()` logs
+a line at boot for any user row it doesn't name, because the failure otherwise looks like the
+owner's designs having vanished. `clerk_id` is asked for *before* the email, so changing the
+address on a Google account keeps the row rather than minting a new one.
+
+Three things follow that are easy to undo by accident:
+
+- **`"denied"` is a third state, not an error.** A verified account this workspace won't serve gets
+  **403**, distinct from the 401 a caller with no credential gets — the front door has to be able
+  to say "this Google account has no access" rather than sign someone into an editor whose every
+  save fails. `currentUser`, both guards and `/auth/me` all propagate it.
+- **`api.ts` and the whole storage layer are unchanged.** Clerk's `__session` cookie is
+  same-origin, exactly like the `sid` cookie it replaces, so `credentials: "include"` on a
+  relative URL still carries the session. clerk-js refreshes that cookie while a tab is open,
+  which is what keeps a ~60s token from turning into a 401.
+  <!-- ponytail: if a dev-instance cookie ever proves flaky, the fallback is a token source
+       registered into api.ts by the gate, sending `Authorization: Bearer <getToken()>`. -->
+- **`/api/tokens` requires a Clerk session, never a `tsk_` bearer** (`requireSessionUser`) — same
+  rule as before under a truer name: a token must not be able to mint another token. `tsk_` tokens
+  are untouched by all of this, and `clerk.ts` skips the SDK entirely for a bearer starting `tsk_`
+  so an agent's request never costs a failed JWT parse.
+
+Client side, `/sso-callback` is where Google's redirect lands. It is **not a route** — this app has
+no router — but a pathname `AuthGate` recognises before it classifies anyone, served `index.html`
+by the SPA fallback like any unknown path. `redirectUrlComplete` is `window.location.href`, not
+`/`, so a `?project=<id>` deep link that prompted a sign-in survives the round trip.
+
+The frontend key is **build-time** (`VITE_CLERK_PUBLISHABLE_KEY` → a Dockerfile `ARG`), so
+changing it needs a rebuild, not a restart; the secret half only ever reaches the api service. A
+build made without it still serves, and `/api/auth/status` is what lets the front door say
+"sign-in isn't configured" instead of offering a button that does nothing.
 
 ### Archive previews — `src/lib/preview.ts` + `projects.preview`
 
@@ -176,6 +233,8 @@ Rules: **append, never renumber or edit an applied migration** — the record is
 
 **`projects.format`, `project_versions.format` and `project_versions.layer_count` are denormalised copies of what's inside the document** (migrations 005/006). They exist because `doc` is a TOASTed jsonb: reading `doc->>'format'` is not a key lookup, it decompresses the whole document, so an archive of sixty designs decompressed sixty documents to print sixty words. The price is a column that can disagree with what it labels, so **every write path that stores a `doc` must restate them** — `POST /api/projects`, the `PUT` (presence-gated on `doc`, so a rename can't touch it and a save always restates it), the restore, and `snapshot()`, which carries them into the version row. `formatOf()` in `server/src/index.ts` is the one reader of the field; `layer_count` is nullable and guarded by a `jsonb_typeof` check, because `THUMBDOC_VALIDATE=warn` can store a document with no `layers` array and `jsonb_array_length` errors on it rather than shrugging. `app.test.ts` pins all three cases (save relabels, rename doesn't, restore does).
 
+Migrations 008/009 are the Clerk swap: `users.clerk_id` (unique, nullable — a row exists before its first sign-in claims it) plus `password_hash` losing its NOT NULL, then `DROP TABLE sessions`. The column is *kept*, not dropped: it is the only evidence left of how an existing account was created, it costs nothing, and dropping a column is the one change this file cannot walk back. The baseline still creates `sessions` and migration 007 still indexes it — correct, since those record what a database had; `migrations.test.ts` asserts the end state doesn't have it.
+
 Migration 007 is the read-path indexes. Every list in the app is "these rows, newest first", so the indexes carry the sort (`(user_id, updated_at DESC)`, `(campaign_id, updated_at DESC)`, `(updated_at DESC) WHERE is_public`) and the single-column ones they supersede are **dropped** — a second index on the same prefix is pure write cost. The baseline still creates them, which is correct: it records what a database had, not what it wants.
 
 ### Version history — `project_versions` + `HistoryDialog`
@@ -200,7 +259,7 @@ The three live under their own `/api/public` prefix, *not* as unguarded handlers
 
 Rate limiting: public reads count **every** request (`Limiter.hit`, not the login-shaped check/fail), on two buckets — 120/10min for lists and documents, 400/10min for bytes, since one design pulls several images. `POST /api/auth/register` and `/logout` got limiters for the same reason: a public landing page is an invitation to poke at them. nginx adds a `limit_req` zone on `/api/public/` so a flood dies before it costs a Bun worker.
 
-Client side, `AuthGate` resolves one of three visitors before the editor mounts and is the only place that decides: it probes `/auth/me` first (a real session always beats a remembered guest flag), then sets **`setScope`** — which picks the IndexedDB key namespace *and* arms the read-only flag. Two things follow:
+Client side, `AuthGate` resolves one of three visitors before the editor mounts and is the only place that decides. It asks two questions in order: **Clerk first** ("is anyone signed in" — a real session always beats a remembered guest flag), then `/auth/me` ("are they allowed here, and who are they to us"), whose 403 is its own screen. Then it sets **`setScope`** — which picks the IndexedDB key namespace *and* arms the read-only flag. Two things follow:
 
 - **Guest and owner autosave into different keys** (`guest:working` vs `working`) in the same `meta` store — a prefix, deliberately not a second object store, so no `VERSION` bump or `onupgradeneeded` branch is needed. A guest's canvas can never overwrite the owner's on a shared browser.
 - **Every mutating function in `storage.ts` and `uploadBlob` calls `assertWritable()`**, which throws before any `fetch`. That's what makes the UI sweep polish rather than correctness: a button missed during gating fires a local exception, not a request. `uploadBlob` matters specifically because it skips the `api.ts` wrapper and runs from the preview capture *before* a save.
@@ -209,11 +268,11 @@ A guest adopts an opened design with **`projectId: null`** — that is what the 
 
 ### Hardening & housekeeping — `server/src/ratelimit.ts`, `server/src/maintenance.ts`
 
-`POST /api/auth/login` is rate-limited on two sliding windows: per (address, account) so a targeted guess stalls at 8 tries per 10 minutes, and per address so walking a list of emails stalls at 40. **Only failures count and a success resets** — otherwise a busy legitimate user locks themselves out. The check runs *before* the password comparison, since not paying for the guess is the whole point. Counters are an in-memory `Map` (single API container; a restart forgives everyone) and the limiter is pure apart from an injectable clock, which is what makes `ratelimit.test.ts` possible without sleeping.
+There is no credential to guess against this API any more, so the two brute-force windows that defended `POST /api/auth/login` left with the password. `GET /api/auth/me` keeps a generous per-address limiter, because an unverified call is cheap but not free — a malformed token still costs a signature check. Counters are an in-memory `Map` (single API container; a restart forgives everyone) and the limiter is pure apart from an injectable clock, which is what makes `ratelimit.test.ts` possible without sleeping. **`ratelimit.ts` still carries the check/fail/reset trio** — only-failures-count, success-resets — unused for now and worth keeping: it is the shape a credential check needs, and it is the tested one.
 
 `Limiter.hit()` is check-and-record in one step, for limits where the request itself is the cost rather than a failed guess. A refused hit is **not** recorded, so hammering a closed window doesn't push its own reopening further away. The route tests give each helper call its own `x-real-ip`, because the limiters are module state shared by the whole file and the suite would otherwise throttle itself around the tenth registration.
 
-Two sweeps run every six hours, started only under `import.meta.main` so importing the app in a test schedules nothing: expired sessions (previously deleted only on explicit logout, so they accumulated forever), and unreferenced R2 blobs (deleting a project dropped the row and left the bytes paying rent). **The blob sweep is built to under-delete**: a 24h grace period, because an image is uploaded *before* the project that references it is saved; a reference scan that matches any 64-hex run in the raw document JSON, so a field it doesn't know about still counts; and dry-run by default — `BLOB_GC=enforce` arms it, mirroring `THUMBDOC_VALIDATE`. The R2 object goes only when the last owner's row is gone, since blobs are content-addressed and shared.
+One sweep runs every six hours, started only under `import.meta.main` so importing the app in a test schedules nothing: unreferenced R2 blobs (deleting a project dropped the row and left the bytes paying rent). The expired-session sweep beside it is gone with the table — Clerk owns session lifetime end to end. **The blob sweep is built to under-delete**: a 24h grace period, because an image is uploaded *before* the project that references it is saved; a reference scan that matches any 64-hex run in the raw document JSON, so a field it doesn't know about still counts; and dry-run by default — `BLOB_GC=enforce` arms it, mirroring `THUMBDOC_VALIDATE`. The R2 object goes only when the last owner's row is gone, since blobs are content-addressed and shared.
 
 **The reference scan runs in SQL** (one `regexp_matches` union over projects, their `preview`, `project_versions` and `starred_items`), not in the API process. It used to select `doc::text` for every document anyone had ever saved and build the reference sets in JS — the whole corpus in the Bun heap, twice, every six hours. `BLOB_REF_PATTERN` is the one string both the SQL and `collectBlobIds` use, so the rule can't drift between them; any future table holding a document has to join that union. The enforced arm batches its deletes through `unnest` rather than issuing one statement per row, and the mode is read **per call** (`gcMode()`) rather than at import — that is what lets `app.test.ts` enter the branch that actually deletes, which was previously reachable only in production.
 
@@ -255,7 +314,7 @@ The param is also **written back**: an effect in `App.tsx` mirrors `projectId` i
 
 ### Deployment — `Dockerfile` (web/nginx), `server/Dockerfile` (api), `mcp/Dockerfile` (mcp), `docker-compose.yml`
 
-One Compose unit: `web` (nginx serves `dist/` — the editor at `/`, the landing page at `/welcome` — and proxies `/api` → `api` and `/api/mcp` → `mcp`, all same-origin), `api` (Bun), `mcp` (Bun, hosted MCP endpoint), `postgres`. Deployed on a VPS via Dokploy from this repo; secrets (`POSTGRES_PASSWORD`, `R2_*`, `APP_URL`, `ALLOW_SIGNUP`, `THUMBDOC_VALIDATE`) come from the Dokploy environment — see `.env.example`. Frontend calls the API at relative `/api`, so no build-time URL is needed.
+One Compose unit: `web` (nginx serves `dist/` — the editor at `/`, the landing page at `/welcome` — and proxies `/api` → `api` and `/api/mcp` → `mcp`, all same-origin), `api` (Bun), `mcp` (Bun, hosted MCP endpoint), `postgres`. Deployed on a VPS via Dokploy from this repo; secrets (`POSTGRES_PASSWORD`, `R2_*`, `APP_URL`, `CLERK_SECRET_KEY`, `ALLOWED_EMAILS`, `THUMBDOC_VALIDATE`) come from the Dokploy environment — see `.env.example`. Frontend calls the API at relative `/api`, so no build-time URL is needed — **except `VITE_CLERK_PUBLISHABLE_KEY`**, which Vite inlines and which therefore reaches the `web` image as a compose `build.args` entry, not a container variable. A key change there needs a rebuild.
 
 Build contexts differ on purpose and are load-bearing: `api` is built from `./server` (small, no access to `src/`), while `web` and `mcp` are built from the repo root. `.dockerignore` excludes `**/node_modules`, not just the top-level one — the root context spans every package.
 
@@ -263,7 +322,7 @@ Build contexts differ on purpose and are load-bearing: `api` is built from `./se
 
 **Every service has a healthcheck, and none of them gate startup.** `api`, `mcp` and `render` poll their own health routes (`bun -e` rather than curl/wget, which the Bun image doesn't promise); `render`'s asks for the browser page, since a wedged Chromium is the failure that service actually has, hence its longer interval and 90s start period. The `depends_on` lists stay plain on purpose: nginx resolves its upstreams lazily *so that* the public entrypoint comes up whether or not the API is ready, and `condition: service_healthy` on `web` would turn a slow api boot into a 502 for every visitor.
 
-Security headers live in `nginx-headers.conf` and are `include`d **per static location**, because nginx inherits `add_header` only into blocks that declare none of their own — and every static location here sets its own `Cache-Control`, so a server-level copy would vanish exactly where the HTML is served. The CSP is `Content-Security-Policy-Report-Only`, the same warn-then-enforce shape as `THUMBDOC_VALIDATE` and `BLOB_GC`: getting it wrong would break background removal (wasm in workers built from `blob:` URLs, model fetched from IMG.LY's CDN) in a way that looks like a broken feature rather than a broken header. CI runs `nginx -t` over both files, since a bad directive otherwise only shows up when the container won't start.
+Security headers live in `nginx-headers.conf` and are `include`d **per static location**, because nginx inherits `add_header` only into blocks that declare none of their own — and every static location here sets its own `Cache-Control`, so a server-level copy would vanish exactly where the HTML is served. The CSP is `Content-Security-Policy-Report-Only`, the same warn-then-enforce shape as `THUMBDOC_VALIDATE` and `BLOB_GC`: getting it wrong would break background removal (wasm in workers built from `blob:` URLs, model fetched from IMG.LY's CDN) in a way that looks like a broken feature rather than a broken header. **Clerk is the second origin in it**, and it needs four lists, not one: clerk-js is fetched from the instance's own Frontend API domain, so `script-src` names it as well as `connect-src`, plus `img-src` for the avatar and `frame-src` for the flows Clerk completes in an iframe. The host there is `*.clerk.accounts.dev`, the **development** instance — **promoting Clerk to production means adding `clerk.<domain>` here**, since a production instance is served from a CNAME on your own domain. CI runs `nginx -t` over both files, since a bad directive otherwise only shows up when the container won't start.
 
 **The service worker (`public/sw.js`) must never cache `/api`.** Its stale-while-revalidate branch treats every same-origin GET as a static asset, so a guard returns early on `/api/` paths: everything there is live state — an archive list, a document, a version history, and `/api/auth/me`, where answering from cache first hands the editor the *previous* session's identity after a logout on a shared browser. Image bytes lose nothing, being content-addressed and served `immutable`. `CACHE` is versioned and `activate` deletes every other cache, so **bumping the name is how a change to these rules reaches an already-installed client** — a fix that ships without a bump lives alongside whatever the old rules stored.
 

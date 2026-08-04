@@ -1,28 +1,29 @@
 // yt-thumb-gen backend — Bun + Hono.
 //
 // Serves the /api surface consumed by the SPA (which nginx proxies same-origin, so no
-// CORS here). Auth is an httpOnly session cookie backed by the `sessions` table.
+// CORS here). Auth is a **Clerk** session — Google sign-in, verified per request from the
+// `__session` cookie the browser holds same-origin (see clerk.ts / identity.ts) — plus this
+// application's own `tsk_` bearer tokens for agents. There is no password here any more, and
+// no local session table: `/auth/login`, `/auth/register`, `/auth/logout` and the `sessions`
+// table are all gone (migration 009).
 // Named projects live in Postgres; image bytes live in R2 (content-addressed).
 
 import { Hono } from "hono";
-import { getCookie, setCookie, deleteCookie } from "hono/cookie";
+import { clerkConfigured, verifyClerkRequest } from "./clerk";
 import { initSchema, sql } from "./db";
 import { hydrateDocForRender } from "./hydrate";
+import { auditAllowlist, resolveClerkUser, type User } from "./identity";
 import { startMaintenance } from "./maintenance";
 import { getBlob, putBlob } from "./r2";
 import { createLimiter, type Limiter } from "./ratelimit";
 import { MODE, docWarnings, schema as docSchema, validateDoc, validateLayer } from "./validate";
 
-const APP_URL = process.env.APP_URL ?? "http://localhost";
-const SECURE = APP_URL.startsWith("https://");
-const ALLOW_SIGNUP = process.env.ALLOW_SIGNUP === "true";
-const SESSION_DAYS = 30;
-const COOKIE = "sid";
-
 await initSchema();
+// Reports an account whose address the allowlist doesn't admit — the one way this migration
+// can go quietly wrong. Not awaited: it is a diagnostic, and a boot must not wait on it.
+void auditAllowlist().catch(() => {});
 
 // ── helpers ───────────────────────────────────────────────────────────────
-type User = { id: string; email: string };
 
 const app = new Hono<{ Variables: { user: User } }>();
 
@@ -32,37 +33,20 @@ function newToken(): string {
   return Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
 }
 
-async function createSession(userId: string): Promise<string> {
-  const token = newToken();
-  const expires = new Date(Date.now() + SESSION_DAYS * 864e5);
-  await sql`INSERT INTO sessions (token, user_id, expires_at) VALUES (${token}, ${userId}, ${expires})`;
-  return token;
-}
-
-function setSessionCookie(c: any, token: string) {
-  setCookie(c, COOKIE, token, {
-    httpOnly: true,
-    secure: SECURE,
-    sameSite: "Lax",
-    path: "/",
-    maxAge: SESSION_DAYS * 86400,
-  });
-}
-
 const sha256 = async (s: string): Promise<string> =>
   Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s))), (x) =>
     x.toString(16).padStart(2, "0")
   ).join("");
 
-/** Identity from the browser session cookie. */
-async function cookieUser(c: any): Promise<User | null> {
-  const token = getCookie(c, COOKIE);
-  if (!token) return null;
-  const rows = await sql<User[]>`
-    SELECT u.id, u.email FROM sessions s
-    JOIN users u ON u.id = s.user_id
-    WHERE s.token = ${token} AND s.expires_at > now()`;
-  return rows[0] ?? null;
+/** Identity from the browser's Clerk session.
+ *
+ *  Three outcomes, and the middle one is why this doesn't just return `User | null`:
+ *  `"denied"` is a verified Google account this deployment will not serve, which the front
+ *  door has to be able to say out loud — the alternative is signing someone in to an editor
+ *  whose every save 401s. */
+async function sessionUser(c: any): Promise<User | "denied" | null> {
+  const identity = await verifyClerkRequest(c.req.raw);
+  return identity ? await resolveClerkUser(identity) : null;
 }
 
 /** How stale `api_tokens.last_used_at` is allowed to be. The column answers "is this token
@@ -97,41 +81,25 @@ async function bearerUser(c: any): Promise<User | null> {
   return user;
 }
 
-async function currentUser(c: any): Promise<User | null> {
-  return (await cookieUser(c)) ?? (await bearerUser(c));
+/** The caller, however they identify: a Clerk session or a `tsk_` personal token. `"denied"`
+ *  propagates so the guards can answer 403 rather than 401 — see `sessionUser`. */
+async function currentUser(c: any): Promise<User | "denied" | null> {
+  const session = await sessionUser(c);
+  if (session) return session;
+  return await bearerUser(c);
 }
-
-/** Whether the first account is still unclaimed. `/auth/status` is on the public landing page,
- *  so strangers ask this too — and the question is "is the table empty", which `EXISTS` answers
- *  by stopping at the first row instead of counting every user. Deliberately not memoised: the
- *  answer is only ever cached correctly until someone empties the table, and the test suite
- *  truncates between cases. */
-async function signupOpen(): Promise<boolean> {
-  if (ALLOW_SIGNUP) return true;
-  const [{ any: taken }] = await sql<{ any: boolean }[]>`SELECT EXISTS(SELECT 1 FROM users) AS any`;
-  return !taken;
-}
-
-const emailOk = (e: unknown): e is string => typeof e === "string" && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e);
 
 /** Blob ids are the sha-256 of their bytes, so they have exactly one shape. Checking it up
  *  front rejects junk before it reaches a query, and — on the public blob route — guarantees
  *  the value carries no `LIKE` wildcard. */
 const isBlobId = (v: unknown): v is string => typeof v === "string" && /^[0-9a-f]{64}$/.test(v);
 
-// Password checking is deliberately expensive, which is a gift to whoever is guessing unless
-// something counts the guesses. Two windows: one per (address, account) so a targeted attack
-// stalls, and a looser one per address so walking a list of emails stalls too.
-const perAccount = createLimiter({ limit: 8, windowMs: 10 * 60_000 });
-const perAddress = createLimiter({ limit: 40, windowMs: 10 * 60_000 });
-
-// The rest of the auth surface is reachable without credentials too, and a public landing page
-// is an invitation to poke at it. Register is gated by `signupOpen()` so it can't create an
-// account, but every call still costs a count(*) — and, while signup is open, one deliberately
-// expensive password hash. Logout issues a DELETE per call. Neither is a guessing oracle, so
-// these are generous: they bound the cost, they don't defend a secret.
-const perAddressRegister = createLimiter({ limit: 10, windowMs: 10 * 60_000 });
-const perAddressLogout = createLimiter({ limit: 30, windowMs: 10 * 60_000 });
+// There is no password to guess here any more — Clerk holds the credential, and the brute-force
+// windows that used to defend `/auth/login` left with it. What remains reachable without
+// credentials is `/auth/me`, and an unverified call to it is cheap but not free: a malformed
+// token still costs a signature check. Generous, therefore: this bounds a cost, it doesn't
+// defend a secret.
+const perAddressMe = createLimiter({ limit: 120, windowMs: 10 * 60_000 });
 
 // Public reads. Every request counts here (`hit`, not `check`/`fail`) because there is no
 // success/failure distinction to exploit — the request itself is the cost. Two buckets: one
@@ -148,8 +116,10 @@ function clientIp(c: any): string {
 }
 
 /** Charges one request to the caller's address. Returns the 429 to send, or null to carry on.
- *  Login doesn't use this — it counts only failures, and has to check before it pays for the
- *  password comparison, which is a different shape. */
+ *  Every remaining limiter is this shape: the request itself is the cost, so it counts whether
+ *  or not it succeeded. (`ratelimit.ts` still carries the check/fail/reset trio — only-failures-
+ *  count, success-resets — which is what a credential guess needs. Nothing here guesses a
+ *  credential any more; Clerk holds the one there is.) */
 function throttle(c: any, limiter: Limiter): Response | null {
   const verdict = limiter.hit(clientIp(c));
   if (verdict.ok) return null;
@@ -170,66 +140,26 @@ function docProblems(where: string, errors: string[]): Response | null {
 }
 
 // ── auth ─────────────────────────────────────────────────────────────────
-app.get("/api/auth/status", async (c) => c.json({ signupOpen: await signupOpen() }));
+//
+// Two routes, and neither of them holds a credential. Signing in and out are Clerk's, in the
+// browser: there is nothing for this API to issue, so there is nothing for it to leak.
+
+/** What the front door needs to know before it draws itself: whether this deployment can
+ *  authenticate anyone at all. A "Continue with Google" button on an instance with no
+ *  `CLERK_SECRET_KEY` fails in a way that looks like a broken product rather than an
+ *  unconfigured one. No database, no credential — safe to answer for strangers. */
+app.get("/api/auth/status", (c) => c.json({ clerk: clerkConfigured() }));
 
 app.get("/api/auth/me", async (c) => {
+  const limited = throttle(c, perAddressMe);
+  if (limited) return limited;
   const user = await currentUser(c);
   if (!user) return c.json({ error: "unauthorized" }, 401);
+  // 403, not 401: the credential is *valid*, the account simply isn't welcome here. The
+  // difference is the whole message — "sign in" versus "this Google account has no access" —
+  // and only the server knows which one is true.
+  if (user === "denied") return c.json({ error: "This account does not have access to this workspace." }, 403);
   return c.json({ id: user.id, email: user.email });
-});
-
-app.post("/api/auth/register", async (c) => {
-  const limited = throttle(c, perAddressRegister);
-  if (limited) return limited;
-  if (!(await signupOpen())) return c.json({ error: "Signups are closed" }, 403);
-  const { email, password } = await c.req.json().catch(() => ({}));
-  if (!emailOk(email)) return c.json({ error: "Invalid email" }, 400);
-  if (typeof password !== "string" || password.length < 8) return c.json({ error: "Password too short (min 8)" }, 400);
-  const hash = await Bun.password.hash(password);
-  try {
-    const [u] = await sql<User[]>`INSERT INTO users (email, password_hash) VALUES (${email.toLowerCase()}, ${hash}) RETURNING id, email`;
-    setSessionCookie(c, await createSession(u.id));
-    return c.json({ id: u.id, email: u.email });
-  } catch {
-    return c.json({ error: "Email already registered" }, 409);
-  }
-});
-
-app.post("/api/auth/login", async (c) => {
-  const { email, password } = await c.req.json().catch(() => ({}));
-  if (!emailOk(email) || typeof password !== "string") return c.json({ error: "Invalid credentials" }, 400);
-
-  const ip = clientIp(c);
-  const account = `${ip}|${email.toLowerCase()}`;
-  // Checked before the hash comparison — the whole point is not to pay for the guess.
-  const accountVerdict = perAccount.check(account);
-  const verdict = accountVerdict.ok ? perAddress.check(ip) : accountVerdict;
-  if (!verdict.ok) {
-    const seconds = Math.ceil(verdict.retryAfterMs / 1000);
-    return c.json({ error: "Too many attempts. Try again shortly." }, 429, { "retry-after": String(seconds) });
-  }
-
-  const rows = await sql<{ id: string; email: string; password_hash: string }[]>`
-    SELECT id, email, password_hash FROM users WHERE email = ${email.toLowerCase()}`;
-  const u = rows[0];
-  if (!u || !(await Bun.password.verify(password, u.password_hash))) {
-    // Only failures count, so a busy legitimate user never locks themselves out.
-    perAccount.fail(account);
-    perAddress.fail(ip);
-    return c.json({ error: "Invalid credentials" }, 401);
-  }
-  perAccount.reset(account);
-  setSessionCookie(c, await createSession(u.id));
-  return c.json({ id: u.id, email: u.email });
-});
-
-app.post("/api/auth/logout", async (c) => {
-  const limited = throttle(c, perAddressLogout);
-  if (limited) return limited;
-  const token = getCookie(c, COOKIE);
-  if (token) await sql`DELETE FROM sessions WHERE token = ${token}`;
-  deleteCookie(c, COOKIE, { path: "/" });
-  return c.json({ ok: true });
 });
 
 // ── public reads (no credentials, by design) ────────────────────────────────
@@ -306,21 +236,30 @@ app.use("/api/starred/*", requireUser);
 app.use("/api/starred", requireUser);
 app.use("/api/campaigns/*", requireUser);
 app.use("/api/campaigns", requireUser);
-// Token management is cookie-only on purpose: a token must not be able to mint another
-// token, so a leaked token cannot be used to entrench itself.
-app.use("/api/tokens/*", requireCookieUser);
-app.use("/api/tokens", requireCookieUser);
+// Token management requires a real sign-in on purpose: a token must not be able to mint
+// another token, so a leaked token cannot be used to entrench itself.
+app.use("/api/tokens/*", requireSessionUser);
+app.use("/api/tokens", requireSessionUser);
+
+/** 401 when there is no credential, 403 when there is one this workspace won't serve. Shared
+ *  by both guards, because the distinction is the same wherever it is drawn. */
+function refuse(c: any, user: "denied" | null) {
+  if (user === "denied") return c.json({ error: "This account does not have access to this workspace." }, 403);
+  return c.json({ error: "unauthorized" }, 401);
+}
 
 async function requireUser(c: any, next: () => Promise<void>) {
   const user = await currentUser(c);
-  if (!user) return c.json({ error: "unauthorized" }, 401);
+  if (!user || user === "denied") return refuse(c, user);
   c.set("user", user);
   return next();
 }
 
-async function requireCookieUser(c: any, next: () => Promise<void>) {
-  const user = await cookieUser(c);
-  if (!user) return c.json({ error: "unauthorized" }, 401);
+/** A Clerk session only — never a `tsk_` token. Same rule as before under a truer name: what
+ *  matters is that the caller is a signed-in human at the keyboard, not which cookie carries it. */
+async function requireSessionUser(c: any, next: () => Promise<void>) {
+  const user = await sessionUser(c);
+  if (!user || user === "denied") return refuse(c, user);
   c.set("user", user);
   return next();
 }
@@ -624,7 +563,7 @@ app.delete("/api/campaigns/:id", async (c) => {
   return c.json({ ok: true });
 });
 
-// ── personal API tokens (cookie-only; see the guard above) ──────────────────
+// ── personal API tokens (Clerk session only; see the guard above) ───────────
 app.get("/api/tokens", async (c) => {
   const user = c.get("user") as User;
   const rows = await sql`

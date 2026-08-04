@@ -1,8 +1,8 @@
 // Housekeeping the app never did: rows and objects that only ever accumulated.
 //
-// Two leaks. Sessions were deleted on explicit logout and nowhere else, so every login a user
-// never logged out of stayed in the table past its expiry, forever. And R2 objects were never
-// released — deleting a project dropped the row and left its images paying rent indefinitely.
+// One leak left. R2 objects were never released — deleting a project dropped the row and left
+// its images paying rent indefinitely. (The other was expired session rows, which Clerk now
+// owns end to end: migration 009 dropped the table and the sweep with it.)
 //
 // The blob sweep is the dangerous one, so it is built to under-delete:
 //   • a blob is spared unless it is older than GRACE_MS — an image is uploaded *before* the
@@ -42,13 +42,6 @@ export function collectBlobIds(text: string | null | undefined): Set<string> {
   if (!text) return out;
   for (const m of text.matchAll(new RegExp(BLOB_REF_PATTERN, "g"))) out.add(m[0]);
   return out;
-}
-
-/** Expired sessions are dead weight the moment they expire — the auth query already ignores
- *  them (`expires_at > now()`), so this only reclaims space. */
-export async function sweepSessions(): Promise<number> {
-  const rows = await sql`DELETE FROM sessions WHERE expires_at < now() RETURNING token`;
-  return rows.length;
 }
 
 /** Drops blob ownership rows nothing points at any more, then deletes from R2 the objects
@@ -114,13 +107,11 @@ export async function sweepBlobs(): Promise<{ rows: number; objects: number; mod
   return { rows: dead.length, objects, mode };
 }
 
-/** Fire both sweeps now and every six hours. Started only when this process is the entry
+/** Fire the sweep now and every six hours. Started only when this process is the entry
  *  point, so importing the app in tests doesn't schedule background work. */
 export function startMaintenance(): void {
   const run = async () => {
     try {
-      const sessions = await sweepSessions();
-      if (sessions > 0) console.log(`[maintenance] cleared ${sessions} expired sessions`);
       await sweepBlobs();
     } catch (err) {
       console.warn("[maintenance] sweep failed", err);

@@ -27,7 +27,14 @@ services:
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-thumb}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-thumb}
       APP_URL: ${APP_URL:-http://localhost}
-      ALLOW_SIGNUP: ${ALLOW_SIGNUP:-false}
+      # Clerk holds the credential; this service verifies its sessions and decides which of them
+      # this workspace serves. Without CLERK_SECRET_KEY nobody can sign in (the API says so at
+      # /api/auth/status rather than failing silently). ALLOWED_EMAILS is the gate a Google
+      # button needs — unset, it falls back to "the first account claims the instance".
+      CLERK_SECRET_KEY: ${CLERK_SECRET_KEY}
+      CLERK_PUBLISHABLE_KEY: ${CLERK_PUBLISHABLE_KEY}
+      CLERK_AUTHORIZED_PARTIES: ${CLERK_AUTHORIZED_PARTIES:-}
+      ALLOWED_EMAILS: ${ALLOWED_EMAILS:-}
       THUMBDOC_VALIDATE: ${THUMBDOC_VALIDATE:-warn}
       R2_ENDPOINT: ${R2_ENDPOINT}
       R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID}
@@ -100,6 +107,11 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      # Vite bakes its env into the bundle, so the Clerk frontend key is a *build* input, not a
+      # runtime one — changing it needs a rebuild, not a restart. Public by design (it names the
+      # instance); the secret half never leaves the api service.
+      args:
+        VITE_CLERK_PUBLISHABLE_KEY: ${VITE_CLERK_PUBLISHABLE_KEY}
     restart: unless-stopped
     expose:
       - "80"
