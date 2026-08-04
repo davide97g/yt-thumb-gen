@@ -51,8 +51,32 @@ describe.skipIf(!usable)("migrate", () => {
   });
 
   test("the columns later migrations added are there", async () => {
-    const [preview] = await sql`
-      SELECT 1 FROM information_schema.columns WHERE table_name = 'projects' AND column_name = 'preview'`;
-    expect(preview).toBeDefined();
+    const columns = async (table: string): Promise<string[]> => {
+      const rows: { column_name: string }[] = await sql`
+        SELECT column_name FROM information_schema.columns WHERE table_name = ${table}`;
+      return rows.map((r) => r.column_name);
+    };
+    expect(await columns("projects")).toEqual(expect.arrayContaining(["preview", "is_public", "format"]));
+    expect(await columns("project_versions")).toEqual(expect.arrayContaining(["format", "layer_count"]));
+  });
+
+  // The single-column indexes migration 007 replaced are dropped, not left alongside their
+  // composites — a second index on the same prefix is pure write cost. A fresh database still
+  // *creates* them in the baseline, so this also proves the drops actually ran.
+  test("the indexes are the composite ones, and the superseded ones are gone", async () => {
+    const rows: { indexname: string }[] = await sql`SELECT indexname FROM pg_indexes WHERE schemaname = 'public'`;
+    const names = rows.map((r) => r.indexname);
+    expect(names).toEqual(
+      expect.arrayContaining([
+        "projects_user_updated_idx",
+        "projects_campaign_updated_idx",
+        "projects_public_updated_idx",
+        "sessions_expires_idx",
+        "blobs_created_idx",
+      ])
+    );
+    for (const gone of ["projects_user_idx", "projects_campaign_idx", "projects_public_idx"]) {
+      expect(names).not.toContain(gone);
+    }
   });
 });

@@ -13,6 +13,14 @@ RUN bun install --frozen-lockfile
 COPY . .
 RUN bun run build
 
+# Precompressed twins for `gzip_static` (see nginx.conf). `-k` keeps the original, so a client
+# that doesn't accept gzip still gets served. Only compressible types, only files worth it:
+# woff2/png/jpg are already compressed and a .gz of them would be dead weight in the image.
+RUN find dist -type f \
+      \( -name '*.js' -o -name '*.mjs' -o -name '*.css' -o -name '*.wasm' \
+         -o -name '*.json' -o -name '*.svg' -o -name '*.webmanifest' -o -name '*.html' \) \
+      -size +1k -exec gzip -9 -k {} +
+
 # --- serve stage -----------------------------------------------------------
 FROM nginx:1.27-alpine AS serve
 

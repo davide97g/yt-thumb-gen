@@ -231,7 +231,7 @@ app.get("/api/public/projects", async (c) => {
   // Note what isn't selected: user_id, campaign_id, and every row where is_public is false.
   // The campaign *name* is exposed, for grouping — owner-chosen text, but exposed.
   const rows = await sql`
-    SELECT p.id, p.name, p.preview, p.doc->>'format' AS format, c.name AS "campaignName",
+    SELECT p.id, p.name, p.preview, p.format, c.name AS "campaignName",
       (extract(epoch from p.updated_at) * 1000)::float8 AS "updatedAt"
     FROM projects p LEFT JOIN campaigns c ON c.id = p.campaign_id
     WHERE p.is_public ORDER BY p.updated_at DESC`;
@@ -314,7 +314,7 @@ async function requireCookieUser(c: any, next: () => Promise<void>) {
 app.get("/api/projects", async (c) => {
   const user = c.get("user") as User;
   const rows = await sql`
-    SELECT id, name, campaign_id AS "campaignId", doc->>'format' AS format, preview, is_public AS "isPublic",
+    SELECT id, name, campaign_id AS "campaignId", format, preview, is_public AS "isPublic",
       (extract(epoch from updated_at) * 1000)::float8 AS "updatedAt"
     FROM projects WHERE user_id = ${user.id} ORDER BY updated_at DESC`;
   return c.json(rows);
@@ -333,6 +333,17 @@ app.get("/api/projects/:id", async (c) => {
 /** A preview is a blob id, i.e. the sha-256 of the stored bytes. Anything else is dropped
  *  rather than rejected: a bad preview must never cost the user their save. */
 const previewOr = (value: unknown, fallback: string | null): string | null => (isBlobId(value) ? value : fallback);
+
+/** The document's format, for the denormalised `projects.format` / `project_versions.format`
+ *  column (migrations 005/006). Every write that stores a `doc` must also write this, or the
+ *  archive would label rows from a document it no longer holds — so it lives here rather than
+ *  being spelled out at each call site. Not validated against the format list on purpose: the
+ *  document contract owns that, and in `warn` mode a doc with a junk format is still stored,
+ *  in which case the column should say the same junk the document does. */
+const formatOf = (doc: unknown): string | null => {
+  const value = (doc as { format?: unknown } | null)?.format;
+  return typeof value === "string" ? value : null;
+};
 
 /** Resolves a caller-supplied campaign id to something safe to store. Returns `false` when
  *  the campaign isn't the caller's, so a project can never be filed into someone else's. */
@@ -359,9 +370,14 @@ async function snapshot(userId: string, projectId: string, incoming: unknown): P
       FROM projects WHERE id = ${projectId} AND user_id = ${userId}`;
     if (!current || current.same) return;
 
+    // `format` comes off the column, not the document — it is already the same fact. The layer
+    // count is computed here instead, because nothing else needed it before now; it is the one
+    // place the document is opened, and this statement was reading `doc` anyway.
     await sql`
-      INSERT INTO project_versions (project_id, user_id, name, doc)
-      SELECT id, user_id, name, doc FROM projects WHERE id = ${projectId} AND user_id = ${userId}`;
+      INSERT INTO project_versions (project_id, user_id, name, doc, format, layer_count)
+      SELECT id, user_id, name, doc, format,
+        CASE WHEN jsonb_typeof(doc->'layers') = 'array' THEN jsonb_array_length(doc->'layers') ELSE NULL END
+      FROM projects WHERE id = ${projectId} AND user_id = ${userId}`;
 
     // Keep the window bounded per project rather than sweeping globally later.
     await sql`
@@ -386,9 +402,9 @@ app.post("/api/projects", async (c) => {
   const campaign = campaignId === undefined ? null : await resolveCampaign(user.id, campaignId);
   if (campaign === false) return c.json({ error: "Campaign not found" }, 404);
   const [row] = await sql`
-    INSERT INTO projects (user_id, name, doc, campaign_id, preview)
-    VALUES (${user.id}, ${name}, ${sql.json(doc)}, ${campaign}, ${previewOr(preview, null)})
-    RETURNING id, name, campaign_id AS "campaignId", preview, is_public AS "isPublic",
+    INSERT INTO projects (user_id, name, doc, campaign_id, preview, format)
+    VALUES (${user.id}, ${name}, ${sql.json(doc)}, ${campaign}, ${previewOr(preview, null)}, ${formatOf(doc)})
+    RETURNING id, name, campaign_id AS "campaignId", preview, format, is_public AS "isPublic",
       (extract(epoch from updated_at) * 1000)::float8 AS "updatedAt"`;
   return c.json({ ...row, warnings: docWarnings(doc) });
 });
@@ -418,6 +434,11 @@ app.put("/api/projects/:id", async (c) => {
   const hasPublic = "isPublic" in body;
   // No tri-state for the preview: a request that omits it (a rename, or a save made with no
   // canvas mounted) keeps the last one, which is closer to the truth than blanking the row.
+  //
+  // `format` is presence-gated on the document rather than coalesced, because that column has
+  // to agree with what was just stored: a rename sends no doc and leaves it alone, while a save
+  // always restates it — so a format change lands, and a document that arrives without one
+  // can't leave a stale label behind. (app.test.ts pins all three cases.)
   const [row] = await sql`
     UPDATE projects SET
       name = coalesce(${name ?? null}, name),
@@ -425,9 +446,10 @@ app.put("/api/projects/:id", async (c) => {
       preview = coalesce(${previewOr(body.preview, null)}, preview),
       campaign_id = ${hasCampaign ? campaign : sql`campaign_id`},
       is_public = ${hasPublic ? body.isPublic === true : sql`is_public`},
+      format = ${doc === undefined ? sql`format` : formatOf(doc)},
       updated_at = now()
     WHERE id = ${c.req.param("id")} AND user_id = ${user.id}
-    RETURNING id, name, campaign_id AS "campaignId", preview, is_public AS "isPublic",
+    RETURNING id, name, campaign_id AS "campaignId", preview, format, is_public AS "isPublic",
       (extract(epoch from updated_at) * 1000)::float8 AS "updatedAt"`;
   if (!row) return c.json({ error: "not found" }, 404);
   return c.json(row);
@@ -485,7 +507,7 @@ app.get("/api/projects/:id/versions", async (c) => {
   const user = c.get("user") as User;
   const rows = await sql`
     SELECT id, name, (extract(epoch from created_at) * 1000)::float8 AS "createdAt",
-      jsonb_array_length(doc->'layers') AS "layerCount", doc->>'format' AS format
+      layer_count AS "layerCount", format
     FROM project_versions WHERE project_id = ${c.req.param("id")} AND user_id = ${user.id}
     ORDER BY created_at DESC`;
   return c.json(rows);
@@ -512,10 +534,11 @@ app.post("/api/projects/:id/versions/:versionId/restore", async (c) => {
   if (!version) return c.json({ error: "not found" }, 404);
 
   await snapshot(user.id, id, version.doc);
+  // A restore replaces the document, so it restates `format` for the same reason a save does.
   const [row] = await sql`
-    UPDATE projects SET doc = ${sql.json(version.doc as any)}, updated_at = now()
+    UPDATE projects SET doc = ${sql.json(version.doc as any)}, format = ${formatOf(version.doc)}, updated_at = now()
     WHERE id = ${id} AND user_id = ${user.id}
-    RETURNING id, name, campaign_id AS "campaignId", preview, (extract(epoch from updated_at) * 1000)::float8 AS "updatedAt"`;
+    RETURNING id, name, campaign_id AS "campaignId", preview, format, (extract(epoch from updated_at) * 1000)::float8 AS "updatedAt"`;
   if (!row) return c.json({ error: "not found" }, 404);
   // The preview column still shows the design that was just replaced; it refreshes on the
   // next save from the editor. Better a stale thumbnail than a blank row.
@@ -544,7 +567,7 @@ app.get("/api/campaigns/:id", async (c) => {
   if (!rows[0]) return c.json({ error: "not found" }, 404);
   // Metadata only, like the project list — the docs are fetched one at a time.
   const designs = await sql`
-    SELECT id, name, doc->>'format' AS format, preview,
+    SELECT id, name, format, preview,
       (extract(epoch from updated_at) * 1000)::float8 AS "updatedAt"
     FROM projects WHERE campaign_id = ${id} AND user_id = ${user.id}
     ORDER BY updated_at DESC`;

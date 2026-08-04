@@ -169,6 +169,59 @@ export const MIGRATIONS: Migration[] = [
       await sql`CREATE INDEX IF NOT EXISTS projects_public_idx ON projects(is_public) WHERE is_public`;
     },
   },
+  {
+    id: 5,
+    name: "denormalised project format",
+    // The archive, the gallery and a campaign's design list all label rows with the document's
+    // format, and all three read it as `doc->>'format'`. That is not a cheap key lookup: `doc`
+    // is a TOASTed jsonb, so reading one field decompresses the *whole* document — an archive
+    // of sixty designs decompressed sixty full documents to print sixty words. The column is
+    // the same fact, denormalised, and every write path that touches `doc` writes it too
+    // (see server/src/index.ts — POST, PUT and restore).
+    up: async (sql) => {
+      await sql`ALTER TABLE projects ADD COLUMN IF NOT EXISTS format text`;
+      await sql`UPDATE projects SET format = doc->>'format' WHERE format IS NULL`;
+    },
+  },
+  {
+    id: 6,
+    name: "denormalised version format",
+    // Same problem, worse ratio: the version list read `doc->>'format'` *and*
+    // `jsonb_array_length(doc->'layers')` for up to thirty documents per project.
+    // `layer_count` is nullable and guarded by a typeof check because THUMBDOC_VALIDATE
+    // defaults to `warn` — a document with no `layers` array can be stored, and
+    // jsonb_array_length would error on it rather than shrug.
+    up: async (sql) => {
+      await sql`ALTER TABLE project_versions ADD COLUMN IF NOT EXISTS format text`;
+      await sql`ALTER TABLE project_versions ADD COLUMN IF NOT EXISTS layer_count integer`;
+      await sql`
+        UPDATE project_versions SET
+          format = doc->>'format',
+          layer_count = CASE WHEN jsonb_typeof(doc->'layers') = 'array' THEN jsonb_array_length(doc->'layers') ELSE NULL END
+        WHERE format IS NULL AND layer_count IS NULL`;
+    },
+  },
+  {
+    id: 7,
+    name: "hot-path indexes",
+    // Every list in the app is "these rows, newest first", and none of the indexes carried the
+    // sort — so each one was an index scan plus a sort. The single-column indexes these replace
+    // are dropped rather than left alongside: a composite serves its own prefix, so keeping
+    // both only pays for a second index on every write. (The baseline still creates them, which
+    // is correct — it is the record of what a database had, not a description of what it wants.)
+    up: async (sql) => {
+      await sql`CREATE INDEX IF NOT EXISTS projects_user_updated_idx ON projects(user_id, updated_at DESC)`;
+      await sql`DROP INDEX IF EXISTS projects_user_idx`;
+      await sql`CREATE INDEX IF NOT EXISTS projects_campaign_updated_idx ON projects(campaign_id, updated_at DESC)`;
+      await sql`DROP INDEX IF EXISTS projects_campaign_idx`;
+      // Partial, and on the sort key: the gallery only ever asks for public rows in date order.
+      await sql`CREATE INDEX IF NOT EXISTS projects_public_updated_idx ON projects(updated_at DESC) WHERE is_public`;
+      await sql`DROP INDEX IF EXISTS projects_public_idx`;
+      // Both sweeps in maintenance.ts scanned their whole table to find the rows past a cutoff.
+      await sql`CREATE INDEX IF NOT EXISTS sessions_expires_idx ON sessions(expires_at)`;
+      await sql`CREATE INDEX IF NOT EXISTS blobs_created_idx ON blobs(created_at)`;
+    },
+  },
 ];
 
 /** Guards the one mistake this design can't survive: two migrations sharing an id, where

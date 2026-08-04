@@ -204,6 +204,33 @@ describe.skipIf(!usable)("api", () => {
     expect(after.doc.layers).toHaveLength(1);
   });
 
+  // `projects.format` is denormalised (migration 005) so a list of sixty designs doesn't
+  // decompress sixty documents to print sixty words. The cost of that is a column that can
+  // now *disagree* with the document it labels — so every path that stores a doc has to
+  // restate it, and every path that doesn't must leave it alone. That's what these pin.
+  test("the archive's format label follows the document it labels", async () => {
+    const user = await register();
+    const format = async (id: string) =>
+      ((await (await api.request("/api/projects", auth(user.cookie))).json()) as { id: string; format: string }[]).find((p) => p.id === id)?.format;
+
+    const created = await (await api.request("/api/projects", send("POST", { name: "One", doc: doc() }, user.cookie))).json();
+    expect(await format(created.id)).toBe("youtube");
+
+    // A save that changes the format relabels the row.
+    await api.request(`/api/projects/${created.id}`, send("PUT", { doc: doc({ format: "shorts" }) }, user.cookie));
+    expect(await format(created.id)).toBe("shorts");
+
+    // A rename sends no document, so it can't touch the label.
+    await api.request(`/api/projects/${created.id}`, send("PUT", { name: "Two" }, user.cookie));
+    expect(await format(created.id)).toBe("shorts");
+
+    // A restore replaces the document, so it relabels too.
+    const versions = await (await api.request(`/api/projects/${created.id}/versions`, auth(user.cookie))).json();
+    const first = versions[versions.length - 1];
+    await api.request(`/api/projects/${created.id}/versions/${first.id}/restore`, send("POST", {}, user.cookie));
+    expect(await format(created.id)).toBe("youtube");
+  });
+
   test("a save without a preview keeps the last one", async () => {
     const user = await register();
     const sha = "a".repeat(64);
