@@ -16,18 +16,31 @@
 import { sql } from "./db";
 import { deleteBlob } from "./r2";
 
-export const BLOB_GC = process.env.BLOB_GC === "enforce" ? "enforce" : "dry-run";
+/** Whether the sweep is armed. Read per call rather than at import: it makes the switch
+ *  testable (the enforced path deletes rows and R2 objects, so it must not be reachable only
+ *  in production), and an operator flipping it still gets the same restart-to-apply behaviour
+ *  they'd get from a constant. */
+export const gcMode = (): "enforce" | "dry-run" => (process.env.BLOB_GC === "enforce" ? "enforce" : "dry-run");
 
 /** How long an unreferenced blob is left alone before it counts as garbage. */
 const GRACE_MS = 24 * 60 * 60 * 1000;
 const SWEEP_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
-/** Every 64-hex run in a chunk of JSON. Deliberately broader than `blob:<id>`: an id that
- *  shows up in a field this doesn't know about still counts as a reference. */
+/** What counts as a reference: any 64-hex run in a document's raw JSON. Deliberately broader
+ *  than `blob:<id>`, so an id in a field this doesn't know about still counts — missing a
+ *  reference deletes a user's photo, keeping a spare costs a few kilobytes.
+ *
+ *  One string, used as both a JS and a POSIX pattern (they agree on this much), so the rule
+ *  can't drift between the scan and anything that documents it. */
+export const BLOB_REF_PATTERN = "[0-9a-f]{64}";
+
+/** Every 64-hex run in a chunk of JSON. The sweep does this in SQL now — see `sweepBlobs`,
+ *  which must never pull every document into this process to read it — but the pattern's
+ *  behaviour is worth being able to check directly. */
 export function collectBlobIds(text: string | null | undefined): Set<string> {
   const out = new Set<string>();
   if (!text) return out;
-  for (const m of text.matchAll(/[0-9a-f]{64}/g)) out.add(m[0]);
+  for (const m of text.matchAll(new RegExp(BLOB_REF_PATTERN, "g"))) out.add(m[0]);
   return out;
 }
 
@@ -39,59 +52,66 @@ export async function sweepSessions(): Promise<number> {
 }
 
 /** Drops blob ownership rows nothing points at any more, then deletes from R2 the objects
- *  that no user references at all. Returns what it did (or would have done). */
+ *  that no user references at all. Returns what it did (or would have done).
+ *
+ *  The reference scan runs **in the database**. It used to select `doc::text` for every project,
+ *  each of their (up to thirty) versions and every starred layer, then build the reference sets
+ *  here — i.e. hold every document anyone has ever saved in this process at once, as strings and
+ *  again as Sets. Postgres can match the pattern where the rows already are, and only the
+ *  handful of dead ids crosses the wire.
+ *  // ponytail: the scan still decompresses every document every six hours. A `blob_refs` table
+ *  // maintained on write would make this a join, at the cost of a rule to keep in sync. */
 export async function sweepBlobs(): Promise<{ rows: number; objects: number; mode: string }> {
-  // Referenced ids, per owner. Both places a blob can be named: project docs (plus their
-  // preview column) and starred layers.
-  const referenced = new Map<string, Set<string>>();
-  const note = (userId: string, ids: Iterable<string>) => {
-    const set = referenced.get(userId) ?? new Set<string>();
-    for (const id of ids) set.add(id);
-    referenced.set(userId, set);
-  };
-
-  for (const r of await sql<{ user_id: string; doc: string; preview: string | null }[]>`
-    SELECT user_id, doc::text AS doc, preview FROM projects`) {
-    note(r.user_id, collectBlobIds(r.doc));
-    if (r.preview) note(r.user_id, [r.preview]);
-  }
-  // Past versions count. A restore that finds its photos collected would be worse than no
-  // history at all — any table holding a document has to be listed here.
-  for (const r of await sql<{ user_id: string; doc: string }[]>`
-    SELECT user_id, doc::text AS doc FROM project_versions`) {
-    note(r.user_id, collectBlobIds(r.doc));
-  }
-  for (const r of await sql<{ user_id: string; layer: string }[]>`
-    SELECT user_id, layer::text AS layer FROM starred_items`) {
-    note(r.user_id, collectBlobIds(r.layer));
-  }
-
   const cutoff = new Date(Date.now() - GRACE_MS);
-  const owned = await sql<{ id: string; user_id: string }[]>`
-    SELECT id, user_id FROM blobs WHERE created_at < ${cutoff}`;
-  const dead = owned.filter((b) => !referenced.get(b.user_id)?.has(b.id));
-  if (dead.length === 0) return { rows: 0, objects: 0, mode: BLOB_GC };
+  // Every place a blob can be named, per owner: project documents, their `preview` column, past
+  // versions — a restore that found its photos collected would be worse than no history at all,
+  // so any future table holding a document has to join this union — and starred layers.
+  // `regexp_matches(…, 'g')` in a FROM clause yields one row per match, laterally per source row.
+  const dead = await sql<{ id: string; user_id: string }[]>`
+    WITH refs AS (
+      SELECT user_id, m[1] AS id FROM projects, regexp_matches(doc::text, ${BLOB_REF_PATTERN}, 'g') AS m
+      UNION
+      SELECT user_id, preview AS id FROM projects WHERE preview IS NOT NULL
+      UNION
+      SELECT user_id, m[1] AS id FROM project_versions, regexp_matches(doc::text, ${BLOB_REF_PATTERN}, 'g') AS m
+      UNION
+      SELECT user_id, m[1] AS id FROM starred_items, regexp_matches(layer::text, ${BLOB_REF_PATTERN}, 'g') AS m
+    )
+    SELECT b.id, b.user_id FROM blobs b
+    WHERE b.created_at < ${cutoff}
+      AND NOT EXISTS (SELECT 1 FROM refs r WHERE r.user_id = b.user_id AND r.id = b.id)`;
+  const mode = gcMode();
+  if (dead.length === 0) return { rows: 0, objects: 0, mode };
 
-  if (BLOB_GC !== "enforce") {
+  if (mode !== "enforce") {
     console.log(`[blob-gc:dry-run] ${dead.length} unreferenced ownership rows — set BLOB_GC=enforce to collect`);
-    return { rows: dead.length, objects: 0, mode: BLOB_GC };
+    return { rows: dead.length, objects: 0, mode };
   }
 
-  for (const b of dead) {
-    await sql`DELETE FROM blobs WHERE id = ${b.id} AND user_id = ${b.user_id}`;
-  }
+  // One statement rather than one per row: the first enforced sweep on a deployment that has
+  // been running for a year is exactly the case where "a few rows" is thousands.
+  const ids = dead.map((b) => b.id);
+  const owners = dead.map((b) => b.user_id);
+  await sql`
+    DELETE FROM blobs b USING unnest(${ids}::text[], ${owners}::uuid[]) AS d(id, user_id)
+    WHERE b.id = d.id AND b.user_id = d.user_id`;
 
-  // The bytes go only when the last owner is gone: blobs are content-addressed, so two users
-  // who uploaded the same image share one object.
+  // The bytes go only when the last owner is gone: blobs are content-addressed, so two users who
+  // uploaded the same image share one object. Asked after the delete rather than inside it,
+  // because a statement's later CTEs can't see its own deletions.
+  const orphaned = await sql<{ id: string }[]>`
+    SELECT u.id FROM unnest(${[...new Set(ids)]}::text[]) AS u(id)
+    WHERE NOT EXISTS (SELECT 1 FROM blobs b WHERE b.id = u.id)`;
   let objects = 0;
-  for (const id of new Set(dead.map((b) => b.id))) {
-    const still = await sql`SELECT 1 FROM blobs WHERE id = ${id} LIMIT 1`;
-    if (still.length > 0) continue;
-    await deleteBlob(id).catch((err) => console.warn(`[blob-gc] R2 delete failed for ${id}`, err));
-    objects++;
+  for (const { id } of orphaned) {
+    await deleteBlob(id)
+      .then(() => {
+        objects++;
+      })
+      .catch((err) => console.warn(`[blob-gc] R2 delete failed for ${id}`, err));
   }
   console.log(`[blob-gc] released ${dead.length} rows, ${objects} objects`);
-  return { rows: dead.length, objects, mode: BLOB_GC };
+  return { rows: dead.length, objects, mode };
 }
 
 /** Fire both sweeps now and every six hours. Started only when this process is the entry

@@ -219,8 +219,21 @@ export function ThumbCanvas({ doc, scale, selectedIds, exporting, cropMode, setC
 
   // Measured bbox centres of image layers targeted by an emoji field (canvas units).
   // Effects centre on these; on the first frame (empty) render falls back to layer x/y + est.
+  //
+  // This runs on every `doc.layers` change, which during a drag is every frame — a
+  // querySelector plus an offsetWidth read (a forced layout) per image layer, then a setState
+  // that renders the canvas a second time. Only emoji fields consume it, so the whole pass is
+  // skipped unless one is on the canvas: most documents pay nothing, and the ones that do pay
+  // it for their image layers alone.
   const [centers, setCenters] = useState<Record<string, { cx: number; cy: number }>>({});
+  const wantsCenters = doc.layers.some((l) => l.type === "emojifx" && l.visible);
   useLayoutEffect(() => {
+    if (!wantsCenters) {
+      // Drop stale measurements rather than leave them: the last emoji field just went away,
+      // and an empty object is the same "not measured yet" state the first frame starts in.
+      setCenters((prev) => (Object.keys(prev).length === 0 ? prev : {}));
+      return;
+    }
     const next: Record<string, { cx: number; cy: number }> = {};
     for (const l of doc.layers) {
       if (l.type !== "image") continue;
@@ -228,7 +241,7 @@ export function ThumbCanvas({ doc, scale, selectedIds, exporting, cropMode, setC
       if (el) next[l.id] = { cx: l.x + el.offsetWidth / 2, cy: l.y + el.offsetHeight / 2 };
     }
     setCenters(next);
-  }, [doc.layers, scale]);
+  }, [doc.layers, scale, wantsCenters]);
 
   // All ids in a layer's group (or just itself if ungrouped).
   const groupMates = (layer: Layer): string[] =>
@@ -347,13 +360,20 @@ export function ThumbCanvas({ doc, scale, selectedIds, exporting, cropMode, setC
     const toCanvas = (cx: number, cy: number) => ({ x: (cx - rect.left) / scale, y: (cy - rect.top) / scale });
     const p0 = toCanvas(e.clientX, e.clientY);
     let moved = false;
+    // Measured once, here: a marquee only ever selects, so nothing it does can move a layer.
+    // This used to re-measure every visible layer on every pointermove — a querySelector and a
+    // forced layout per layer, per frame, for boxes that cannot have changed.
+    const candidates = doc.layers
+      .filter((l) => l.visible)
+      .map((l) => ({ id: l.id, box: layerBox(l.id) }))
+      .filter((c): c is { id: string; box: Box } => c.box !== null);
     const move = (ev: PointerEvent) => {
       const p = toCanvas(ev.clientX, ev.clientY);
       const box = { x: Math.min(p0.x, p.x), y: Math.min(p0.y, p.y), w: Math.abs(p.x - p0.x), h: Math.abs(p.y - p0.y) };
       if (box.w > 3 || box.h > 3) moved = true;
       setMarquee(box);
       if (moved) {
-        const hit = doc.layers.filter((l) => l.visible).filter((l) => { const b = layerBox(l.id); return b && boxesIntersect(b, box); }).map((l) => l.id);
+        const hit = candidates.filter((c) => boxesIntersect(c.box, box)).map((c) => c.id);
         dispatch({ type: "select", ids: expandGroups([...base, ...hit]) });
       }
     };

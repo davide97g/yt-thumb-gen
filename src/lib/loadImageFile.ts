@@ -3,6 +3,12 @@
 // iPhone photos are HEIC/HEIF, which <img> can't decode in Chrome — so those are
 // converted to JPEG via heic2any (libheif WASM), dynamically imported only when a
 // HEIC is uploaded so normal images don't pull in the codec.
+//
+// Every image the editor imports comes through here — paste, the dock's upload, an image
+// layer's replace, the background picker — which is why the size cap lives here too
+// (`normaliseImage`, see lib/downscale.ts) rather than at four call sites.
+
+import { normaliseImage } from "./downscale";
 
 const HEIC_EXT = /\.(heic|heif)$/i;
 
@@ -20,8 +26,14 @@ function blobToDataUrl(blob: Blob): Promise<string> {
 }
 
 export async function loadImageFile(file: File): Promise<string> {
-  if (!isHeic(file)) return blobToDataUrl(file);
+  const decoded = await decode(file);
+  return blobToDataUrl(await normaliseImage(decoded));
+}
+
+/** Whatever the picker handed us, as a blob the browser can decode. */
+async function decode(file: File): Promise<Blob> {
+  if (!isHeic(file)) return file;
   const { default: heic2any } = await import("heic2any");
   const converted = await heic2any({ blob: file, toType: "image/jpeg", quality: 0.92 });
-  return blobToDataUrl(Array.isArray(converted) ? converted[0] : converted);
+  return Array.isArray(converted) ? converted[0] : converted;
 }

@@ -27,8 +27,27 @@ export async function deleteBlob(id: string): Promise<void> {
   await client.delete(key(id));
 }
 
+/** True for "R2 doesn't have this key", false for anything else — a credential problem or an
+ *  outage must not be reported to the caller as a missing image. Bun's S3 client surfaces the
+ *  code as `NoSuchKey`; the 404 arm is there because the same condition arrives that way from
+ *  a HEAD-shaped path. */
+function isMissing(err: unknown): boolean {
+  const e = err as { code?: string; name?: string; status?: number } | null;
+  return e?.code === "NoSuchKey" || e?.code === "NotFound" || e?.status === 404;
+}
+
+/** The bytes, or null if the object isn't there.
+ *
+ *  One round trip, not two: this used to `exists()` first, which meant every image in an
+ *  archive view paid a HEAD before its GET — and the check answered a question the GET answers
+ *  anyway. The body is still buffered rather than streamed, deliberately: streaming would move
+ *  a missing object from a clean 404 to a response that has already started, and 25 MB is the
+ *  cap on a single blob. */
 export async function getBlob(id: string): Promise<ArrayBuffer | null> {
-  const file = client.file(key(id));
-  if (!(await file.exists())) return null;
-  return file.arrayBuffer();
+  try {
+    return await client.file(key(id)).arrayBuffer();
+  } catch (err) {
+    if (isMissing(err)) return null;
+    throw err;
+  }
 }

@@ -37,6 +37,15 @@ services:
       # Unset this and /api/projects/:id/render.png answers 503 with an explanation — the
       # renderer is optional, and the editor doesn't need it.
       RENDER_URL: http://render:3002
+    # `/api/health` runs SELECT 1 and 503s if it can't — the route existed and nothing polled
+    # it, so a container that had lost Postgres stayed in rotation looking fine. Curl and wget
+    # are not guaranteed in the Bun image; bun itself is.
+    healthcheck:
+      test: ["CMD", "bun", "-e", "process.exit((await fetch('http://127.0.0.1:3000/api/health')).ok ? 0 : 1)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
     depends_on:
       postgres:
         condition: service_healthy
@@ -52,6 +61,12 @@ services:
     environment:
       THUMB_API_INTERNAL: http://api:3000
       APP_URL: ${APP_URL:-http://localhost}
+    healthcheck:
+      test: ["CMD", "bun", "-e", "process.exit((await fetch('http://127.0.0.1:3001/api/mcp/health')).ok ? 0 : 1)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
     depends_on:
       - api
 
@@ -68,6 +83,16 @@ services:
     shm_size: "512mb"
     environment:
       APP_ORIGIN: http://web
+    # This service's real failure is a wedged Chromium, not a dead process — which is exactly
+    # what its /health answers, since it asks for the page rather than for a status flag. The
+    # interval is longer and the start period generous: booting the browser and loading the
+    # render bundle is the slow part, and it only happens once.
+    healthcheck:
+      test: ["CMD", "bun", "-e", "process.exit((await fetch('http://127.0.0.1:3002/health')).ok ? 0 : 1)"]
+      interval: 60s
+      timeout: 15s
+      start_period: 90s
+      retries: 3
     depends_on:
       - web
 
@@ -78,6 +103,9 @@ services:
     restart: unless-stopped
     expose:
       - "80"
+    # No `condition: service_healthy` on these: nginx resolves its upstreams lazily (see
+    # nginx.conf) precisely so the public entrypoint comes up whether or not the API is ready,
+    # and gating it would turn a slow api boot into a 502 for every visitor.
     depends_on:
       - api
       - mcp

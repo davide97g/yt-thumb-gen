@@ -332,14 +332,20 @@ describe.skipIf(!usable)("api", () => {
 
   test("images referenced only by an old version are not collected", async () => {
     const user = await register();
-    const { collectBlobIds } = await import("./maintenance");
+    const { sweepBlobs } = await import("./maintenance");
     const id = "d".repeat(64);
+    await seedBlob(user, id);
+    // Past the 24h grace period, so the sweep actually considers it.
+    await sql`UPDATE blobs SET created_at = now() - interval '2 days' WHERE id = ${id}`;
+
     const p = await (await api.request("/api/projects", send("POST", { name: "One", doc: doc({ background: { mode: "image", from: "#000000", to: "#000000", image: `blob:${id}`, overlay: 0 } }) }, user.cookie))).json();
-    // Replace it with a document that references nothing.
+    // Replace it with a document that references nothing: the only mention of those bytes is
+    // now the version the save filed.
     await api.request(`/api/projects/${p.id}`, send("PUT", { doc: doc() }, user.cookie));
 
-    const [version] = await sql<{ doc: string }[]>`SELECT doc::text AS doc FROM project_versions WHERE project_id = ${p.id}`;
-    expect(collectBlobIds(version.doc).has(id)).toBe(true); // the sweep scans this table too
+    // Dry run (BLOB_GC is unset in tests), so this reports what it *would* collect: nothing.
+    expect(await sweepBlobs()).toMatchObject({ rows: 0, objects: 0, mode: "dry-run" });
+    expect(await sql`SELECT 1 FROM blobs WHERE id = ${id}`).toHaveLength(1);
   });
 
   // ── campaigns ──────────────────────────────────────────────────────────────
@@ -417,13 +423,55 @@ describe.skipIf(!usable)("api", () => {
   });
 
   test("the blob reference scan over-matches on purpose", async () => {
-    const { collectBlobIds } = await import("./maintenance");
-    const id = "b".repeat(64);
-    // A ref inside a doc, and a bare id in a field the scanner knows nothing about — both count.
-    expect(collectBlobIds(`{"src":"blob:${id}","someFutureField":"${"c".repeat(64)}"}`)).toEqual(
-      new Set([id, "c".repeat(64)])
+    const user = await register();
+    const { sweepBlobs, collectBlobIds } = await import("./maintenance");
+    const [asRef, unknownField, orphan] = ["b".repeat(64), "c".repeat(64), "e".repeat(64)];
+    for (const id of [asRef, unknownField, orphan]) await seedBlob(user, id);
+    await sql`UPDATE blobs SET created_at = now() - interval '2 days'`;
+
+    // One id as a proper `blob:` ref, one bare in a field the format knows nothing about. The
+    // scan matches any 64-hex run, so both count as references — missing one would delete a
+    // user's photo, while sparing a stale one costs a few kilobytes.
+    await api.request(
+      "/api/projects",
+      send("POST", { name: "One", doc: doc({ background: { mode: "image", from: "#000000", to: "#000000", image: `blob:${asRef}`, overlay: 0 }, someFutureField: unknownField }) }, user.cookie)
     );
+
+    const swept = await sweepBlobs();
+    expect(swept.rows).toBe(1); // the orphan, and only the orphan
+    // The pattern itself, checkable directly — it is one string shared with the SQL scan.
+    expect(collectBlobIds(`{"src":"blob:${asRef}","x":"${unknownField}"}`)).toEqual(new Set([asRef, unknownField]));
     expect(collectBlobIds(null).size).toBe(0);
+  });
+
+  // The arm that actually deletes. It was previously reachable only in production — the mode
+  // was read once at import, so no test could enter this branch, and a mistake in its SQL
+  // (it batches now) would have been found by a deployment collecting real photos.
+  test("armed, the sweep drops the ownership row and the bytes — and spares the shared ones", async () => {
+    const user = await register();
+    const other = await seedUser();
+    const { sweepBlobs } = await import("./maintenance");
+    const [orphan, shared] = ["a".repeat(64), "f".repeat(64)];
+    await seedBlob(user, orphan);
+    await seedBlob(user, shared);
+    await seedBlob(other, shared); // same content, two owners — one R2 object
+    await sql`UPDATE blobs SET created_at = now() - interval '2 days'`;
+    // `other` still references the shared bytes, so only this user's claim on them is dead.
+    await api.request("/api/projects", send("POST", { name: "Theirs", doc: doc({ background: { mode: "image", from: "#000000", to: "#000000", image: `blob:${shared}`, overlay: 0 } }) }, other.cookie));
+
+    process.env.BLOB_GC = "enforce";
+    try {
+      const swept = await sweepBlobs();
+      expect(swept).toMatchObject({ mode: "enforce", rows: 2, objects: 1 });
+    } finally {
+      delete process.env.BLOB_GC;
+    }
+
+    // Both of this user's rows are gone; the other owner's row — and therefore the object — stay.
+    expect(await sql`SELECT 1 FROM blobs WHERE user_id = ${user.id}`).toHaveLength(0);
+    expect(await sql`SELECT 1 FROM blobs WHERE id = ${shared} AND user_id = ${other.id}`).toHaveLength(1);
+    expect(objects.has(shared)).toBe(true);
+    expect(objects.has(orphan)).toBe(false);
   });
 
   // ── public reads (the guest surface) ───────────────────────────────────────

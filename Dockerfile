@@ -25,6 +25,8 @@ RUN find dist -type f \
 FROM nginx:1.27-alpine AS serve
 
 COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Included per static location by nginx.conf — see the file for why it isn't set server-level.
+COPY nginx-headers.conf /etc/nginx/snippets/headers.conf
 COPY --from=build /app/dist /usr/share/nginx/html
 
 EXPOSE 80

@@ -36,10 +36,11 @@ They truncate every table, so the suite **refuses to run unless the database nam
 turn the "signup locks after the first user" test into a no-op.
 
 CI (`.github/workflows/ci.yml`) runs exactly that on every push and PR — root `check`, then the
-two package typechecks — plus a build of all three images. The image job exists because the
-build contexts differ on purpose (api from `./server`, web and mcp from the repo root): a wrong
-path there typechecks fine and only fails at deploy time. Nothing is pushed; Dokploy still owns
-deploys.
+three package typechecks (`server`, `mcp`, `render` — `render/` is a package like the others and
+a Dockerfile copies broken TypeScript happily), an `nginx -t` over the deployed config, plus a
+build of every image. The image job exists because the build contexts differ on purpose (api
+from `./server`, web and mcp from the repo root): a wrong path there typechecks fine and only
+fails at deploy time. Nothing is pushed; Dokploy still owns deploys.
 
 **Any change to the layer/document types in `src/state.ts` requires `bun run schema`** and
 committing the regenerated file, or `check` fails.
@@ -77,7 +78,9 @@ Each entry in `TEMPLATES` is a `() => ThumbDoc` returning fresh layer ids on eve
 
 ### Rendering & direct manipulation — `src/components/ThumbCanvas.tsx`
 
-Renders each layer as an absolutely-positioned element inside a node that is `transform: scale()`d to fit the stage. Drag/resize/rotate is hand-rolled with pointer events: screen deltas are divided by `scale` to convert back to canvas units. The `SelectionFrame` resizes around the rotation-invariant centre and clamps the scale factor to each inspector slider's range so canvas and sliders never disagree. The selection outline is hidden during export (`exporting` prop).
+Renders each layer as an absolutely-positioned element inside a node that is `transform: scale()`d to fit the stage. Drag/resize/rotate is hand-rolled with pointer events: screen deltas are divided by `scale` to convert back to canvas units.
+
+**A drag is a burst of `nudge`, so anything that measures the DOM per render is measuring it per frame.** Two things are shaped by that: the `centers` layout effect (bbox centres for emoji fields) is skipped entirely unless a visible `emojifx` layer exists, because otherwise every frame did a `querySelector` plus a forced layout per image layer and then a second render for the `setCenters`; and the marquee measures every candidate box **once, at `pointerdown`** — a marquee only selects, so nothing it does can move a layer. Keep new pointer handlers to the same rule: measure at the start of the gesture, not inside `pointermove`. The `SelectionFrame` resizes around the rotation-invariant centre and clamps the scale factor to each inspector slider's range so canvas and sliders never disagree. The selection outline is hidden during export (`exporting` prop).
 
 An image layer's border is a plain CSS border while it's a solid colour. A **gradient** border (and the optional blurred `ringGlow` copy behind the picture) is drawn instead by `RingSvg` — a stroked rounded rect in an inline `<svg>`, inset by half the stroke so it covers exactly the band the CSS border reserves, and sized in percentages so no path has to measure the box. It is *not* the usual `background-clip: border-box` + `mask-composite` trick: `html-to-image` re-serialises computed styles into a foreignObject and the mask does not survive, so exports came back with the gradient flooding the picture. A stroke has no middle to flood. Check any new edge treatment against an actual export, not just the canvas.
 
@@ -196,6 +199,10 @@ A guest adopts an opened design with **`projectId: null`** — that is what the 
 
 Two sweeps run every six hours, started only under `import.meta.main` so importing the app in a test schedules nothing: expired sessions (previously deleted only on explicit logout, so they accumulated forever), and unreferenced R2 blobs (deleting a project dropped the row and left the bytes paying rent). **The blob sweep is built to under-delete**: a 24h grace period, because an image is uploaded *before* the project that references it is saved; a reference scan that matches any 64-hex run in the raw document JSON, so a field it doesn't know about still counts; and dry-run by default — `BLOB_GC=enforce` arms it, mirroring `THUMBDOC_VALIDATE`. The R2 object goes only when the last owner's row is gone, since blobs are content-addressed and shared.
 
+**The reference scan runs in SQL** (one `regexp_matches` union over projects, their `preview`, `project_versions` and `starred_items`), not in the API process. It used to select `doc::text` for every document anyone had ever saved and build the reference sets in JS — the whole corpus in the Bun heap, twice, every six hours. `BLOB_REF_PATTERN` is the one string both the SQL and `collectBlobIds` use, so the rule can't drift between them; any future table holding a document has to join that union. The enforced arm batches its deletes through `unnest` rather than issuing one statement per row, and the mode is read **per call** (`gcMode()`) rather than at import — that is what lets `app.test.ts` enter the branch that actually deletes, which was previously reachable only in production.
+
+`db.ts` sets `connect_timeout` and `idle_timeout` (a Postgres that accepts the socket but never completes the handshake used to hang requests forever, `/api/health` included) and filters NOTICE-level messages, because the baseline migration emits a dozen "already exists, skipping" lines on every boot and that is how a notice worth reading goes unread. `getBlob` is one R2 round trip, not two: it used to `exists()` before every GET, so each image in an archive view paid a HEAD to answer what the GET answers anyway — a missing key is a caught `NoSuchKey`, while any other error still propagates rather than being reported as a missing image.
+
 `GET /api/health` runs `SELECT 1` and 503s if it can't — returning ok while Postgres is down is how an orchestrator keeps a broken container in rotation.
 
 ### Campaigns — one message across several platforms
@@ -238,7 +245,17 @@ Build contexts differ on purpose and are load-bearing: `api` is built from `./se
 
 **Compression is two mechanisms, and the static one is the one that matters.** The web `Dockerfile` writes a `.gz` twin next to every compressible built asset (`gzip -9 -k`, originals kept) and nginx serves them with `gzip_static on`. That exists for one file: the background-removal runtime is a ~24 MB wasm that compresses to ~5.6 MB (measured through the built image), and compressing it per request is work already done once. On-the-fly `gzip` stays for everything without a twin — proxied API responses above all — and its type list carries **`application/wasm`**, which the default set doesn't, plus `gzip_proxied any`, since the default skips any request carrying a `Via` header and something in front of nginx adding one would silently cost every response its compression.
 
+**Every service has a healthcheck, and none of them gate startup.** `api`, `mcp` and `render` poll their own health routes (`bun -e` rather than curl/wget, which the Bun image doesn't promise); `render`'s asks for the browser page, since a wedged Chromium is the failure that service actually has, hence its longer interval and 90s start period. The `depends_on` lists stay plain on purpose: nginx resolves its upstreams lazily *so that* the public entrypoint comes up whether or not the API is ready, and `condition: service_healthy` on `web` would turn a slow api boot into a 502 for every visitor.
+
+Security headers live in `nginx-headers.conf` and are `include`d **per static location**, because nginx inherits `add_header` only into blocks that declare none of their own — and every static location here sets its own `Cache-Control`, so a server-level copy would vanish exactly where the HTML is served. The CSP is `Content-Security-Policy-Report-Only`, the same warn-then-enforce shape as `THUMBDOC_VALIDATE` and `BLOB_GC`: getting it wrong would break background removal (wasm in workers built from `blob:` URLs, model fetched from IMG.LY's CDN) in a way that looks like a broken feature rather than a broken header. CI runs `nginx -t` over both files, since a bad directive otherwise only shows up when the container won't start.
+
 **The service worker (`public/sw.js`) must never cache `/api`.** Its stale-while-revalidate branch treats every same-origin GET as a static asset, so a guard returns early on `/api/` paths: everything there is live state — an archive list, a document, a version history, and `/api/auth/me`, where answering from cache first hands the editor the *previous* session's identity after a logout on a shared browser. Image bytes lose nothing, being content-addressed and served `immutable`. `CACHE` is versioned and `activate` deletes every other cache, so **bumping the name is how a change to these rules reaches an already-installed client** — a fix that ships without a bump lives alongside whatever the old rules stored.
+
+### Imported images are capped — `src/lib/downscale.ts` + `src/lib/loadImageFile.ts`
+
+A phone photo is 4032×3024 and enters the document as a base64 data URL — ~24 MB of string for pixels no format can show. That string is then paid for repeatedly: written to IndexedDB on every autosave, re-serialised by `html-to-image` on every export *and* every preview capture, uploaded to R2, re-inflated to base64 on load. `normaliseImage` caps the longest edge at `MAX_SIDE` (2560 — 2.3× the longest edge any format has, so a background can still be zoomed into) and lives in `loadImageFile`, the one seam every import passes through (paste, the dock, an image layer's replace, the background picker).
+
+Four rules keep it from damaging anyone's artwork: an image already inside the cap and under `SKIP_BYTES` is passed through **byte for byte** (brand marks and small cut-outs are never re-encoded); transparency decides the output format, and it is asked of the *drawn pixels* rather than the file's MIME type, since flattening a cut-out to JPEG is the one unrecoverable mistake here; a re-encode that comes out bigger than the original loses; and nothing throws — an import must not fail because a resize did. `planDownscale` is pure and unit-tested (`downscale.test.ts`), the same split as `fitToLimit` in `export.ts`: the policy is testable, the canvas glue is glue. This applies to imports from now on — **stored documents are never rewritten on load**.
 
 ### Background removal — `src/lib/bgremove.ts`
 

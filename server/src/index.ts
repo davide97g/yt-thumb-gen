@@ -65,20 +65,35 @@ async function cookieUser(c: any): Promise<User | null> {
   return rows[0] ?? null;
 }
 
+/** How stale `api_tokens.last_used_at` is allowed to be. The column answers "is this token
+ *  still in use", which a minute's resolution answers just as well as a write per request —
+ *  and an agent working through a document makes a lot of requests. */
+const TOKEN_STAMP_MS = 60_000;
+/** hash → when we last stamped it. Only ever holds hashes that matched a real token, so its
+ *  size is bounded by the table rather than by whatever a caller sends. */
+const lastStamped = new Map<string, number>();
+
 /** Identity from an `Authorization: Bearer tsk_…` personal API token. nginx forwards the
  *  header untouched, so this works the same behind the proxy as it does locally. */
 async function bearerUser(c: any): Promise<User | null> {
   const header = c.req.header("authorization");
   const raw = header?.match(/^Bearer\s+(.+)$/i)?.[1]?.trim();
   if (!raw) return null;
+  // Hashed once. This ran twice per request — the lookup and the usage stamp each did their
+  // own SHA-256 of the same string.
+  const hash = await sha256(raw);
   const rows = await sql<User[]>`
     SELECT u.id, u.email FROM api_tokens t
     JOIN users u ON u.id = t.user_id
-    WHERE t.token_hash = ${await sha256(raw)}`;
+    WHERE t.token_hash = ${hash}`;
   const user = rows[0];
   if (!user) return null;
-  // Best-effort usage stamp; never block the request on it.
-  sql`UPDATE api_tokens SET last_used_at = now() WHERE token_hash = ${await sha256(raw)}`.catch(() => {});
+  // Best-effort usage stamp; never block the request on it, and never more than once a minute.
+  const now = Date.now();
+  if (now - (lastStamped.get(hash) ?? 0) > TOKEN_STAMP_MS) {
+    lastStamped.set(hash, now);
+    sql`UPDATE api_tokens SET last_used_at = now() WHERE token_hash = ${hash}`.catch(() => {});
+  }
   return user;
 }
 
@@ -86,10 +101,15 @@ async function currentUser(c: any): Promise<User | null> {
   return (await cookieUser(c)) ?? (await bearerUser(c));
 }
 
+/** Whether the first account is still unclaimed. `/auth/status` is on the public landing page,
+ *  so strangers ask this too — and the question is "is the table empty", which `EXISTS` answers
+ *  by stopping at the first row instead of counting every user. Deliberately not memoised: the
+ *  answer is only ever cached correctly until someone empties the table, and the test suite
+ *  truncates between cases. */
 async function signupOpen(): Promise<boolean> {
   if (ALLOW_SIGNUP) return true;
-  const [{ count }] = await sql<{ count: string }[]>`SELECT count(*)::text AS count FROM users`;
-  return count === "0";
+  const [{ any: taken }] = await sql<{ any: boolean }[]>`SELECT EXISTS(SELECT 1 FROM users) AS any`;
+  return !taken;
 }
 
 const emailOk = (e: unknown): e is string => typeof e === "string" && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e);
