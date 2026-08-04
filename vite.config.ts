@@ -16,16 +16,41 @@ const commit = (() => {
 })();
 const buildTime = new Date().toISOString().slice(0, 16).replace("T", " ");
 
+/**
+ * `/welcome` is a file, not a route: the landing page is its own entry, so it must not fall
+ * through to the SPA's index.html. nginx does this with a regex location in production (see
+ * nginx.conf) — this is the same rewrite for `bun run dev` and `vite preview`, so the URL
+ * people are given is the URL that works everywhere.
+ */
+const welcomeRoute = () => {
+  const rewrite = (req: { url?: string }, _res: unknown, next: () => void) => {
+    if (req.url === "/welcome" || req.url === "/welcome/") req.url = "/welcome.html";
+    next();
+  };
+  return {
+    name: "welcome-route",
+    configureServer(server: { middlewares: { use: (fn: typeof rewrite) => void } }) {
+      server.middlewares.use(rewrite);
+    },
+    configurePreviewServer(server: { middlewares: { use: (fn: typeof rewrite) => void } }) {
+      server.middlewares.use(rewrite);
+    },
+  };
+};
+
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
-  // Two entries: the editor, and the headless render target the render service drives
-  // (render.html → src/render.tsx). The second one ships in the same bundle on purpose —
-  // it has to be the same canvas code, or server-side pictures would drift from exports.
+  plugins: [react(), tailwindcss(), welcomeRoute()],
+  // Three entries: the editor; the headless render target the render service drives
+  // (render.html → src/render.tsx), which ships in the same bundle on purpose because it has
+  // to be the same canvas code or server-side pictures would drift from exports; and the
+  // landing page (welcome.html → src/welcome.tsx), which is a separate entry for the opposite
+  // reason — it must ship none of the editor.
   build: {
     rollupOptions: {
       input: {
         main: new URL("./index.html", import.meta.url).pathname,
         render: new URL("./render.html", import.meta.url).pathname,
+        welcome: new URL("./welcome.html", import.meta.url).pathname,
       },
     },
   },

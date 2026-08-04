@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Thumb Studio — thumbnails, covers and posts as documents</title>
+    <meta
+      name="description"
+      content="A thumbnail editor where the design is a document: a flat, ordered array of layers you edit on a canvas or an agent writes over MCP. One document, five platform formats."
+    />
+    <!--
+      The landing page. Its own entry (src/welcome.tsx) so it ships none of the editor:
+      no auth gate, no IndexedDB, no WebGL, three fonts instead of twenty. nginx serves
+      this file at /welcome (see nginx.conf); `bun run dev` does the same rewrite.
+    -->
+    <link rel="icon" type="image/png" href="/icon-192.png" />
+    <meta name="theme-color" content="#1b1b1f" />
+    <meta property="og:title" content="Thumb Studio" />
+    <meta property="og:description" content="Every thumbnail here is a document — layers, coordinates, one renderer, five formats." />
+    <meta property="og:type" content="website" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/welcome.tsx"></script>
+  </body>
+</html>

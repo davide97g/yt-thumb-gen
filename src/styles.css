@@ -1052,3 +1052,308 @@
     break-after: avoid;
   }
 }
+/* ── Landing page (welcome.html) ───────────────────────────────────────────────
+   The front door is its own Vite entry, so these rules only ever load for it —
+   the editor never pays for them, and the landing page never pays for the editor.
+
+   Two things are load-bearing. The display face is **Anton**, one of the canvas
+   fonts the product's own thumbnails are set in, so the page looks like the thing
+   it makes; the chrome faces stay Geist / Geist Mono. And the mock plate is sized
+   in `cqw` off its own `container-type`, so one set of numbers holds at any width
+   — the same reason the loading cover positions its plates in percentages.
+
+   Nothing here invents a colour. The two literal hexes in the plate belong to the
+   *document* being shown (the editor's default seed), not to the chrome — the same
+   exception the canvas takes everywhere else. */
+
+.lp-wrap {
+  width: 100%;
+  max-width: 74rem;
+  margin-inline: auto;
+  padding-inline: clamp(1.25rem, 4vw, 2.5rem);
+}
+.lp-section { padding-block: clamp(4.5rem, 9vw, 8rem); }
+.lp-section-tight { padding-block: clamp(3rem, 6vw, 4.5rem); }
+.lp-hero { padding-block: clamp(3.5rem, 7vw, 6rem) clamp(4rem, 8vw, 7rem); }
+.lp-section[id] { scroll-margin-top: 4.5rem; }
+html:has(.lp) { scroll-behavior: smooth; }
+
+.lp-bar {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: color-mix(in oklch, var(--background) 84%, transparent);
+  backdrop-filter: blur(var(--glass-blur));
+  border-bottom: 1px solid color-mix(in oklch, var(--border) 60%, transparent);
+}
+.lp-navlink {
+  padding: 0.375rem 0.625rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.8125rem;
+  color: var(--muted-foreground);
+  transition: color 0.15s var(--ease-duck), background-color 0.15s var(--ease-duck);
+}
+.lp-navlink:hover { color: var(--foreground); background: var(--secondary); }
+.lp-navlink:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+
+/* Kept out of the flow until it is focused, which is the only time it is useful. */
+.lp-skip { position: absolute; left: -9999px; }
+.lp-skip:focus-visible {
+  position: fixed;
+  left: 1rem;
+  top: 1rem;
+  z-index: 60;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  font-size: 0.8125rem;
+}
+
+/* Display type: uppercase, condensed, set tight enough to read as a headline
+   rather than a paragraph in caps. `text-wrap: balance` keeps the last line from
+   stranding one word, which at this size is the whole difference. */
+.lp-display {
+  font-family: "Anton", "Archivo Black", var(--font-sans);
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: -0.005em;
+  line-height: 0.92;
+  text-wrap: balance;
+}
+.lp-h1 { font-size: clamp(2.6rem, 7.2vw, 5.1rem); }
+.lp-h2 { font-size: clamp(1.9rem, 4.2vw, 3.1rem); }
+.lp-lede {
+  color: var(--muted-foreground);
+  font-size: clamp(0.9375rem, 1.1vw, 1.0625rem);
+  line-height: 1.65;
+}
+
+/* The hero instrument: the picture, and the document that is the picture. */
+.lp-instrument { display: grid; gap: 1.25rem; }
+.lp-plate-wrap { margin: 0; }
+.lp-plate {
+  container-type: inline-size;
+  position: relative;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: calc(var(--radius) * 1.15);
+  border: 1px solid color-mix(in oklch, var(--foreground) 14%, transparent);
+  background: linear-gradient(155deg, #0d1b13, #04070a);
+  box-shadow: 0 30px 70px -36px oklch(0 0 0 / 0.85);
+}
+.lp-l { position: absolute; display: block; transform: rotate(var(--rot, 0deg)); }
+.lp-mono-30 {
+  left: 5%;
+  top: 6.1%;
+  font-family: var(--font-mono);
+  font-size: 2.35cqw;
+  color: #3ddc84;
+}
+.lp-shout {
+  --rot: -2deg;
+  left: 5%;
+  font-family: "Anton", var(--font-sans);
+  font-size: 10.8cqw;
+  line-height: 0.9;
+  color: #fff;
+  transform-origin: left center;
+  /* The canvas draws a text layer's stroke behind its fill; `paint-order` is what
+     keeps the outline from eating into the letterforms. */
+  -webkit-text-stroke: 0.32cqw #04070a;
+  paint-order: stroke fill;
+  text-shadow: 0 0.45cqw 0.9cqw oklch(0 0 0 / 0.55);
+}
+.lp-shout { top: 20.8%; }
+.lp-shout-lime { top: 41.7%; color: #3ddc84; }
+.lp-emoji { --rot: 10deg; left: 62.5%; top: 9.7%; font-size: 10.9cqw; line-height: 1; }
+.lp-face {
+  left: 66.5%;
+  top: 34%;
+  display: grid;
+  place-items: center;
+  width: 22cqw;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  border: 0.45cqw solid #3ddc84;
+  background: radial-gradient(70% 70% at 50% 30%, oklch(0.35 0.06 150), oklch(0.16 0.02 160));
+  color: #3ddc84;
+  box-shadow: 0 0 2.6cqw color-mix(in oklch, #3ddc84 55%, transparent);
+}
+.lp-face svg { width: 52%; height: 52%; }
+.lp-pill {
+  left: 5%;
+  top: 86.2%;
+  padding: 0.55cqw 1.5cqw;
+  border-radius: 999px;
+  background: #3ddc84;
+  color: #04130b;
+  font-weight: 600;
+  font-size: 2.35cqw;
+}
+.lp-progress { left: 0; bottom: 0; width: 64%; height: 1.9%; background: #3ddc84; }
+
+/* What the platform paints on top, at the fractions the editor's own overlay uses. */
+.lp-zone {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  border: 1px dashed oklch(1 0 0 / 0.4);
+  border-radius: 0.25rem;
+  background: oklch(0 0 0 / 0.3);
+  font-family: var(--font-mono);
+  font-size: 1.5cqw;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: oklch(1 0 0 / 0.7);
+}
+.lp-zone-duration { left: 80%; top: 79%; width: 18.5%; height: 16%; }
+
+/* The layer rail. It shares the plate's index column: array order is paint order,
+   so the numbers carry information rather than decorating the list. */
+.lp-doc {
+  border: 1px solid color-mix(in oklch, var(--border) 70%, transparent);
+  border-radius: var(--radius);
+  background: color-mix(in oklch, var(--surface) 65%, transparent);
+  padding: 0.875rem 0.75rem 0.625rem;
+}
+.lp-doc-rows { margin: 0; padding: 0; list-style: none; }
+.lp-doc-row {
+  display: grid;
+  grid-template-columns: 2rem 4.75rem minmax(0, 1fr);
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.4rem 0.5rem;
+  border-top: 1px solid color-mix(in oklch, var(--border) 45%, transparent);
+}
+.lp-doc-row:first-child { border-top: 0; }
+.lp-doc-idx { font-family: var(--font-mono); font-size: 0.6875rem; color: var(--primary); }
+.lp-doc-type {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.lp-doc-detail {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--muted-foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* One-shot assembly in paint order — a stack that rebuilt itself on a loop would
+   read as a retry. Delay comes from the layer's own index, so the rail and the
+   plate land in step. `both` holds the resting frame, which is also what makes the
+   reduced-motion rule below a no-op rather than a disappearance. */
+@keyframes lp-rise {
+  from { opacity: 0; transform: translateY(7px) rotate(var(--rot, 0deg)); }
+  to { opacity: 1; transform: translateY(0) rotate(var(--rot, 0deg)); }
+}
+.lp-assemble {
+  animation: lp-rise 0.5s var(--ease-duck) both;
+  animation-delay: calc(var(--i, 0) * 85ms);
+}
+
+/* Hairline rows — the feature lists. Hierarchy from rules and type, never a card. */
+.lp-row {
+  display: grid;
+  grid-template-columns: 2.5rem 1.75rem 7.5rem minmax(0, 1fr);
+  align-items: start;
+  gap: 0.5rem 1rem;
+  padding-block: 1.125rem;
+  border-top: 1px solid color-mix(in oklch, var(--border) 65%, transparent);
+}
+.lp-row:last-child { border-bottom: 1px solid color-mix(in oklch, var(--border) 65%, transparent); }
+.lp-row-idx { font-family: var(--font-mono); font-size: 0.6875rem; color: var(--primary); padding-top: 0.15rem; }
+.lp-row-icon { color: var(--muted-foreground); }
+.lp-row-icon svg { width: 1.125rem; height: 1.125rem; }
+.lp-row-type {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding-top: 0.1rem;
+}
+/* A measure, not a column: past ~70 characters the eye loses the line it came from. */
+.lp-row-blurb { color: var(--muted-foreground); font-size: 0.875rem; line-height: 1.6; max-width: 70ch; }
+.lp-row-loose { grid-template-columns: 13rem minmax(0, 1fr); }
+.lp-row-type-wide {
+  font-family: var(--font-sans);
+  font-size: 0.9375rem;
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
+  padding-top: 0;
+}
+
+@media (max-width: 640px) {
+  .lp-row { grid-template-columns: 1.75rem 1.75rem minmax(0, 1fr); }
+  .lp-row-type, .lp-row-blurb { grid-column: 3; }
+  .lp-row-loose { grid-template-columns: minmax(0, 1fr); }
+  .lp-row-loose .lp-row-type, .lp-row-loose .lp-row-blurb { grid-column: 1; }
+}
+
+/* Format plates: same height, widths set by the real aspect ratio, so the strip is
+   a comparison rather than five equal boxes with different labels. */
+.lp-format {
+  position: relative;
+  overflow: hidden;
+  height: clamp(6.5rem, 13vw, 10.5rem);
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) * 0.8);
+  background:
+    radial-gradient(120% 90% at 50% -10%, color-mix(in oklch, var(--primary) 10%, transparent), transparent 65%),
+    var(--surface-raised);
+}
+.lp-format-ratio {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  color: var(--foreground);
+}
+
+/* The platform's own furniture, at the fractions SAFE_ZONES declares: `cover` is what gets
+   painted over, `keep` is the only part that survives a crop. Same two reads as the editor's
+   overlay, so the strip is a fact about each format rather than five empty boxes. */
+.lp-fzone { position: absolute; border-radius: 0.125rem; }
+.lp-fzone-cover {
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+  border: 1px dashed color-mix(in oklch, var(--foreground) 22%, transparent);
+}
+.lp-fzone-keep {
+  background: color-mix(in oklch, var(--primary) 7%, transparent);
+  border: 1px dashed color-mix(in oklch, var(--primary) 50%, transparent);
+}
+.lp-key { width: 1.5rem; height: 0.75rem; border-radius: 0.125rem; }
+.lp-key-cover {
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+  border: 1px dashed color-mix(in oklch, var(--foreground) 30%, transparent);
+}
+.lp-key-keep {
+  background: color-mix(in oklch, var(--primary) 7%, transparent);
+  border: 1px dashed color-mix(in oklch, var(--primary) 50%, transparent);
+}
+
+/* An MCP tool name is a literal string an agent types. It gets a chip, not a bullet. */
+.lp-tool {
+  padding: 0.3rem 0.55rem;
+  border: 1px solid color-mix(in oklch, var(--border) 75%, transparent);
+  border-radius: calc(var(--radius) * 0.5);
+  background: color-mix(in oklch, var(--surface) 60%, transparent);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--muted-foreground);
+  transition: color 0.15s var(--ease-duck), border-color 0.15s var(--ease-duck);
+}
+.lp-tool:hover { color: var(--primary); border-color: color-mix(in oklch, var(--primary) 45%, transparent); }
+
+@media (prefers-reduced-motion: reduce) {
+  /* The stack keeps its layers — they are already in their resting position under
+     the rule above — and simply stops arriving. */
+  .lp-assemble { animation: none; }
+  html:has(.lp) { scroll-behavior: auto; }
+}

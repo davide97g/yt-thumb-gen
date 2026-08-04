@@ -53,7 +53,7 @@ cd bgremove && docker build -t yt-thumb-bgremove . && docker run --rm -p 8000:80
 
 ## Architecture
 
-Single-page React editor for YouTube thumbnails (fixed 1280×720). No router, no global state library. The
+Single-page React editor for YouTube thumbnails (fixed 1280×720). No router, no global state library — the two other pages that exist (`/welcome`, the headless render target) are separate Vite entries, which is how a page gets its own bundle here rather than a route. The
 chrome is built on **duck/ui** (`@duck` shadcn registry) — see "The design system" below before adding UI. Output is a PNG downloaded client-side. The UI strings are in **English** — match that when adding user-facing text. (The `dacoder` templates in `src/presets.ts` still carry Italian *design copy*: that's channel content, not UI.) There is now an optional backend (`server/`) for accounts + remote project storage; the editor itself is unchanged and still works fully client-side against IndexedDB for the live working canvas.
 
 ### The document model is the core abstraction — `src/state.ts`
@@ -118,6 +118,22 @@ Editing happens at 40% of 1280px on a monitor; the design is seen at ~210px next
 - **`SAFE_ZONES`** — per-format boxes the platform paints over (`cover`) or crops away (`keep`), in canvas fractions. Rendered by `SafeAreaOverlay` in `ThumbCanvas`, toggled with **A**. Deliberately approximate: the point is "nothing important here", not a pixel-exact mock of a client that ships weekly.
 - **`GRID_W`** — the width of the *smallest surface each format is really browsed at* (a grid cell, not a full-screen player). The **G** toggle sets the stage scale to it, so "actual size" is a fact rather than a zoom level. Same number drives the readability check, so the two can't disagree.
 - **`checkReadability`** — pure, unit-tested (`readability.test.ts`): text too small at grid size, WCAG contrast under 3:1 against the pill/background (short-circuited by a thick stroke, since that settles it), layers under platform chrome or outside the crop, and word count. Geometry comes in pre-measured — how wide a run of text renders is a fact only the DOM has, so `ReadabilityPanel` measures `[data-layer-id]` nodes the same way the canvas does for snapping.
+
+### The landing page — `welcome.html` → `src/welcome.tsx` → `src/components/Landing.tsx`
+
+A front door at **`/welcome`**, linking to the editor at `/`. It is a **third Vite entry**, not a route inside the app, for the opposite reason `render.html` is one: the render target must be the same code as the canvas, and a marketing page must be *none* of it — no auth gate, no IndexedDB, no service worker, no WebGL, and three fonts instead of twenty. It ships as its own ~20 kB chunk and the editor never pays for it.
+
+`/welcome` is therefore a **file, and has to be matched before the SPA fallback** would hand it `index.html`. Two places do that and both must stay: a regex `location ~ ^/welcome/?$` in `nginx.conf` (regex beats the `/` prefix, and matching the trailing slash means both spellings work), and a `welcome-route` plugin in `vite.config.ts` that rewrites `/welcome` → `/welcome.html` for `bun run dev` *and* `vite preview`, so the URL people are given is the URL that works everywhere.
+
+Everything the page claims is read from the code beside it — `FORMATS`, `GRID_W`, `SAFE_ZONES`, the layer union, the MCP tool list — because a landing page that overstates the tool is found out on the first click. The format strip draws each format's real aspect ratio at a shared height with its actual `SAFE_ZONES` boxes over it, so it is a fact about the five platforms rather than five empty rectangles.
+
+Three design decisions, all in the `.lp-*` block at the end of `styles.css`:
+
+- **The display face is Anton**, one of the canvas fonts the product's own thumbnails are set in, so the page looks like the thing it makes. Geist and Geist Mono still carry prose and every readout.
+- **The hero is the document beside the picture it paints**, sharing one index column — array order *is* paint order, so the numbering is information and not a decorative `01 / 02 / 03`. The plate is a hand-built stand-in sized in `cqw` off its own `container-type` (importing `ThumbCanvas` would drag WebGL and the export path onto a page of text); its two literal hexes belong to the *document* being shown, the same exception canvas colours always take. It assembles once, in paint order, and reduced motion keeps every layer in its resting position.
+- **Hierarchy is hairline rows and type, never cards** — the same rule as the editor shell. The only two card surfaces are the readability panel (a card because it is an instrument) and the closing CTA (the one object on its viewport). Holo is spent twice, once per viewport: one word in the headline, and the closing card's ring.
+
+Grid children carry `min-w-0` wherever a monospace row or a code block sits in a track — without it a grid track sizes to its content and the page scrolls sideways on a phone.
 
 ### The published document format — `scripts/gen-schema.ts` → `server/src/generated/thumbdoc.schema.json`
 
@@ -239,7 +255,7 @@ The param is also **written back**: an effect in `App.tsx` mirrors `projectId` i
 
 ### Deployment — `Dockerfile` (web/nginx), `server/Dockerfile` (api), `mcp/Dockerfile` (mcp), `docker-compose.yml`
 
-One Compose unit: `web` (nginx serves `dist/`, proxies `/api` → `api` and `/api/mcp` → `mcp`, all same-origin), `api` (Bun), `mcp` (Bun, hosted MCP endpoint), `postgres`. Deployed on a VPS via Dokploy from this repo; secrets (`POSTGRES_PASSWORD`, `R2_*`, `APP_URL`, `ALLOW_SIGNUP`, `THUMBDOC_VALIDATE`) come from the Dokploy environment — see `.env.example`. Frontend calls the API at relative `/api`, so no build-time URL is needed.
+One Compose unit: `web` (nginx serves `dist/` — the editor at `/`, the landing page at `/welcome` — and proxies `/api` → `api` and `/api/mcp` → `mcp`, all same-origin), `api` (Bun), `mcp` (Bun, hosted MCP endpoint), `postgres`. Deployed on a VPS via Dokploy from this repo; secrets (`POSTGRES_PASSWORD`, `R2_*`, `APP_URL`, `ALLOW_SIGNUP`, `THUMBDOC_VALIDATE`) come from the Dokploy environment — see `.env.example`. Frontend calls the API at relative `/api`, so no build-time URL is needed.
 
 Build contexts differ on purpose and are load-bearing: `api` is built from `./server` (small, no access to `src/`), while `web` and `mcp` are built from the repo root. `.dockerignore` excludes `**/node_modules`, not just the top-level one — the root context spans every package.
 

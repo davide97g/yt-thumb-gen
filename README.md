@@ -50,6 +50,10 @@ bun run build      # production build → dist/
 bun run check      # tsc --noEmit
 ```
 
+The editor is at `/`. The landing page — what the product is, in one scroll — is at
+[`/welcome`](http://localhost:5174/welcome); it is its own Vite entry
+([`src/welcome.tsx`](src/welcome.tsx)), so it ships none of the editor.
+
 > Background removal is optional in dev and built-in in production — see [below](#background-removal).
 
 ## Tech stack
