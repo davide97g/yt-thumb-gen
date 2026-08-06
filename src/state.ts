@@ -233,6 +233,11 @@ export type TextLayer = LayerBase & {
   align: "left" | "center" | "right";
   /** Line height multiplier, e.g. 1.02. */
   lineHeight: number;
+  /** Letter spacing, in em — so it scales with `size` and survives a format adapt.
+   *  Absent reads as 0. Wide caps (0.15–0.3) are the invitation/editorial look; a
+   *  display title wants 0 or slightly negative. Note CSS adds the space *after* the
+   *  last glyph too, so a centred run sits half a step left of true centre. */
+  tracking?: number;
   /** Opacity, 0–100. */
   opacity: number;
   /** Outline toggle. */
@@ -670,6 +675,7 @@ export function newTextLayer(): TextLayer {
     color: "#ffffff",
     align: "left",
     lineHeight: 1.02,
+    tracking: 0,
     opacity: 100,
     stroke: false,
     strokeWidth: 5,

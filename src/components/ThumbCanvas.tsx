@@ -1018,6 +1018,7 @@ function TextContent({
     fontWeight: FONT_WEIGHT[layer.font],
     fontStyle: FONT_STYLE[layer.font],
     lineHeight: layer.lineHeight,
+    letterSpacing: layer.tracking ? `${layer.tracking}em` : undefined,
     color: clip ? "transparent" : layer.color,
     textAlign: layer.align,
     whiteSpace: "pre",

@@ -306,7 +306,7 @@ function FavoritePreview({ item, layer, compact = false }: { item: StarredMeta; 
     const text = layer as TextLayer;
     return (
       <span className={cn(frame, "bg-black/20 px-1 text-center", size)} style={{ backgroundColor: text.bg.enabled ? text.bg.color : undefined }}>
-        <span className="min-w-0 self-center truncate leading-none" style={{ color: text.color, fontFamily: FONTS[text.font], fontWeight: FONT_WEIGHT[text.font], fontStyle: FONT_STYLE[text.font], fontSize: compact ? 11 : 16 }}>
+        <span className="min-w-0 self-center truncate leading-none" style={{ color: text.color, fontFamily: FONTS[text.font], fontWeight: FONT_WEIGHT[text.font], fontStyle: FONT_STYLE[text.font], letterSpacing: text.tracking ? `${text.tracking}em` : undefined, fontSize: compact ? 11 : 16 }}>
           {text.text.replace(/\n/g, " ")}
         </span>
       </span>

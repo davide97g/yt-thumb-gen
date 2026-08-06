@@ -186,6 +186,7 @@ function TextProps({ layer, set, onFontPreview }: { layer: TextLayer; set: Sette
       <ColorRow label="Color" value={layer.color} defaultValue={D.color} onChange={(color) => set({ color })} />
       <ToggleRow label="Alignment" value={layer.align} options={ALIGN_OPTIONS} onChange={(align) => set({ align })} />
       <SliderRow label="Line height" min={0.8} max={2} step={0.05} value={layer.lineHeight} defaultValue={D.lineHeight} display={layer.lineHeight.toFixed(2)} onChange={(lineHeight) => set({ lineHeight })} />
+      <SliderRow label="Tracking" min={-0.05} max={0.6} step={0.01} value={layer.tracking ?? 0} defaultValue={D.tracking} display={`${(layer.tracking ?? 0).toFixed(2)}em`} onChange={(tracking) => set({ tracking })} />
       <SliderRow label="Rotation" min={-180} max={180} value={layer.rotation} defaultValue={D.rotation} display={`${layer.rotation}°`} onChange={(rotation) => set({ rotation })} />
       <SliderRow label="Opacity" min={0} max={100} value={layer.opacity ?? 100} defaultValue={D.opacity} display={`${layer.opacity ?? 100}%`} onChange={(opacity) => set({ opacity })} />
       <SwitchRow label="Outline" checked={layer.stroke} defaultValue={D.stroke} onChange={(stroke) => set({ stroke })} />

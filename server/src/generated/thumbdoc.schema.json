@@ -434,6 +434,10 @@
           "type": "number",
           "description": "Line height multiplier, e.g. 1.02."
         },
+        "tracking": {
+          "type": "number",
+          "description": "Letter spacing, in em — so it scales with `size` and survives a format adapt. Absent reads as 0. Wide caps (0.15–0.3) are the invitation/editorial look; a display title wants 0 or slightly negative. Note CSS adds the space *after* the last glyph too, so a centred run sits half a step left of true centre."
+        },
         "opacity": {
           "type": "number",
           "description": "Opacity, 0–100."

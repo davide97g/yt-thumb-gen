@@ -92,6 +92,11 @@ Required: `text` (`\n` for line breaks), `font`, `size`, `color`, `align` (left|
 `bg: { enabled, color, padX, padY, radius }` — all five sub-keys required. Set `enabled: true` to
 turn the layer into a badge/pill; pass it with `enabled: false` for ordinary text.
 
+Optional: `tracking` — letter spacing in **em**, so it scales with `size`. Absent reads as 0.
+Wide caps (0.15–0.3) are the invitation/editorial look; a display title wants 0 or slightly
+negative. Use this rather than padding a string with spaces. CSS adds the step after the last
+glyph too, so a centred run sits about `size × tracking / 2` left of true centre — nudge `x`.
+
 Optional: `fx`, one of:
 - `{ "kind": "none" }`
 - `{ "kind": "gradient", "colors": ["#a","#b","#c"], "speed": 8, "direction": "horizontal|vertical|diagonal" }` — exactly 3 colours
