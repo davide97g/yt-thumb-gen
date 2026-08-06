@@ -883,7 +883,11 @@ export type Action =
   | { type: "addLayer"; layer: Layer }
   | { type: "pasteLayer"; layer: Layer } // clone of `layer`, inserted above the selection
   | { type: "updateLayer"; id: string; patch: LayerPatch }
-  | { type: "nudge"; ids: string[]; dx: number; dy: number } // drag delta for a set
+  // Drag delta for a set. `gesture` splits one burst from the next where nothing else
+  // marks the boundary: a drag is bracketed by its `select`, but a run of arrow-key taps
+  // is not, and without it every nudge of the same layers coalesces into one undo entry
+  // forever. Omitted by the drag path, which needs no such id.
+  | { type: "nudge"; ids: string[]; dx: number; dy: number; gesture?: string }
   | { type: "setPositions"; positions: { id: string; x: number; y: number }[] } // absolute batch move (align/distribute)
   | { type: "removeLayer"; id: string }
   | { type: "removeLayers"; ids: string[] }
@@ -1024,7 +1028,7 @@ export const initHistory = (present: AppState): History => ({ past: [], present,
 function gestureTag(action: Action): string | null {
   switch (action.type) {
     case "nudge":
-      return `nudge:${[...action.ids].sort().join(",")}`;
+      return `nudge:${action.gesture ?? ""}:${[...action.ids].sort().join(",")}`;
     case "updateLayer":
       return `update:${action.id}:${Object.keys(action.patch).sort().join(",")}`;
     case "updateBackground":

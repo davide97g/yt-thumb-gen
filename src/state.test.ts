@@ -86,6 +86,26 @@ test("a continuous gesture (drag = many nudges) collapses to ONE undo entry", ()
   expect(h.present.doc.layers[0].x).toBe(moved - 10); // whole drag reverted at once
 });
 
+test("arrow-key bursts: same gesture coalesces, a new one is its own entry", () => {
+  let h = initHistory(start());
+  const a = newTextLayer();
+  h = historyReducer(h, { type: "addLayer", layer: a });
+  h = historyReducer(h, { type: "select", ids: [a.id] });
+  const before = h.past.length;
+
+  // One burst of taps — no `select` between them, so only the gesture id separates bursts.
+  for (let i = 0; i < 5; i++) h = historyReducer(h, { type: "nudge", ids: [a.id], dx: 1, dy: 0, gesture: "arrow1" });
+  expect(h.past.length).toBe(before + 1);
+
+  // A tap after the idle gap carries the next id and starts a second entry.
+  h = historyReducer(h, { type: "nudge", ids: [a.id], dx: 10, dy: 0, gesture: "arrow2" });
+  expect(h.past.length).toBe(before + 2);
+
+  const x = h.present.doc.layers[0].x;
+  h = historyReducer(h, { type: "undo" });
+  expect(h.present.doc.layers[0].x).toBe(x - 10); // only the second burst came back
+});
+
 test("selection changes never create history", () => {
   let h = initHistory(start());
   const a = newTextLayer();

@@ -38,6 +38,23 @@ const initial: AppState = { doc: TEMPLATES.dacoder(), selectedIds: [] };
  *  survives a reload and follows them across every project, so it lives in localStorage
  *  rather than in the doc or the IndexedDB working canvas. Default on — off is the
  *  deliberate choice, which is why the stage says so out loud while it lasts. */
+/** Arrow-key nudging, in canvas units (1280×720 space, so a step is a pixel of the export
+ *  at YouTube size). 1 and 10 is what Figma, Illustrator and Sketch all settled on: the
+ *  small step is for the last pixel, the big one for moving something out of the way. */
+const NUDGE_STEP = 1;
+const NUDGE_BIG = 10;
+/** A gap this long (ms) between taps ends the burst, so the next press is its own undo
+ *  entry. A drag gets that boundary from the `select` it starts with; a keypress has none. */
+const NUDGE_BURST_MS = 600;
+/** Focused things whose own keyboard pattern is the arrows — they keep them. */
+const ARROW_OWNERS = '[role="slider"],[role="combobox"],[role="tab"],[role="listbox"],[role="menu"],[role="menuitem"],[role="radiogroup"],select';
+const ARROWS: Record<string, { dx: number; dy: number }> = {
+  ArrowLeft: { dx: -1, dy: 0 },
+  ArrowRight: { dx: 1, dy: 0 },
+  ArrowUp: { dx: 0, dy: -1 },
+  ArrowDown: { dx: 0, dy: 1 },
+};
+
 const SNAP_PREF = "thumb:snapping";
 const readSnapPref = () => {
   try {
@@ -163,6 +180,9 @@ export default function App() {
   const docRef = useRef(doc);
   docRef.current = doc;
   const clipboardRef = useRef<Layer | null>(null);
+  // Arrow-key nudging: the id of the current burst and when it was last extended. A run of
+  // taps is one undo entry, but a tap after a pause starts a new one — see `arrowGesture`.
+  const arrowRef = useRef({ id: 0, at: 0 });
 
   // Hydrate working canvas + its project identity once on mount (falls back to
   // the seeded template). The hydrated doc becomes the clean baseline.
@@ -339,6 +359,26 @@ export default function App() {
       // "s" toggles magnetic snapping. Bare, like the two above — ⌘S is handled and
       // returned far earlier, so the letter alone is free.
       if (e.key === "s") { e.preventDefault(); setSnapping((v) => !v); return; }
+
+      // Arrow keys move the selection by a fixed step — the precise counterpart to a drag,
+      // so they ignore snapping entirely. Shift takes the big step. preventDefault runs even
+      // with nothing selected, or the arrows scroll the stage out from under the canvas.
+      const arrow = ARROWS[e.key];
+      if (arrow) {
+        // A focused widget that steers with the arrows keeps them: a Radix trigger opens on
+        // ArrowDown, a tab strip walks its tabs. (Sliders are a real `<input type="range">`,
+        // so the typing guard above already handed them theirs.)
+        if (el?.closest(ARROW_OWNERS)) return;
+        e.preventDefault();
+        const ids = selRef.current;
+        if (!ids.length) return;
+        const step = e.shiftKey ? NUDGE_BIG : NUDGE_STEP;
+        const now = performance.now();
+        if (now - arrowRef.current.at > NUDGE_BURST_MS) arrowRef.current.id += 1;
+        arrowRef.current.at = now;
+        dispatch({ type: "nudge", ids, dx: arrow.dx * step, dy: arrow.dy * step, gesture: `arrow${arrowRef.current.id}` });
+        return;
+      }
       if (e.key !== "Backspace" && e.key !== "Delete") return;
       if (selRef.current.length) dispatch({ type: "removeLayers", ids: selRef.current });
     }
