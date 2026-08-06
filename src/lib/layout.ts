@@ -44,21 +44,25 @@ export function resolveSnap(
 }
 
 /** New x/y for each box so the selection aligns on the given edge/centre.
- *  Only the relevant axis changes; the other coordinate is preserved. */
+ *  Only the relevant axis changes; the other coordinate is preserved.
+ *
+ *  **`items[0]` is the anchor and never moves** — the rest come to it. The
+ *  alternative (the selection's union bbox) moves *every* layer, so centring a
+ *  caption under a title shifted the title too, and pressing the same button
+ *  twice was not a no-op. Anchoring makes the result predictable ("this one
+ *  stays, those follow") and idempotent. Callers must therefore pass the boxes
+ *  in selection order — first clicked first. */
 export function alignBoxes(items: Placed[], edge: AlignEdge): { id: string; x: number; y: number }[] {
   if (items.length === 0) return [];
-  const minX = Math.min(...items.map((i) => i.box.x));
-  const maxR = Math.max(...items.map((i) => i.box.x + i.box.w));
-  const minY = Math.min(...items.map((i) => i.box.y));
-  const maxB = Math.max(...items.map((i) => i.box.y + i.box.h));
-  const cx = (minX + maxR) / 2, cy = (minY + maxB) / 2;
+  const a = items[0].box;
+  const cx = a.x + a.w / 2, cy = a.y + a.h / 2;
   return items.map(({ id, box }) => {
     let { x, y } = box;
-    if (edge === "left") x = minX;
-    else if (edge === "right") x = maxR - box.w;
+    if (edge === "left") x = a.x;
+    else if (edge === "right") x = a.x + a.w - box.w;
     else if (edge === "hcenter") x = cx - box.w / 2;
-    else if (edge === "top") y = minY;
-    else if (edge === "bottom") y = maxB - box.h;
+    else if (edge === "top") y = a.y;
+    else if (edge === "bottom") y = a.y + a.h - box.h;
     else if (edge === "vcenter") y = cy - box.h / 2;
     return { id, x, y };
   });

@@ -92,12 +92,20 @@ type InspectorProps = {
   ch: number;
 };
 
-/** Measure a selected layer's rendered box (canvas units) straight from the DOM. */
+/** Measure a selected layer's rendered box (canvas units) straight from the DOM.
+ *
+ *  Tracked text is measured **without its trailing gap**: CSS `letter-spacing`
+ *  adds its space after *every* character, the last one included, so a layer set
+ *  in 0.3em tracking is one whole space wider than the ink you see. Centring two
+ *  such layers by their raw boxes lines up their trailing air instead of their
+ *  glyphs, and the smaller one visibly sits left. Left edges are untouched, so
+ *  only the width shrinks. */
 function placedOf(id: string, layers: Layer[]): Placed | null {
   const el = document.querySelector<HTMLElement>(`[data-layer-id="${id}"]`);
   const l = layers.find((x) => x.id === id);
   if (!el || !l) return null;
-  return { id, box: { x: l.x, y: l.y, w: el.offsetWidth, h: el.offsetHeight } };
+  const trail = l.type === "text" && l.tracking ? l.tracking * l.size : 0;
+  return { id, box: { x: l.x, y: l.y, w: Math.max(1, el.offsetWidth - trail), h: el.offsetHeight } };
 }
 
 function AlignSection({ selectedIds, layers, dispatch }: { selectedIds: string[]; layers: Layer[]; dispatch: Dispatch<Action> }) {
@@ -127,6 +135,7 @@ function AlignSection({ selectedIds, layers, dispatch }: { selectedIds: string[]
           <IconChip label="Group (⌘G)" onClick={() => dispatch({ type: "group", ids: selectedIds })}><Group /></IconChip>
           <IconChip label="Ungroup (⌘⇧G)" disabled={!hasGroup} onClick={() => dispatch({ type: "ungroup", ids: selectedIds })}><Ungroup /></IconChip>
         </DuckButtonGroup>
+        <Hint>Aligns to the first layer you selected — it stays put, the rest move to it.</Hint>
       </div>
     </Section>
   );

@@ -29,25 +29,56 @@ test("resolveSnap: sticky stays snapped until break distance exceeded", () => {
   expect(freed.x).toBe(605);
 });
 
-test("alignBoxes: left aligns x to min left, keeps y", () => {
+test("alignBoxes: left aligns x to the anchor's left, keeps y", () => {
   const items: Placed[] = [
-    { id: "a", box: { x: 10, y: 5, w: 40, h: 20 } },
-    { id: "b", box: { x: 30, y: 80, w: 40, h: 20 } },
+    { id: "a", box: { x: 30, y: 5, w: 40, h: 20 } }, // anchor — rightmost, and still the one that wins
+    { id: "b", box: { x: 10, y: 80, w: 40, h: 20 } },
   ];
   expect(alignBoxes(items, "left")).toEqual([
-    { id: "a", x: 10, y: 5 },
-    { id: "b", x: 10, y: 80 },
+    { id: "a", x: 30, y: 5 },
+    { id: "b", x: 30, y: 80 },
   ]);
 });
 
-test("alignBoxes: hcenter centers each box on the selection bbox center", () => {
+test("alignBoxes: hcenter centers the rest on the anchor, which never moves", () => {
   const items: Placed[] = [
-    { id: "a", box: { x: 0, y: 0, w: 100, h: 10 } }, // right edge 100
-    { id: "b", box: { x: 40, y: 0, w: 20, h: 10 } }, // right edge 60
-  ]; // bbox 0..100, center 50
+    { id: "a", box: { x: 0, y: 0, w: 100, h: 10 } }, // anchor, center 50
+    { id: "b", box: { x: 40, y: 0, w: 20, h: 10 } },
+  ];
   expect(alignBoxes(items, "hcenter")).toEqual([
-    { id: "a", x: 0, y: 0 }, // 50 - 50
+    { id: "a", x: 0, y: 0 },
     { id: "b", x: 40, y: 0 }, // 50 - 10
+  ]);
+});
+
+test("alignBoxes: anchor is selection order, not geometry", () => {
+  const items: Placed[] = [
+    { id: "b", box: { x: 40, y: 0, w: 20, h: 10 } }, // anchor, center 50
+    { id: "a", box: { x: 0, y: 0, w: 100, h: 10 } },
+  ];
+  expect(alignBoxes(items, "hcenter")).toEqual([
+    { id: "b", x: 40, y: 0 },
+    { id: "a", x: 0, y: 0 }, // 50 - 50
+  ]);
+  // …and pressing the same button twice changes nothing.
+  expect(alignBoxes(items, "right")).toEqual([
+    { id: "b", x: 40, y: 0 },
+    { id: "a", x: -40, y: 0 }, // anchor right edge 60 - 100
+  ]);
+});
+
+test("alignBoxes: vcenter/bottom follow the anchor on the y axis only", () => {
+  const items: Placed[] = [
+    { id: "a", box: { x: 0, y: 100, w: 10, h: 40 } }, // anchor: 100..140, center 120
+    { id: "b", box: { x: 70, y: 0, w: 10, h: 20 } },
+  ];
+  expect(alignBoxes(items, "vcenter")).toEqual([
+    { id: "a", x: 0, y: 100 },
+    { id: "b", x: 70, y: 110 }, // 120 - 10
+  ]);
+  expect(alignBoxes(items, "bottom")).toEqual([
+    { id: "a", x: 0, y: 100 },
+    { id: "b", x: 70, y: 120 }, // 140 - 20
   ]);
 });
 
