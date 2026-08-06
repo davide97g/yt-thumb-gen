@@ -72,6 +72,13 @@ describe("fitToLimit", () => {
     expect(out.bytes).toBeGreaterThan(1_000); // caller warns; the file still downloads
   });
 
+  it("keeps an oversized PNG when JPEG is off — a transparent design must not be flattened", async () => {
+    const { encode, calls } = encoder(9_000, { 0.92: 100, 0.8: 100, 0.68: 100, 0.55: 100 });
+    const out = await fitToLimit(encode, 1_000, false);
+    expect(out.kind).toBe("png");
+    expect(calls).toEqual(["png"]); // the ladder is never entered, however well it would fit
+  });
+
   it("measures payload bytes, not string length", () => {
     expect(dataUrlBytes(urlOf(1_200))).toBeCloseTo(1_200, -1);
   });

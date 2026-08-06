@@ -47,7 +47,8 @@
             "gradient",
             "solid",
             "image",
-            "effect"
+            "effect",
+            "transparent"
           ]
         },
         "from": {
@@ -123,7 +124,7 @@
         "image",
         "overlay"
       ],
-      "description": "The canvas backdrop: a gradient, a flat colour, an image, or an animated effect."
+      "description": "The canvas backdrop: a gradient, a flat colour, an image, an animated effect, or nothing at all. `transparent` paints no backdrop, and a PNG export keeps that alpha — which is what makes a design usable as an overlay (a stream frame, a sticker, a logo lockup). It never becomes a JPEG: the size ladder in `export.ts` is skipped, since flattening would fill the alpha with black. Anything painted over the whole canvas — `overlay`, the colour grade — still lands on top and will fill it back in, deliberately."
     },
     "BgEffect": {
       "anyOf": [

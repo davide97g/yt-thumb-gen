@@ -2,7 +2,15 @@ import { toJpeg, toPng } from "html-to-image";
 
 const B64_PREFIX_LEN = "data:image/png;base64,".length;
 
-export type ExportSize = { w: number; h: number; maxBytes?: number; platform: string };
+export type ExportSize = {
+  w: number;
+  h: number;
+  maxBytes?: number;
+  platform: string;
+  /** The document paints no backdrop. Forces PNG: a JPEG has no alpha channel, so the
+   *  size ladder would silently hand back the one thing the export exists to avoid. */
+  transparent?: boolean;
+};
 
 const FALLBACK_NAME = "thumb.png";
 
@@ -40,11 +48,14 @@ const JPEG_LADDER = [0.92, 0.8, 0.68, 0.55];
  *  the fix is a file format, not a design change. Nothing about a thumbnail needs lossless.
  *
  *  Returns the smallest encoding tried when even the floor is too big — the caller decides
- *  whether to warn, but downloading something beats downloading nothing. */
-export async function fitToLimit(encode: Encoder, maxBytes?: number): Promise<Encoded> {
+ *  whether to warn, but downloading something beats downloading nothing.
+ *
+ *  `allowJpeg: false` (a transparent document) keeps the PNG whatever it weighs: JPEG has no
+ *  alpha, so trading size for the transparency the user asked for is not a trade. */
+export async function fitToLimit(encode: Encoder, maxBytes?: number, allowJpeg = true): Promise<Encoded> {
   const png = await encode("png");
   const first: Encoded = { dataUrl: png, bytes: dataUrlBytes(png), kind: "png" };
-  if (!maxBytes || first.bytes <= maxBytes) return first;
+  if (!maxBytes || first.bytes <= maxBytes || !allowJpeg) return first;
 
   let smallest = first;
   for (const quality of JPEG_LADDER) {
@@ -73,9 +84,12 @@ export async function captureThumb(node: HTMLElement, size: ExportSize): Promise
   node.style.transform = "none"; // capture unscaled
   try {
     const options = { width: size.w, height: size.h, pixelRatio: 1, cacheBust: true };
+    // No `backgroundColor`: html-to-image leaves the canvas clear, so whatever the document
+    // doesn't paint stays transparent in the PNG.
     return await fitToLimit(
       (kind, quality) => (kind === "png" ? toPng(node, options) : toJpeg(node, { ...options, quality })),
-      size.maxBytes
+      size.maxBytes,
+      !size.transparent
     );
   } finally {
     node.style.transform = prevTransform;
@@ -105,7 +119,9 @@ export async function exportThumb(
   if (size.maxBytes && result.bytes > size.maxBytes) {
     const limit = (size.maxBytes / 1024 / 1024).toFixed(0);
     return {
-      warning: `${mb(result.bytes)} even as a JPEG — still over ${size.platform}'s ${limit} MB limit. Simplify the background or shrink the photo.`,
+      warning: size.transparent
+        ? `${mb(result.bytes)} — over ${size.platform}'s ${limit} MB limit, and a transparent design can't be shipped as a JPEG. Shrink the photo, or pick a solid background.`
+        : `${mb(result.bytes)} even as a JPEG — still over ${size.platform}'s ${limit} MB limit. Simplify the background or shrink the photo.`,
     };
   }
   if (result.kind === "jpeg") {

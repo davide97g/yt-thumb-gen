@@ -268,7 +268,9 @@ export function ThumbCanvas({ doc, scale, selectedIds, exporting, cropMode, setC
         ? `radial-gradient(circle at 68% 32%, ${bg.from}, ${bg.to} 72%)`
         : bg.mode === "effect"
           ? "#000" // backdrop behind the effect (aurora has transparency)
-          : bg.from;
+          : bg.mode === "transparent"
+            ? undefined // no paint at all — the alpha a PNG export is meant to keep
+            : bg.from;
 
   /** pointerdown on a layer: select it (unless already selected), then stream a
    *  snapped drag over the whole current selection. */

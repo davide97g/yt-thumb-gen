@@ -49,12 +49,16 @@ Required: `mode` `from` `to` `image` `overlay`.
 
 ```jsonc
 {
-  "mode": "gradient",         // gradient | solid | image | effect
+  "mode": "gradient",         // gradient | solid | image | effect | transparent
   "from": "#0d1b13",          // gradient start; the fill when mode is "solid"
   "to": "#04070a",
   "image": null,              // required key — you cannot set a value, there is no upload path
   "overlay": 0,               // 0–100 scrim darkness. Raise for text legibility.
 ```
+
+`transparent` paints no backdrop at all: the exported PNG (and `render_project`) keeps real
+alpha, so the design works as an overlay. `from`/`to` are ignored — but `overlay` and the
+colour grade are painted over everything, so leave them at 0 or the alpha fills back in.
 
 Optional: `imageX` `imageY` `imageZoom` (framing, only meaningful with an image), the colour
 grade, `border`, and `effect`.

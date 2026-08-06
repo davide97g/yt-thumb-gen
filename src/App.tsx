@@ -376,7 +376,10 @@ export default function App() {
     await new Promise<void>((r) => requestAnimationFrame(() => r()));
     try {
       // `note` = it fitted, but as a JPEG; `warning` = it still doesn't fit.
-      const { warning, note } = await exportThumb(canvasRef.current, exportName, { w: CW, h: CH, maxBytes: fmt.maxBytes, platform: fmt.platform });
+      const { warning, note } = await exportThumb(canvasRef.current, exportName, {
+        w: CW, h: CH, maxBytes: fmt.maxBytes, platform: fmt.platform,
+        transparent: doc.background.mode === "transparent",
+      });
       setMessage(warning ?? note ?? null);
     } catch (err) {
       setMessage(`Export failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -611,9 +614,15 @@ export default function App() {
 
         <main ref={previewRef} className="stage relative flex min-w-0 flex-1 items-center justify-center overflow-hidden p-3 md:p-8">
           {/* The canvas sits on the stage like a print on a table: small radius so the
-              1280×720 frame stays honest, one hairline, one long soft shadow. */}
+              1280×720 frame stays honest, one hairline, one long soft shadow.
+              A transparent document paints nothing, so the checkerboard goes on this
+              wrapper — outside the captured node, which is what keeps it out of every
+              export, preview and headless render. */}
           <div
-            className="overflow-hidden rounded-[6px] shadow-[0_40px_90px_-28px_oklch(0_0_0/85%)] ring-1 ring-white/12"
+            className={cn(
+              "overflow-hidden rounded-[6px] shadow-[0_40px_90px_-28px_oklch(0_0_0/85%)] ring-1 ring-white/12",
+              viewDoc.background.mode === "transparent" && "checker"
+            )}
             style={{ width: CW * scale, height: CH * scale }}
           >
             <ThumbCanvas

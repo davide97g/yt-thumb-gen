@@ -48,7 +48,7 @@ import {
 import type { CropMode } from "./ThumbCanvas";
 import { removeBackground } from "../lib/bgremove";
 import { loadImageFile } from "../lib/loadImageFile";
-import { ColorRow, Field, Section, SelectField, SliderRow, SwitchRow, ToggleRow, UploadButton } from "./controls";
+import { ColorRow, Field, Hint, Section, SelectField, SliderRow, SwitchRow, ToggleRow, UploadButton } from "./controls";
 import { DuckButtonGroup } from "./ui/duck-button-group";
 import { EmptyPond } from "./ui/empty-pond";
 import { GlowInput, GlowTextarea } from "./ui/glow-input";
@@ -591,10 +591,11 @@ function DrawProps({ layer, set }: { layer: DrawLayer; set: Setter }) {
 
 // ── Background ────────────────────────────────────────────────────────────────
 
-const BG_MODE_OPTIONS: { value: "solid" | "gradient" | "effect"; label: string }[] = [
+const BG_MODE_OPTIONS: { value: "solid" | "gradient" | "effect" | "transparent"; label: string }[] = [
   { value: "solid", label: "Solid" },
   { value: "gradient", label: "Gradient" },
   { value: "effect", label: "Effect" },
+  { value: "transparent", label: "Transparent" },
 ];
 
 const BG_PRESET_OPTIONS: { value: BgEffect["preset"]; label: string }[] = [
@@ -737,6 +738,11 @@ export function FormatSection({ format, dispatch }: { format: FormatKey; dispatc
   );
 }
 
+/** Full-canvas paint that lands on top of every layer — the one way a transparent document
+ *  still exports opaque, so the panel says so rather than letting it be discovered in Preview. */
+const fillsAlpha = (bg: Background): boolean =>
+  bg.overlay > 0 || (bg.gradeAmount ?? 0) > 0 || (bg.gradeVignette ?? 0) > 0 || (bg.gradeGrain ?? 0) > 0;
+
 export function BackgroundInspector({
   background, dispatch, onError,
 }: { background: Background; dispatch: Dispatch<Action>; onError: (msg: string) => void }) {
@@ -788,6 +794,12 @@ export function BackgroundInspector({
               <EffectControls effect={background.effect} set={set} />
               <SliderRow label="Darken" min={0} max={100} value={background.overlay} display={`${background.overlay}%`} onChange={(overlay) => set({ overlay })} />
             </>
+          )}
+          {background.mode === "transparent" && (
+            <Hint>
+              Nothing behind the layers — the PNG keeps the alpha, and never falls back to JPEG.
+              {fillsAlpha(background) && " Darken, the tint, the vignette and the grain paint over the canvas, so they fill that alpha back in."}
+            </Hint>
           )}
         </>
       )}

@@ -87,6 +87,7 @@ export function CampaignExporter({ campaign, onDone, onError }: Props) {
             ...canvasSize(saved.doc.format),
             maxBytes: fmt.maxBytes,
             platform: fmt.platform,
+            transparent: saved.doc.background.mode === "transparent",
           });
           entries.push({
             name: uniqueName(safeFileName(saved.name, encoded.kind === "png" ? "png" : "jpg"), taken),

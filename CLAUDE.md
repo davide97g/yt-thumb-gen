@@ -340,6 +340,28 @@ One function, two backends chosen by build mode: **production** uses `@imgly/bac
 
 `html-to-image` captures the canvas node at exactly the doc's format size (transform reset for the capture, then restored) and triggers a download. When the platform has a hard limit and the PNG misses it, `fitToLimit` walks a JPEG quality ladder (0.92 → 0.55) and ships the best one that fits — "too big, simplify your background" was true and useless, since the fix is a file format, not a design change. The encoder is injected, so the ladder is unit-tested without a DOM; when even the floor is too big it returns the *smallest* attempt and the caller warns, because downloading something beats downloading nothing. `fileNameFor` keeps the extension honest.
 
+### Transparent backgrounds — `background.mode: "transparent"`
+
+A fifth background mode that paints nothing, so the PNG carries real alpha and the design can be
+used as an overlay. Four places make that true and all four are load-bearing:
+
+- **`ThumbCanvas` sets no `background` at all** for the mode (not a transparent colour, not a
+  checkerboard) — the captured node has to be genuinely unpainted.
+- **The checkerboard is on the wrapper in `App.tsx`, not inside the canvas** (`.checker` in
+  `styles.css`). `html-to-image` clones the node it's given, and the render service screenshots
+  `#stage`, so anything drawn *inside* the canvas to signal "empty" would ship as pixels.
+- **`fitToLimit` takes `allowJpeg`**, and `captureThumb` passes `!size.transparent`. JPEG has no
+  alpha, so the size ladder that normally rescues an oversized YouTube export would quietly
+  destroy the only thing this mode is for; an oversized transparent PNG downloads with a warning
+  instead. Every `captureThumb`/`exportThumb` caller must pass `transparent` — the campaign
+  export does too.
+- **`render/` screenshots with `omitBackground: true`**, or Chromium's default white page fill
+  lands under the element shot. `render.html` already sets html/body transparent; both are needed.
+
+`overlay` and the colour grade paint over the whole canvas and so fill the alpha back in — that's
+correct behaviour, and the inspector says so rather than letting it be found in Preview. Preview
+thumbnails stay `backgroundColor: "#000"` (`preview.ts`): a JPEG stand-in, not the deliverable.
+
 ### The design system — `@duck/*` via the shadcn CLI
 
 The chrome is **duck/ui** (`components.json` → `"registries": { "@duck": "https://duckui.davideghiotto.it/r/{name}.json" }`),

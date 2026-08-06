@@ -83,7 +83,12 @@ async function renderDoc(doc: unknown): Promise<Buffer> {
   const size = await p.evaluate((d) => window.__renderThumb(d as never), doc);
   const stage = p.locator("#stage");
   await p.setViewportSize({ width: size.w, height: size.h });
-  return stage.screenshot({ type: "png", animations: "disabled", timeout: RENDER_TIMEOUT_MS });
+  // `omitBackground` keeps Chromium's default white page fill out of the shot, so a document
+  // with `background.mode: "transparent"` comes back with real alpha — the same PNG the
+  // editor's export produces. Every other document paints its own backdrop, so it's a no-op.
+  // (render.html already sets html/body transparent; an element screenshot would otherwise
+  // capture whatever ancestor paint sits behind it.)
+  return stage.screenshot({ type: "png", omitBackground: true, animations: "disabled", timeout: RENDER_TIMEOUT_MS });
 }
 
 // ── routes ──────────────────────────────────────────────────────────────────

@@ -435,9 +435,14 @@ export type BgEffect =
   | { preset: "mesh"; color1: string; color2: string; color3: string; bgColor: string; softness: number }
   | { preset: "dots"; dotColor: string; bgColor: string; size: number; gap: number };
 
-/** The canvas backdrop: a gradient, a flat colour, an image, or an animated effect. */
+/** The canvas backdrop: a gradient, a flat colour, an image, an animated effect, or nothing
+ *  at all. `transparent` paints no backdrop, and a PNG export keeps that alpha — which is what
+ *  makes a design usable as an overlay (a stream frame, a sticker, a logo lockup). It never
+ *  becomes a JPEG: the size ladder in `export.ts` is skipped, since flattening would fill the
+ *  alpha with black. Anything painted over the whole canvas — `overlay`, the colour grade —
+ *  still lands on top and will fill it back in, deliberately. */
 export type Background = {
-  mode: "gradient" | "solid" | "image" | "effect";
+  mode: "gradient" | "solid" | "image" | "effect" | "transparent";
   /** Gradient start colour; also the fill when mode is "solid". */
   from: string;
   /** Gradient end colour. */
