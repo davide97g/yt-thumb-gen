@@ -1,5 +1,5 @@
 import { useEffect, useReducer, useRef, useState, type ReactNode } from "react";
-import { Download, Layers, Maximize2, PanelsTopLeft, Redo2, Settings, SlidersHorizontal, Smartphone, SquareDashed, Undo2, X } from "lucide-react";
+import { Download, Layers, Magnet, Maximize2, Move, PanelsTopLeft, Redo2, Settings, SlidersHorizontal, Smartphone, SquareDashed, Undo2, X } from "lucide-react";
 import { ThumbCanvas, type CropMode } from "./components/ThumbCanvas";
 import { Inspector, BackgroundInspector, FormatSection } from "./components/Inspector";
 import { LayerList } from "./components/LayerList";
@@ -34,6 +34,19 @@ import { cn } from "./lib/utils";
 
 const initial: AppState = { doc: TEMPLATES.dacoder(), selectedIds: [] };
 
+/** Magnetic snapping is a preference of the person, not a property of the document: it
+ *  survives a reload and follows them across every project, so it lives in localStorage
+ *  rather than in the doc or the IndexedDB working canvas. Default on — off is the
+ *  deliberate choice, which is why the stage says so out loud while it lasts. */
+const SNAP_PREF = "thumb:snapping";
+const readSnapPref = () => {
+  try {
+    return localStorage.getItem(SNAP_PREF) !== "0";
+  } catch {
+    return true; // private mode / blocked storage: snapping on, just not remembered
+  }
+};
+
 /** The left rail's three collapsible sections. One is open at a time, so a long layer
  *  stack can't bury the archive under a page of scrolling. */
 type RailSection = "layers" | "starred" | "saves";
@@ -58,6 +71,9 @@ export default function App() {
   // on top, and the canvas dropped to the size it's actually browsed at.
   const [safeAreas, setSafeAreas] = useState(false);
   const [actualSize, setActualSize] = useState(false);
+  // Magnetic snapping to the other layers' edges/centres and the canvas lines. Remembered
+  // across sessions (see `SNAP_PREF`); Shift still suspends it for one drag either way.
+  const [snapping, setSnapping] = useState(readSnapPref);
   const [chromeHidden, setChromeHidden] = useState(false);
   const isMobile = useIsMobile();
   // Off-canvas panels for the mobile shell — the two side rails become icon-triggered drawers.
@@ -320,12 +336,23 @@ export default function App() {
       // platform covers, "g" for grid size.
       if (e.key === "a") { e.preventDefault(); setSafeAreas((v) => !v); return; }
       if (e.key === "g") { e.preventDefault(); setActualSize((v) => !v); return; }
+      // "s" toggles magnetic snapping. Bare, like the two above — ⌘S is handled and
+      // returned far earlier, so the letter alone is free.
+      if (e.key === "s") { e.preventDefault(); setSnapping((v) => !v); return; }
       if (e.key !== "Backspace" && e.key !== "Delete") return;
       if (selRef.current.length) dispatch({ type: "removeLayers", ids: selRef.current });
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  // Mirror the snapping preference into localStorage. Writes can throw (private mode,
+  // blocked storage) and a preference is never worth an exception on the editor's mount.
+  useEffect(() => {
+    try {
+      localStorage.setItem(SNAP_PREF, snapping ? "1" : "0");
+    } catch { /* not remembered, still honoured for this session */ }
+  }, [snapping]);
 
   // Paste an image from the clipboard as a new image layer. Skipped while a field
   // is focused so text paste into inputs stays native (same guard as the keydown handler).
@@ -635,6 +662,7 @@ export default function App() {
               drawMode={drawMode}
               setDrawMode={setDrawMode}
               safeAreas={safeAreas}
+              snapping={snapping}
               canvasRef={canvasRef}
               dispatch={dispatch}
             />
@@ -662,6 +690,24 @@ export default function App() {
               label="Actual size"
               icon={<Smartphone />}
             />
+            {/* Snapping is on by default, so the state worth showing is the other one: the
+                chip lights up and grows a label when it's off, because a layer that quietly
+                stops aligning otherwise reads as the editor having broken. */}
+            <HudChip
+              size="sm"
+              active={!snapping}
+              frame={false}
+              className={cn("h-7 justify-center bg-card/70 backdrop-blur-sm", snapping ? "w-7 px-0" : "gap-1.5 px-2")}
+              onClick={() => setSnapping((v) => !v)}
+              title={`${snapping ? "Turn off" : "Turn on"} snapping to edges, centres and other layers (S)`}
+              aria-label="Snapping"
+              aria-pressed={!snapping}
+            >
+              {/* lucide has no MagnetOff, and a struck-through magnet would be two glyphs
+                  deep at 14px — free movement is what off actually means. */}
+              {snapping ? <Magnet /> : <Move />}
+              {!snapping && "Snap off"}
+            </HudChip>
             {/* The rail hides the background controls while a layer is selected, so the way
                 out has to be visible from the stage — not only in a menu nobody opens. */}
             {selectedIds.length > 0 && (

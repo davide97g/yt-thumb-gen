@@ -166,11 +166,14 @@ type Props = {
   setDrawMode: (v: boolean) => void;
   /** Paint the platform's own chrome over the design (see `SafeAreaOverlay`). */
   safeAreas?: boolean;
+  /** Magnetic alignment during a drag. Off = the pointer is the only thing that moves a
+   *  layer — the same freedom Shift gives for one drag, made permanent. Defaults on. */
+  snapping?: boolean;
   canvasRef: RefObject<HTMLDivElement | null>;
   dispatch: Dispatch<Action>;
 };
 
-export function ThumbCanvas({ doc, scale, selectedIds, exporting, cropMode, setCropMode, drawMode, setDrawMode, safeAreas, canvasRef, dispatch }: Props) {
+export function ThumbCanvas({ doc, scale, selectedIds, exporting, cropMode, setCropMode, drawMode, setDrawMode, safeAreas, snapping = true, canvasRef, dispatch }: Props) {
   const { w: CW, h: CH } = canvasSize(doc.format); // live canvas size (per-doc format)
   const primary = selectedIds[selectedIds.length - 1] ?? null;
 
@@ -315,15 +318,20 @@ export function ThumbCanvas({ doc, scale, selectedIds, exporting, cropMode, setC
     const maxX = Math.max(...boxes.map((b) => b.x + b.w)), maxY = Math.max(...boxes.map((b) => b.y + b.h));
     const start = { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
 
+    // Candidate snap lines from every other layer + the canvas. Measured once here, and not
+    // at all when snapping is off — this is a forced layout per visible layer, and nothing
+    // downstream would read the result.
     const setIds = new Set(dragIds);
     const xLines = [0, CW / 2, CW];
     const yLines = [0, CH / 2, CH];
-    for (const l of doc.layers) {
-      if (setIds.has(l.id) || !l.visible) continue;
-      const b = layerBox(l.id);
-      if (!b) continue;
-      xLines.push(b.x, b.x + b.w / 2, b.x + b.w);
-      yLines.push(b.y, b.y + b.h / 2, b.y + b.h);
+    if (snapping) {
+      for (const l of doc.layers) {
+        if (setIds.has(l.id) || !l.visible) continue;
+        const b = layerBox(l.id);
+        if (!b) continue;
+        xLines.push(b.x, b.x + b.w / 2, b.x + b.w);
+        yLines.push(b.y, b.y + b.h / 2, b.y + b.h);
+      }
     }
 
     const startClient = { x: e.clientX, y: e.clientY };
@@ -336,7 +344,9 @@ export function ThumbCanvas({ doc, scale, selectedIds, exporting, cropMode, setC
       // magnetic snap so the locked axis stays rigid (precise mode = no auto-alignment).
       if (ev.shiftKey) { if (Math.abs(ddx) >= Math.abs(ddy)) ddy = 0; else ddx = 0; }
       const raw = { x: start.x + ddx, y: start.y + ddy };
-      const r = ev.shiftKey ? { x: raw.x, y: raw.y, vx: null, hy: null } : resolveSnap(raw, { w: start.w, h: start.h }, xLines, yLines, sticky, SNAP, BREAK);
+      // Snapping off does what Shift already did for one drag: the pointer alone decides.
+      const free = ev.shiftKey || !snapping;
+      const r = free ? { x: raw.x, y: raw.y, vx: null, hy: null } : resolveSnap(raw, { w: start.w, h: start.h }, xLines, yLines, sticky, SNAP, BREAK);
       sticky = { vx: r.vx, hy: r.hy };
       const dx = r.x - applied.x, dy = r.y - applied.y;
       if (dx !== 0 || dy !== 0) dispatch({ type: "nudge", ids: dragIds, dx, dy });
