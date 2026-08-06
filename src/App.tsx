@@ -1,5 +1,5 @@
 import { useEffect, useReducer, useRef, useState, type ReactNode } from "react";
-import { Download, Layers, Magnet, Maximize2, Move, PanelsTopLeft, Redo2, Settings, SlidersHorizontal, Smartphone, SquareDashed, Undo2, X } from "lucide-react";
+import { Download, Layers, Magnet, Maximize2, Minimize2, Move, PanelsTopLeft, Redo2, Settings, SlidersHorizontal, Smartphone, SquareDashed, Undo2, X } from "lucide-react";
 import { ThumbCanvas, type CropMode } from "./components/ThumbCanvas";
 import { Inspector, BackgroundInspector, FormatSection } from "./components/Inspector";
 import { LayerList } from "./components/LayerList";
@@ -27,6 +27,7 @@ import { makePreview } from "./lib/preview";
 import { getProject, getWorking, loadConfig, loadPublicConfig, renameConfig, saveConfig, setProject, setWorking, starLayer } from "./lib/storage";
 import { useAuth } from "./components/AuthGate";
 import { GRID_W } from "./lib/safeAreas";
+import { FIT_VIEW, panBy, wheelPixels, zoomAt, zoomFactor, type View } from "./lib/zoom";
 import { FORMATS, canvasSize, historyReducer, initHistory, newImageLayer, primaryId, type AppState, type FontKey, type Layer, type ThumbDoc } from "./state";
 import { TEMPLATES } from "./presets";
 import { useIsMobile } from "./lib/useIsMobile";
@@ -88,6 +89,9 @@ export default function App() {
   // on top, and the canvas dropped to the size it's actually browsed at.
   const [safeAreas, setSafeAreas] = useState(false);
   const [actualSize, setActualSize] = useState(false);
+  // The magnifier over whichever of those two is in force: a zoom multiplier plus an offset
+  // from the stage centre. View-only — it never reaches the doc, the export or a preview.
+  const [view, setView] = useState<View>(FIT_VIEW);
   // Magnetic snapping to the other layers' edges/centres and the canvas lines. Remembered
   // across sessions (see `SNAP_PREF`); Shift still suspends it for one drag either way.
   const [snapping, setSnapping] = useState(readSnapPref);
@@ -137,7 +141,9 @@ export default function App() {
   const fmt = FORMATS[doc.format];
   // "Actual size" is not a zoom level, it's the truth: the width of a grid cell on the
   // platform. Editing at 40% of 1280px flatters everything.
-  const scale = actualSize ? GRID_W[doc.format] / CW : fitScale;
+  const base = actualSize ? GRID_W[doc.format] / CW : fitScale;
+  const scale = base * view.zoom;
+  const zoomed = view.zoom !== 1;
   const dirty = hydrated && doc !== savedDocRef.current;
   // One cover for both ways a document arrives: the first hydrate on mount, and every
   // project opened afterwards from the archive or the gallery.
@@ -359,6 +365,9 @@ export default function App() {
       // "s" toggles magnetic snapping. Bare, like the two above — ⌘S is handled and
       // returned far earlier, so the letter alone is free.
       if (e.key === "s") { e.preventDefault(); setSnapping((v) => !v); return; }
+      // "0" drops the magnifier back to fit — the way out of a zoom without hunting for the
+      // gesture that undoes it, and the same key every editor uses for it.
+      if (e.key === "0") { e.preventDefault(); setView(FIT_VIEW); return; }
 
       // Arrow keys move the selection by a fixed step — the precise counterpart to a drag,
       // so they ignore snapping entirely. Shift takes the big step. preventDefault runs even
@@ -434,6 +443,51 @@ export default function App() {
     ro.observe(el);
     return () => ro.disconnect();
   }, [isMobile, CW, CH]);
+
+  // The wheel handler binds once and reads the live view/base through refs — rebinding a
+  // non-passive listener on every zoom step would be a listener swap per frame of a pinch.
+  const viewRef = useRef(view);
+  viewRef.current = view;
+  const baseRef = useRef(base);
+  baseRef.current = base;
+
+  // Zoom the design, not the page. A trackpad pinch (and ⌘/Ctrl + wheel) arrives as a wheel
+  // event with `ctrlKey` set, which the browser would otherwise spend on its own page zoom —
+  // blowing up the rails, the dock and the chrome along with the thing being inspected. Over
+  // the stage it magnifies the canvas instead, about the pointer. Once zoomed in, a plain
+  // two-finger scroll pans, which is the only way to reach the parts now off-stage; at fit
+  // there is nothing off-stage, so the event is left alone rather than swallowed.
+  useEffect(() => {
+    const el = previewRef.current;
+    if (!el) return;
+    function onWheel(e: WheelEvent) {
+      const stageEl = previewRef.current;
+      if (!stageEl) return;
+      const magnify = e.ctrlKey || e.metaKey;
+      if (!magnify && viewRef.current.zoom === 1) return;
+      e.preventDefault();
+      const r = stageEl.getBoundingClientRect();
+      const stage = { w: r.width, h: r.height };
+      const content = { w: CW * baseRef.current, h: CH * baseRef.current };
+      setView((v) =>
+        magnify
+          ? zoomAt(
+              v,
+              content,
+              stage,
+              { x: e.clientX - r.left - r.width / 2, y: e.clientY - r.top - r.height / 2 },
+              zoomFactor(wheelPixels(e.deltaY, e.deltaMode))
+            )
+          : panBy(v, content, stage, -e.deltaX, -e.deltaY)
+      );
+    }
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [CW, CH]);
+
+  // A magnifier is about the design in front of you: a different format, a different base
+  // scale or a different document all make the offset it was holding meaningless.
+  useEffect(() => setView(FIT_VIEW), [doc.format, actualSize, projectId]);
 
   async function onExport() {
     if (!canvasRef.current) return;
@@ -687,10 +741,19 @@ export default function App() {
               export, preview and headless render. */}
           <div
             className={cn(
-              "overflow-hidden rounded-[6px] shadow-[0_40px_90px_-28px_oklch(0_0_0/85%)] ring-1 ring-white/12",
+              // `shrink-0`: zoomed in, the canvas is wider than the stage on purpose — a flex
+              // child would otherwise be squeezed back to fit and the zoom would do nothing.
+              "shrink-0 overflow-hidden rounded-[6px] shadow-[0_40px_90px_-28px_oklch(0_0_0/85%)] ring-1 ring-white/12",
               viewDoc.background.mode === "transparent" && "checker"
             )}
-            style={{ width: CW * scale, height: CH * scale }}
+            style={{
+              width: CW * scale,
+              height: CH * scale,
+              // Zoom is a size change, not a transform: scaling the wrapper would blur the
+              // text and hand the layers a rect their pointer maths doesn't expect. The
+              // offset is the only transform, and it's the stage's, not the canvas's.
+              transform: zoomed ? `translate3d(${view.x}px, ${view.y}px, 0)` : undefined,
+            }}
           >
             <ThumbCanvas
               doc={viewDoc}
@@ -714,8 +777,24 @@ export default function App() {
 
           <div className="absolute bottom-4 left-4 hidden items-center gap-2 md:flex">
             <HudLabel size="sm" tracking="tight" className="readout pointer-events-none text-muted-foreground/65">
-              {CW} × {CH} · {actualSize ? "actual size" : `${Math.round(scale * 100)}%`}
+              {CW} × {CH} · {actualSize && !zoomed ? "actual size" : `${Math.round(scale * 100)}%`}
             </HudLabel>
+            {/* Only while the magnifier is up: what the stage is showing is no longer the whole
+                design, so the way back to fit has to be on screen and not only on a key. */}
+            {zoomed && (
+              <HudChip
+                size="sm"
+                active
+                frame={false}
+                className="h-7 gap-1.5 bg-card/70 px-2 backdrop-blur-sm"
+                onClick={() => setView(FIT_VIEW)}
+                title="Back to fit (0) — pinch or ⌘-scroll to zoom, scroll to pan"
+                aria-label="Reset zoom"
+              >
+                <Minimize2 />
+                Fit
+              </HudChip>
+            )}
             <StageToggle
               on={safeAreas}
               onClick={() => setSafeAreas((v) => !v)}
