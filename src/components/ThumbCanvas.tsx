@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type Dispatch, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
-import { CANVAS_H, CANVAS_W, FONTS, FONT_WEIGHT, SIZE_LIMITS, canvasSize, drawPad, layoutEmojiFx, newDrawLayer, resolveBgBorder, resolveGlow, resolveRing, type Action, type DrawCap, type DrawLayer, type EmojiFxLayer, type FormatKey, type ImageLayer, type Layer, type LayerPatch, type TextLayer, type ThumbDoc } from "../state";
+import { CANVAS_H, CANVAS_W, FONTS, FONT_STYLE, FONT_WEIGHT, SIZE_LIMITS, canvasSize, drawPad, layoutEmojiFx, newDrawLayer, resolveBgBorder, resolveGlow, resolveRing, type Action, type DrawCap, type DrawLayer, type EmojiFxLayer, type FormatKey, type ImageLayer, type Layer, type LayerPatch, type TextLayer, type ThumbDoc } from "../state";
 import { SAFE_ZONES } from "../lib/safeAreas";
 import { smoothPath, type Pt } from "../lib/smoothPath";
 import { boxesIntersect, resolveSnap, type Box } from "../lib/layout";
@@ -1016,6 +1016,7 @@ function TextContent({
     fontFamily: FONTS[layer.font],
     fontSize: layer.size,
     fontWeight: FONT_WEIGHT[layer.font],
+    fontStyle: FONT_STYLE[layer.font],
     lineHeight: layer.lineHeight,
     color: clip ? "transparent" : layer.color,
     textAlign: layer.align,

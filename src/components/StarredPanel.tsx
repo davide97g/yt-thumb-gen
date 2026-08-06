@@ -1,6 +1,6 @@
 import { useEffect, useState, type Dispatch, type ReactNode } from "react";
 import { Check, FolderInput, FolderOpen, ListFilter, Pencil, Plus, Search, Star, Trash2, X } from "lucide-react";
-import { FONTS, FONT_WEIGHT, type Action, type Layer, type LayerType, type TextLayer } from "../state";
+import { FONTS, FONT_STYLE, FONT_WEIGHT, type Action, type Layer, type LayerType, type TextLayer } from "../state";
 import {
   type ConfigMeta,
   type StarredMeta,
@@ -306,7 +306,7 @@ function FavoritePreview({ item, layer, compact = false }: { item: StarredMeta; 
     const text = layer as TextLayer;
     return (
       <span className={cn(frame, "bg-black/20 px-1 text-center", size)} style={{ backgroundColor: text.bg.enabled ? text.bg.color : undefined }}>
-        <span className="min-w-0 self-center truncate leading-none" style={{ color: text.color, fontFamily: FONTS[text.font], fontWeight: FONT_WEIGHT[text.font], fontSize: compact ? 11 : 16 }}>
+        <span className="min-w-0 self-center truncate leading-none" style={{ color: text.color, fontFamily: FONTS[text.font], fontWeight: FONT_WEIGHT[text.font], fontStyle: FONT_STYLE[text.font], fontSize: compact ? 11 : 16 }}>
           {text.text.replace(/\n/g, " ")}
         </span>
       </span>

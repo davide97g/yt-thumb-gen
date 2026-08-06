@@ -6,10 +6,12 @@
       "name": "yt-thumb-gen",
       "dependencies": {
         "@clerk/clerk-react": "^5.61.3",
+        "@fontsource/alex-brush": "^5.3.0",
         "@fontsource/anton": "^5.2.7",
         "@fontsource/archivo-black": "^5.2.5",
         "@fontsource/bangers": "^5.2.8",
         "@fontsource/bebas-neue": "^5.2.7",
+        "@fontsource/cormorant-garamond": "^5.3.0",
         "@fontsource/crimson-pro": "^5.2.8",
         "@fontsource/geist": "^5.3.0",
         "@fontsource/geist-mono": "^5.2.8",
@@ -73,6 +75,8 @@
 
     "@floating-ui/utils": ["@floating-ui/utils@0.2.11", "", {}, "sha512-RiB/yIh78pcIxl6lLMG0CgBXAZ2Y0eVHqMPYugu+9U0AeT6YBeiJpf7lbdJNIugFP5SIjwNRgo4DhR1Qxi26Gg=="],
 
+    "@fontsource/alex-brush": ["@fontsource/alex-brush@5.3.0", "", {}, "sha512-n3m2aZxsc8r748fBiYqfiVJ5l5iJe7ui5KPh2oBz07jsbr7zKynZ6F5MgXbR1iV8J0hPetmp6g5OwKYRZCDUcw=="],
+
     "@fontsource/anton": ["@fontsource/anton@5.2.7", "", {}, "sha512-fiPl7Kx0HC50Ws2uRkNC+QLVK8xPFUB9E+IxFdSA6tbNTZWe7HOq8IxYqkERIzsIBvYj6nrU+7uNMUM9vNLxig=="],
 
     "@fontsource/archivo-black": ["@fontsource/archivo-black@5.2.8", "", {}, "sha512-3zNj/o9LzWyDl/UEpY5IOHpAQyUtFr3hQaFS7NSKwCLLkXOfH/CMCt1L2b2Z+OF25OURtOYenCadgAebALz7/A=="],
@@ -80,6 +84,8 @@
     "@fontsource/bangers": ["@fontsource/bangers@5.2.8", "", {}, "sha512-fFFXg+IHf05TEQ4U0gS8f7B0JHrhAN7oEw/Q8wR0APPLXnhnQSfZz2QDjg0kmVuM+IsM28ODga+0rSpnHLqFfQ=="],
 
     "@fontsource/bebas-neue": ["@fontsource/bebas-neue@5.2.7", "", {}, "sha512-DsmBrmq55d9BCU0mt4DT4RZDdH8vhWRKEUOfbuNB1EEjMuwbtFvM8N+3gIlkYSFbsb10P8Q19BV5OdpMu2h0fA=="],
+
+    "@fontsource/cormorant-garamond": ["@fontsource/cormorant-garamond@5.3.0", "", {}, "sha512-weuGsCirGVWBWqpt6YUp0yLThTe4G8YO45noq8wxeJCRvEpq5lFrxNMFSTxcyOyV5k5otzJ8guDzYegdYlcLMQ=="],
 
     "@fontsource/crimson-pro": ["@fontsource/crimson-pro@5.2.8", "", {}, "sha512-t+cAoAswUKEReDPqDNWWSyAp7baZkKrtF6Ry0KrDZQHJCldS9pIbRH0n2hm1u4+SbIUI7c+nUS9yfK6rEhycTw=="],
 

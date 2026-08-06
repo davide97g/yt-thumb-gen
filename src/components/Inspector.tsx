@@ -8,6 +8,8 @@ import {
 import { alignBoxes, distributeBoxes, type AlignEdge, type Placed } from "../lib/layout";
 import {
   FONT_LABELS,
+  FONT_STYLE,
+  FONT_WEIGHT,
   FONTS,
   defaultEffect,
   defaultBgBorder,
@@ -59,7 +61,13 @@ import { WebcamCapture } from "./WebcamCapture";
 
 const MAX_UPLOAD = 8 * 1024 * 1024;
 
-const FONT_OPTIONS = (Object.keys(FONT_LABELS) as FontKey[]).map((value) => ({ value, label: FONT_LABELS[value], style: { fontFamily: FONTS[value] } }));
+// The style carries the weight and slant too, or three keys onto one family would preview
+// as three identical rows.
+const FONT_OPTIONS = (Object.keys(FONT_LABELS) as FontKey[]).map((value) => ({
+  value,
+  label: FONT_LABELS[value],
+  style: { fontFamily: FONTS[value], fontWeight: FONT_WEIGHT[value], fontStyle: FONT_STYLE[value] },
+}));
 const ALIGN_OPTIONS: { value: TextLayer["align"]; label: string }[] = [
   { value: "left", label: "Left" },
   { value: "center", label: "Center" },

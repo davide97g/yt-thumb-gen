@@ -58,7 +58,11 @@ export type FontKey =
   | "libreBaskerville"
   | "lobster"
   | "spaceGrotesk"
-  | "anthropicSans";
+  | "anthropicSans"
+  | "cormorantLight"
+  | "cormorant"
+  | "cormorantItalic"
+  | "alexBrush";
 
 /** Maps a font key to its CSS font-family stack. */
 export const FONTS: Record<FontKey, string> = {
@@ -86,6 +90,13 @@ export const FONTS: Record<FontKey, string> = {
   lobster: "'Lobster', cursive",
   spaceGrotesk: "'Space Grotesk', sans-serif",
   anthropicSans: "'Anthropic Sans', sans-serif",
+  // Invitation faces. One family, three keys: a key carries exactly one weight and one
+  // style (see FONT_WEIGHT / FONT_STYLE), and a formal invitation needs hairline caps,
+  // a readable small-caps body and an italic line at once.
+  cormorantLight: "'Cormorant Garamond', Georgia, serif",
+  cormorant: "'Cormorant Garamond', Georgia, serif",
+  cormorantItalic: "'Cormorant Garamond', Georgia, serif",
+  alexBrush: "'Alex Brush', cursive",
 };
 
 /**
@@ -118,6 +129,19 @@ export const FONT_WEIGHT: Record<FontKey, number> = {
   lobster: 400,
   spaceGrotesk: 700,
   anthropicSans: 800,
+  cormorantLight: 300,
+  cormorant: 500,
+  cormorantItalic: 400,
+  alexBrush: 400,
+};
+
+/**
+ * Italic faces. A font key carries its own style because `TextLayer` has no italic
+ * toggle — the key *is* the face. Absent reads as "normal", so this stays a short list
+ * rather than a second full record to keep in sync.
+ */
+export const FONT_STYLE: Partial<Record<FontKey, "italic">> = {
+  cormorantItalic: "italic",
 };
 
 export const FONT_LABELS: Record<FontKey, string> = {
@@ -144,6 +168,10 @@ export const FONT_LABELS: Record<FontKey, string> = {
   lobster: "Lobster (script)",
   spaceGrotesk: "Space Grotesk",
   anthropicSans: "Anthropic Sans",
+  cormorantLight: "Cormorant Garamond (Light serif)",
+  cormorant: "Cormorant Garamond (Medium serif)",
+  cormorantItalic: "Cormorant Garamond (Italic serif)",
+  alexBrush: "Alex Brush (script)",
 };
 
 export type LayerType = "text" | "image" | "emoji" | "shape" | "effect" | "draw" | "emojifx";

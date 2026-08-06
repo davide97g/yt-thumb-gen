@@ -560,7 +560,11 @@
         "libreBaskerville",
         "lobster",
         "spaceGrotesk",
-        "anthropicSans"
+        "anthropicSans",
+        "cormorantLight",
+        "cormorant",
+        "cormorantItalic",
+        "alexBrush"
       ]
     },
     "TextFx": {
