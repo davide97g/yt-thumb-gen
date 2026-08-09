@@ -11,7 +11,7 @@
 export const CANVAS_W = 1280;
 export const CANVAS_H = 720;
 
-export type FormatKey = "youtube" | "shorts" | "ig-post" | "ig-reel" | "linkedin";
+export type FormatKey = "youtube" | "shorts" | "ig-post" | "ig-reel" | "linkedin" | "flyer";
 
 export type FormatSpec = {
   key: FormatKey;
@@ -29,6 +29,9 @@ export const FORMATS: Record<FormatKey, FormatSpec> = {
   "ig-post": { key: "ig-post", label: "Post IG (4:5)", platform: "Instagram", w: 1080, h: 1350, aspect: "4:5" },
   "ig-reel": { key: "ig-reel", label: "Reel IG (9:16)", platform: "Instagram Reels", w: 1080, h: 1920, aspect: "9:16" },
   linkedin: { key: "linkedin", label: "LinkedIn (4:5)", platform: "LinkedIn", w: 1080, h: 1350, aspect: "4:5" },
+  // The one print format: 10 × 21 cm at 300 dpi, the density a printer expects. 21 cm is the
+  // width of an A4, so a sheet takes three of these side by side.
+  flyer: { key: "flyer", label: "Flyer (10×21 cm)", platform: "Print · 300 dpi", w: 1181, h: 2480, aspect: "10:21" },
 };
 
 export const DEFAULT_FORMAT: FormatKey = "youtube";

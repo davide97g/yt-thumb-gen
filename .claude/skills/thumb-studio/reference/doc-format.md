@@ -4,7 +4,7 @@ Condensed from `src/state.ts`. For the authoritative contract call `get_doc_sche
 
 ```jsonc
 {
-  "format": "youtube",        // youtube | shorts | ig-post | ig-reel | linkedin
+  "format": "youtube",        // youtube | shorts | ig-post | ig-reel | linkedin | flyer
   "background": { … },
   "layers": [ … ]             // index 0 paints first (backmost)
 }
@@ -40,6 +40,7 @@ didn't write, or for debugging a rejection.
 | `ig-post` | 1080×1350 | 4:5 |
 | `ig-reel` | 1080×1920 | 9:16 |
 | `linkedin` | 1080×1350 | 4:5 |
+| `flyer` | 1181×2480 | 10:21 — a 10 × 21 cm print piece at 300 dpi. Keep type 5% in from the edges (trim). |
 
 Templates are authored at 1280×720. Pass `format` to `get_template` to rescale.
 

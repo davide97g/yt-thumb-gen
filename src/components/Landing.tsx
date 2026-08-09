@@ -252,7 +252,7 @@ function Plate() {
 
 /* --------------------------------------------------------------- formats --- */
 
-const FORMAT_ORDER: FormatKey[] = ["youtube", "shorts", "ig-post", "ig-reel", "linkedin"];
+const FORMAT_ORDER: FormatKey[] = ["youtube", "shorts", "ig-post", "ig-reel", "linkedin", "flyer"];
 
 function Formats() {
   return (
@@ -260,14 +260,14 @@ function Formats() {
       <div className="lp-wrap">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <HudLabel tone="primary" dot>
-            Five formats, real proportions
+            Six formats, real proportions
           </HudLabel>
           <p className="max-w-[52ch] text-sm text-muted-foreground">
             Each one carries its own size, its own platform chrome, and the width it is actually
             browsed at. Switching format re-lays the document out rather than stretching it.
           </p>
         </div>
-        <ul className="mt-10 grid grid-cols-2 gap-5 sm:grid-cols-3 lg:grid-cols-5">
+        <ul className="mt-10 grid grid-cols-2 gap-5 sm:grid-cols-3 lg:grid-cols-6">
           {FORMAT_ORDER.map((key) => {
             const f = FORMATS[key];
             return (

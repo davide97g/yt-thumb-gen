@@ -47,6 +47,10 @@ export const SAFE_ZONES: Record<FormatKey, SafeZone[]> = {
   "ig-post": [{ id: "grid-crop", label: "Grid crop (1:1)", kind: "keep", x: 0, y: 0.1, w: 1, h: 0.8 }],
   // LinkedIn renders a 4:5 image whole in the feed and adds no overlay of its own.
   linkedin: [],
+  // Print has no chrome, but it has a guillotine: a trim wanders by a couple of millimetres,
+  // so the usual rule is to keep type 5 mm inside the edge. Same shape as a crop — what's
+  // outside may not survive — hence `keep`. 5 mm of 100 mm wide, 5 mm of 210 mm tall.
+  flyer: [{ id: "trim", label: "Trim safe (5 mm)", kind: "keep", x: 0.05, y: 0.0238, w: 0.9, h: 0.9524 }],
 };
 
 /** Width in CSS pixels of the smallest surface this format is commonly seen at — a grid
@@ -58,4 +62,5 @@ export const GRID_W: Record<FormatKey, number> = {
   "ig-post": 143, // profile grid cell (3 across on a phone)
   "ig-reel": 143, // reels grid cell
   linkedin: 200, // feed image at desktop column width, scaled down
+  flyer: 378, // 10 cm at 96 CSS dpi — printed actual size, the only size it is ever seen at
 };
