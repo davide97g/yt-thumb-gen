@@ -254,6 +254,35 @@ export const MIGRATIONS: Migration[] = [
       await sql`DROP TABLE IF EXISTS sessions`; // takes sessions_expires_idx (migration 007) with it
     },
   },
+  {
+    id: 10,
+    name: "design variants",
+    // A variant is a competing version of the *same* design at the *same* format — the thing
+    // you A/B before publishing. It is a project row, not a new kind of object, because it
+    // needs everything a project already has: a preview JPEG for the compare grid, its own
+    // version history, `render.png`, a `?project=` link, MCP access. A separate table would
+    // have duplicated half the project routes to get none of that.
+    //
+    // Four columns, one concern: the variant relation. A base is `variant_of IS NULL`, which
+    // is what every project list now filters on — miss one and the archive doubles.
+    //
+    // CASCADE, unlike `campaign_id`'s SET NULL, and the difference is deliberate: a campaign is
+    // a folder whose designs stand alone, while a variant with no base is orphaned junk nobody
+    // can find. The editor names the count before it deletes.
+    up: async (sql) => {
+      await sql`ALTER TABLE projects ADD COLUMN IF NOT EXISTS variant_of uuid REFERENCES projects(id) ON DELETE CASCADE`;
+      await sql`ALTER TABLE projects ADD COLUMN IF NOT EXISTS variant_label text`;
+      // The decision, recorded. Promoting swaps the documents, which leaves no trace of *why* —
+      // and "we picked B because the face reads at grid size" is the part worth keeping.
+      await sql`ALTER TABLE projects ADD COLUMN IF NOT EXISTS variant_won_at timestamptz`;
+      await sql`ALTER TABLE projects ADD COLUMN IF NOT EXISTS variant_note text`;
+      // Partial and carrying the sort, like the indexes in 007: the only query is "this base's
+      // variants, oldest first", and on a personal archive the rows with a parent are the few.
+      await sql`
+        CREATE INDEX IF NOT EXISTS projects_variant_of_idx ON projects(variant_of, created_at)
+          WHERE variant_of IS NOT NULL`;
+    },
+  },
 ];
 
 /** Guards the one mistake this design can't survive: two migrations sharing an id, where

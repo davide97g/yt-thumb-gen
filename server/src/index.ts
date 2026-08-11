@@ -180,11 +180,14 @@ app.get("/api/public/projects", async (c) => {
   if (limited) return limited;
   // Note what isn't selected: user_id, campaign_id, and every row where is_public is false.
   // The campaign *name* is exposed, for grouping — owner-chosen text, but exposed.
+  // `variant_of IS NULL` for the same reason the archive filters it: a variant is an alternate
+  // take on a design, not a design of its own. Publishing a base must not fill the gallery with
+  // its three rejected drafts — a variant a guest should see gets promoted first.
   const rows = await sql`
     SELECT p.id, p.name, p.preview, p.format, c.name AS "campaignName",
       (extract(epoch from p.updated_at) * 1000)::float8 AS "updatedAt"
     FROM projects p LEFT JOIN campaigns c ON c.id = p.campaign_id
-    WHERE p.is_public ORDER BY p.updated_at DESC`;
+    WHERE p.is_public AND p.variant_of IS NULL ORDER BY p.updated_at DESC`;
   return c.json(rows);
 });
 
@@ -270,19 +273,28 @@ async function requireSessionUser(c: any, next: () => Promise<void>) {
 // numeric, and postgres.js maps numeric to a *string* to protect precision, so the
 // client would receive "1753…" and `new Date(that)` yields Invalid Date. float8
 // arrives as a real JS number.
+// Bases only (`variant_of IS NULL`). A variant is reached through its base — the archive is a
+// list of designs, and a design's alternates are one of its properties, hence `variantCount`
+// rather than four more rows that look like four more designs.
 app.get("/api/projects", async (c) => {
   const user = c.get("user") as User;
   const rows = await sql`
-    SELECT id, name, campaign_id AS "campaignId", format, preview, is_public AS "isPublic",
-      (extract(epoch from updated_at) * 1000)::float8 AS "updatedAt"
-    FROM projects WHERE user_id = ${user.id} ORDER BY updated_at DESC`;
+    SELECT p.id, p.name, p.campaign_id AS "campaignId", p.format, p.preview, p.is_public AS "isPublic",
+      (extract(epoch from p.updated_at) * 1000)::float8 AS "updatedAt",
+      (SELECT count(*)::int FROM projects v WHERE v.variant_of = p.id) AS "variantCount"
+    FROM projects p WHERE p.user_id = ${user.id} AND p.variant_of IS NULL
+    ORDER BY p.updated_at DESC`;
   return c.json(rows);
 });
 
+// By id, on the other hand, opens whatever it names — base or variant. That's what makes a
+// variant shareable as `?project=<id>` and renderable at `/render.png` for nothing.
 app.get("/api/projects/:id", async (c) => {
   const user = c.get("user") as User;
   const rows = await sql`
     SELECT id, name, doc, campaign_id AS "campaignId", is_public AS "isPublic",
+      variant_of AS "variantOf", variant_label AS "variantLabel", variant_note AS "variantNote",
+      (extract(epoch from variant_won_at) * 1000)::float8 AS "variantWonAt",
       (extract(epoch from updated_at) * 1000)::float8 AS "updatedAt"
     FROM projects WHERE id = ${c.req.param("id")} AND user_id = ${user.id}`;
   if (!rows[0]) return c.json({ error: "not found" }, 404);
@@ -364,6 +376,7 @@ app.post("/api/projects", async (c) => {
     INSERT INTO projects (user_id, name, doc, campaign_id, preview, format)
     VALUES (${user.id}, ${name}, ${sql.json(doc)}, ${campaign}, ${previewOr(preview, null)}, ${formatOf(doc)})
     RETURNING id, name, campaign_id AS "campaignId", preview, format, is_public AS "isPublic",
+      variant_of AS "variantOf", variant_label AS "variantLabel",
       (extract(epoch from updated_at) * 1000)::float8 AS "updatedAt"`;
   return c.json({ ...row, warnings: docWarnings(doc) });
 });
@@ -391,6 +404,12 @@ app.put("/api/projects/:id", async (c) => {
   // means an ordinary save or a rename — neither of which sends the key — can never quietly
   // publish a design or take a published one down.
   const hasPublic = "isPublic" in body;
+  // The recorded outcome of a comparison, presence-gated for the third time and the third
+  // reason: `won: true` stamps now, `won: false` clears the stamp, and a save or a rename —
+  // neither of which sends the key — must not quietly un-decide something.
+  const hasWon = "won" in body;
+  const hasNote = "variantNote" in body;
+  const note = typeof body.variantNote === "string" ? body.variantNote.slice(0, 500) : null;
   // No tri-state for the preview: a request that omits it (a rename, or a save made with no
   // canvas mounted) keeps the last one, which is closer to the truth than blanking the row.
   //
@@ -405,19 +424,165 @@ app.put("/api/projects/:id", async (c) => {
       preview = coalesce(${previewOr(body.preview, null)}, preview),
       campaign_id = ${hasCampaign ? campaign : sql`campaign_id`},
       is_public = ${hasPublic ? body.isPublic === true : sql`is_public`},
+      variant_won_at = ${hasWon ? (body.won === true ? sql`now()` : null) : sql`variant_won_at`},
+      variant_note = ${hasNote ? note : sql`variant_note`},
       format = ${doc === undefined ? sql`format` : formatOf(doc)},
       updated_at = now()
     WHERE id = ${c.req.param("id")} AND user_id = ${user.id}
     RETURNING id, name, campaign_id AS "campaignId", preview, format, is_public AS "isPublic",
+      variant_of AS "variantOf", variant_label AS "variantLabel", variant_note AS "variantNote",
+      (extract(epoch from variant_won_at) * 1000)::float8 AS "variantWonAt",
       (extract(epoch from updated_at) * 1000)::float8 AS "updatedAt"`;
   if (!row) return c.json({ error: "not found" }, 404);
   return c.json(row);
 });
 
+// Deleting a base takes its variants with it (`variant_of` is ON DELETE CASCADE, migration 010).
+// The editor names the count in its confirm, which it already has from the list's `variantCount`.
 app.delete("/api/projects/:id", async (c) => {
   const user = c.get("user") as User;
   await sql`DELETE FROM projects WHERE id = ${c.req.param("id")} AND user_id = ${user.id}`;
   return c.json({ ok: true });
+});
+
+// ── variants (competing takes on one design, for comparing before publishing) ─
+//
+// A variant is a project row whose `variant_of` names its base, so everything a design has —
+// preview, version history, render.png, a shareable `?project=` link — a variant has too. The
+// relation is one level deep and stays that way *by construction*: every route here resolves
+// the id it is given to the set's base first (`variantRoot`), so asking for a variant of a
+// variant gives you another sibling rather than a tree nobody can display.
+
+/** How many alternates one design may carry. A compare grid stops being a comparison somewhere
+ *  around here, and each live cell in it is a WebGL context. */
+const VARIANT_LIMIT = 8;
+/** The base is A, so the alternates start at B. Labels are the whole vocabulary of the feature —
+ *  "ship B" is the sentence this is for — which is why they're stored rather than derived from
+ *  a row's position in a list that reorders itself on every save. */
+const VARIANT_LABELS = "BCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+/** The base of the set `id` belongs to, or null when the caller doesn't own `id` at all. */
+async function variantRoot(userId: string, id: string): Promise<string | null> {
+  const [row] = await sql<{ id: string; variantOf: string | null }[]>`
+    SELECT id, variant_of AS "variantOf" FROM projects WHERE id = ${id} AND user_id = ${userId}`;
+  if (!row) return null;
+  return row.variantOf ?? row.id;
+}
+
+/** Every member of a set, base first, then alternates oldest first — which is label order, and
+ *  the order a compare grid reads in. Metadata only, like every other list here: the documents
+ *  carry inline images and are fetched one at a time. */
+async function variantMembers(userId: string, baseId: string) {
+  return await sql`
+    SELECT id, name, format, preview, variant_label AS "label",
+      variant_of IS NULL AS "isBase", variant_note AS "note",
+      (extract(epoch from variant_won_at) * 1000)::float8 AS "wonAt",
+      (extract(epoch from updated_at) * 1000)::float8 AS "updatedAt"
+    FROM projects
+    WHERE user_id = ${userId} AND (id = ${baseId} OR variant_of = ${baseId})
+    ORDER BY variant_of IS NULL DESC, created_at`;
+}
+
+app.get("/api/projects/:id/variants", async (c) => {
+  const user = c.get("user") as User;
+  const baseId = await variantRoot(user.id, c.req.param("id"));
+  if (!baseId) return c.json({ error: "not found" }, 404);
+  return c.json({ baseId, members: await variantMembers(user.id, baseId) });
+});
+
+// Creates an alternate. The document is copied **server-side** by default — the point of a
+// variant is "this design, then changed", and making the editor upload a document it already
+// has would cost a full round trip of inline images. An agent can pass its own `doc` instead,
+// which is what turns "write me three headline treatments" into three calls.
+app.post("/api/projects/:id/variants", async (c) => {
+  const user = c.get("user") as User;
+  const baseId = await variantRoot(user.id, c.req.param("id"));
+  if (!baseId) return c.json({ error: "not found" }, 404);
+  const body = await c.req.json().catch(() => ({}));
+
+  const existing = await sql<{ label: string | null }[]>`
+    SELECT variant_label AS label FROM projects WHERE variant_of = ${baseId} AND user_id = ${user.id}`;
+  if (existing.length >= VARIANT_LIMIT)
+    return c.json({ error: `A design can carry ${VARIANT_LIMIT} variants. Delete one first.` }, 409);
+  const taken = new Set(existing.map((r) => r.label));
+  const label = [...VARIANT_LABELS].find((l) => !taken.has(l)) ?? String(existing.length + 1);
+
+  const doc = body.doc;
+  if (doc !== undefined) {
+    if (typeof doc !== "object" || doc === null) return c.json({ error: "bad request" }, 400);
+    const rejected = docProblems("POST /projects/:id/variants", validateDoc(doc));
+    if (rejected) return rejected;
+  }
+
+  // One statement, and the base is read inside it: an `INSERT … SELECT` can't copy a document
+  // it doesn't hold, so a TOASTed doc never travels to this process and back. Note what is not
+  // copied — `is_public` (publishing is always a separate, deliberate PUT) and `preview`, which
+  // would otherwise show the base's picture until the variant's first save and make two rows in
+  // the compare grid look identical when they aren't.
+  const [row] = await sql`
+    INSERT INTO projects (user_id, name, doc, format, campaign_id, variant_of, variant_label)
+    SELECT user_id,
+      ${typeof body.name === "string" && body.name.trim() ? body.name.trim() : sql`name || ' · ' || ${label}`},
+      ${doc === undefined ? sql`doc` : sql.json(doc)},
+      ${doc === undefined ? sql`format` : formatOf(doc)},
+      campaign_id, id, ${label}
+    FROM projects WHERE id = ${baseId} AND user_id = ${user.id}
+    RETURNING id, name, format, preview, campaign_id AS "campaignId", is_public AS "isPublic",
+      variant_of AS "variantOf", variant_label AS "variantLabel",
+      (extract(epoch from updated_at) * 1000)::float8 AS "updatedAt"`;
+  if (!row) return c.json({ error: "not found" }, 404);
+  return c.json({ ...row, warnings: doc === undefined ? [] : docWarnings(doc) });
+});
+
+// Promotes a variant: the two documents swap places, so the design keeps its id, its name, its
+// history and its published state while what it *shows* becomes the winner. The loser isn't
+// discarded — it lands in the variant slot the winner came from, which is what makes promoting
+// reversible by promoting again. Both sides file a version first, so it's undoable either way.
+app.post("/api/projects/:id/promote", async (c) => {
+  const user = c.get("user") as User;
+  const id = c.req.param("id");
+  const [variant] = await sql<{ variantOf: string | null; doc: unknown }[]>`
+    SELECT variant_of AS "variantOf", doc FROM projects WHERE id = ${id} AND user_id = ${user.id}`;
+  if (!variant) return c.json({ error: "not found" }, 404);
+  if (!variant.variantOf) return c.json({ error: "That design is already the base." }, 400);
+  const baseId = variant.variantOf;
+
+  const [base] = await sql<{ doc: unknown }[]>`
+    SELECT doc FROM projects WHERE id = ${baseId} AND user_id = ${user.id}`;
+  if (!base) return c.json({ error: "not found" }, 404);
+
+  // Ahead of the swap, so either half is one restore away. Best-effort by contract (see
+  // `snapshot`) — a lost snapshot must not cost the promotion.
+  await snapshot(user.id, baseId, variant.doc);
+  await snapshot(user.id, id, base.doc);
+
+  await sql.begin(async (tx) => {
+    // The swap reads both documents in SQL rather than sending them back: they are the largest
+    // objects in the database and neither has changed since they were fetched.
+    await tx`
+      UPDATE projects SET doc = ${sql.json(variant.doc as any)}, format = ${formatOf(variant.doc)},
+        preview = NULL, updated_at = now()
+      WHERE id = ${baseId} AND user_id = ${user.id}`;
+    await tx`
+      UPDATE projects SET doc = ${sql.json(base.doc as any)}, format = ${formatOf(base.doc)},
+        preview = NULL, updated_at = now()
+      WHERE id = ${id} AND user_id = ${user.id}`;
+    // One winner per set: the stamp moves rather than accumulating.
+    await tx`
+      UPDATE projects SET variant_won_at = NULL
+      WHERE variant_of = ${baseId} AND user_id = ${user.id} AND id <> ${id}`;
+    await tx`UPDATE projects SET variant_won_at = now() WHERE id = ${id} AND user_id = ${user.id}`;
+  });
+
+  // Both previews are now stale pictures of the other design, so they are cleared rather than
+  // left lying — the editor recaptures on its next save, and a missing thumbnail falls back to
+  // an icon. The promoted document comes back with the row so the editor can adopt it without
+  // a second fetch.
+  const [row] = await sql`
+    SELECT id, name, campaign_id AS "campaignId", preview, format, is_public AS "isPublic",
+      (extract(epoch from updated_at) * 1000)::float8 AS "updatedAt"
+    FROM projects WHERE id = ${baseId} AND user_id = ${user.id}`;
+  return c.json({ ...row, doc: variant.doc, members: await variantMembers(user.id, baseId) });
 });
 
 // ── server-side render ──────────────────────────────────────────────────────
@@ -511,7 +676,7 @@ app.get("/api/campaigns", async (c) => {
     SELECT c.id, c.name,
       (extract(epoch from c.updated_at) * 1000)::float8 AS "updatedAt",
       count(p.id)::int AS "designCount"
-    FROM campaigns c LEFT JOIN projects p ON p.campaign_id = c.id
+    FROM campaigns c LEFT JOIN projects p ON p.campaign_id = c.id AND p.variant_of IS NULL
     WHERE c.user_id = ${user.id}
     GROUP BY c.id ORDER BY c.updated_at DESC`;
   return c.json(rows);
@@ -524,11 +689,13 @@ app.get("/api/campaigns/:id", async (c) => {
     SELECT id, name, (extract(epoch from updated_at) * 1000)::float8 AS "updatedAt"
     FROM campaigns WHERE id = ${id} AND user_id = ${user.id}`;
   if (!rows[0]) return c.json({ error: "not found" }, 404);
-  // Metadata only, like the project list — the docs are fetched one at a time.
+  // Metadata only, like the project list — the docs are fetched one at a time. Bases only:
+  // a variant inherits its base's campaign, and the ZIP a campaign exports is one file per
+  // platform, not one per platform per rejected draft.
   const designs = await sql`
     SELECT id, name, format, preview,
       (extract(epoch from updated_at) * 1000)::float8 AS "updatedAt"
-    FROM projects WHERE campaign_id = ${id} AND user_id = ${user.id}
+    FROM projects WHERE campaign_id = ${id} AND user_id = ${user.id} AND variant_of IS NULL
     ORDER BY updated_at DESC`;
   return c.json({ ...rows[0], designs });
 });

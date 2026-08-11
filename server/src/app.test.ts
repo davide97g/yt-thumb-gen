@@ -448,6 +448,204 @@ describe.skipIf(!usable)("api", () => {
     expect(row.designCount).toBe(2);
   });
 
+  // ── variants ───────────────────────────────────────────────────────────────
+  //
+  // A variant is a project row with a parent, which is what buys it previews, version history,
+  // render.png and a shareable link for free. The price is that every list of *designs* has to
+  // filter it out, and these are the tests that keep that true.
+  test("a variant is created from its base, labelled, and hidden from the archive", async () => {
+    const user = await signIn();
+    const base = await (await api.request("/api/projects", send("POST", { name: "Ep 12", doc: doc({ format: "shorts" }) }, user.cookie))).json();
+    const b = await (await api.request(`/api/projects/${base.id}/variants`, send("POST", {}, user.cookie))).json();
+
+    expect(b.variantOf).toBe(base.id);
+    expect(b.variantLabel).toBe("B"); // the base is A
+    expect(b.name).toBe("Ep 12 · B");
+    // The document was copied server-side, so the variant starts as the design it forked.
+    expect((await (await api.request(`/api/projects/${b.id}`, auth(user.cookie))).json()).doc.format).toBe("shorts");
+
+    // The archive lists the design, not its drafts — and says how many it carries.
+    const list = await (await api.request("/api/projects", auth(user.cookie))).json();
+    expect(list.map((r: any) => r.id)).toEqual([base.id]);
+    expect(list[0].variantCount).toBe(1);
+    // …while the variant is still reachable by id, which is what makes ?project=<id> work.
+    expect((await api.request(`/api/projects/${b.id}`, auth(user.cookie))).status).toBe(200);
+  });
+
+  test("labels fill the gaps, and the set is capped", async () => {
+    const user = await signIn();
+    const base = await (await api.request("/api/projects", send("POST", { name: "One", doc: doc() }, user.cookie))).json();
+    const make = () => api.request(`/api/projects/${base.id}/variants`, send("POST", {}, user.cookie)).then((r) => r.json());
+
+    const b = await make();
+    const c2 = await make();
+    expect([b.variantLabel, c2.variantLabel]).toEqual(["B", "C"]);
+    // Deleting B frees the letter rather than pushing the next one to D — labels are the
+    // vocabulary of the feature, so a set shouldn't read "A, C, D" after one deletion.
+    await api.request(`/api/projects/${b.id}`, { method: "DELETE", headers: { cookie: user.cookie } });
+    expect((await make()).variantLabel).toBe("B");
+
+    // 8 alternates is the ceiling; the 9th is refused with a message, not a 500.
+    for (let i = 0; i < 6; i++) await make();
+    const refused = await api.request(`/api/projects/${base.id}/variants`, send("POST", {}, user.cookie));
+    expect(refused.status).toBe(409);
+    expect((await refused.json()).error).toContain("8 variants");
+  });
+
+  test("a variant of a variant is a sibling — the relation is one level deep", async () => {
+    const user = await signIn();
+    const base = await (await api.request("/api/projects", send("POST", { name: "One", doc: doc() }, user.cookie))).json();
+    const b = await (await api.request(`/api/projects/${base.id}/variants`, send("POST", {}, user.cookie))).json();
+    const c2 = await (await api.request(`/api/projects/${b.id}/variants`, send("POST", {}, user.cookie))).json();
+    expect(c2.variantOf).toBe(base.id);
+
+    // And the set reads the same whichever member you ask through.
+    for (const id of [base.id, b.id, c2.id]) {
+      const set = await (await api.request(`/api/projects/${id}/variants`, auth(user.cookie))).json();
+      expect(set.baseId).toBe(base.id);
+      expect(set.members.map((m: any) => m.label)).toEqual([null, "B", "C"]); // base first
+      expect(set.members[0].isBase).toBe(true);
+    }
+  });
+
+  test("an agent can hand a variant its own document", async () => {
+    const user = await signIn();
+    const base = await (await api.request("/api/projects", send("POST", { name: "One", doc: doc() }, user.cookie))).json();
+    const b = await (
+      await api.request(`/api/projects/${base.id}/variants`, send("POST", { name: "Louder title", doc: doc({ format: "ig-post" }) }, user.cookie))
+    ).json();
+    expect(b.name).toBe("Louder title");
+    expect(b.format).toBe("ig-post"); // the denormalised label follows the document it was given
+    expect((await (await api.request(`/api/projects/${base.id}`, auth(user.cookie))).json()).doc.format).toBe("youtube");
+  });
+
+  test("promoting swaps the documents, keeps the id, and is reversible", async () => {
+    const user = await signIn();
+    const base = await (await api.request("/api/projects", send("POST", { name: "Ep 12", doc: doc(), preview: "a".repeat(64) }, user.cookie))).json();
+    const b = await (
+      await api.request(`/api/projects/${base.id}/variants`, send("POST", { doc: doc({ format: "shorts" }) }, user.cookie))
+    ).json();
+
+    const promoted = await (await api.request(`/api/projects/${b.id}/promote`, send("POST", {}, user.cookie))).json();
+    expect(promoted.id).toBe(base.id); // the design keeps its identity
+    expect(promoted.name).toBe("Ep 12");
+    expect(promoted.doc.format).toBe("shorts");
+    expect(promoted.format).toBe("shorts");
+    // Both previews were pictures of the other design a moment ago.
+    expect(promoted.preview).toBeNull();
+    // The loser is preserved in the slot the winner came from, so promoting again undoes it.
+    expect((await (await api.request(`/api/projects/${b.id}`, auth(user.cookie))).json()).doc.format).toBe("youtube");
+    expect(promoted.members.find((m: any) => m.id === b.id).wonAt).toBeGreaterThan(0);
+
+    const back = await (await api.request(`/api/projects/${b.id}/promote`, send("POST", {}, user.cookie))).json();
+    expect(back.doc.format).toBe("youtube");
+  });
+
+  test("promoting files a version on both sides", async () => {
+    const user = await signIn();
+    const base = await (await api.request("/api/projects", send("POST", { name: "One", doc: doc() }, user.cookie))).json();
+    const b = await (
+      await api.request(`/api/projects/${base.id}/variants`, send("POST", { doc: doc({ format: "shorts" }) }, user.cookie))
+    ).json();
+    await api.request(`/api/projects/${b.id}/promote`, send("POST", {}, user.cookie));
+
+    const versions = (id: string) => api.request(`/api/projects/${id}/versions`, auth(user.cookie)).then((r) => r.json());
+    expect((await versions(base.id))[0].format).toBe("youtube"); // what the base showed before
+    expect((await versions(b.id))[0].format).toBe("shorts");
+  });
+
+  test("a base can't be promoted, and one winner is recorded per set", async () => {
+    const user = await signIn();
+    const base = await (await api.request("/api/projects", send("POST", { name: "One", doc: doc() }, user.cookie))).json();
+    expect((await api.request(`/api/projects/${base.id}/promote`, send("POST", {}, user.cookie))).status).toBe(400);
+
+    const b = await (await api.request(`/api/projects/${base.id}/variants`, send("POST", { doc: doc({ format: "shorts" }) }, user.cookie))).json();
+    const c2 = await (await api.request(`/api/projects/${base.id}/variants`, send("POST", { doc: doc({ format: "ig-post" }) }, user.cookie))).json();
+    await api.request(`/api/projects/${b.id}/promote`, send("POST", {}, user.cookie));
+    await api.request(`/api/projects/${c2.id}/promote`, send("POST", {}, user.cookie));
+
+    const set = await (await api.request(`/api/projects/${base.id}/variants`, auth(user.cookie))).json();
+    expect(set.members.filter((m: any) => m.wonAt).map((m: any) => m.id)).toEqual([c2.id]);
+  });
+
+  test("the recorded decision is presence-gated, like publishing", async () => {
+    const user = await signIn();
+    const base = await (await api.request("/api/projects", send("POST", { name: "One", doc: doc() }, user.cookie))).json();
+    const b = await (await api.request(`/api/projects/${base.id}/variants`, send("POST", {}, user.cookie))).json();
+
+    const noted = await (
+      await api.request(`/api/projects/${b.id}`, send("PUT", { won: true, variantNote: "face reads at grid size" }, user.cookie))
+    ).json();
+    expect(noted.variantWonAt).toBeGreaterThan(0);
+    expect(noted.variantNote).toBe("face reads at grid size");
+
+    // A rename sends neither key, so it can't un-decide anything.
+    const renamed = await (await api.request(`/api/projects/${b.id}`, send("PUT", { name: "Two" }, user.cookie))).json();
+    expect(renamed.variantWonAt).toBeGreaterThan(0);
+    expect(renamed.variantNote).toBe("face reads at grid size");
+
+    // …and false actually clears it, which `coalesce` could not have expressed.
+    const cleared = await (await api.request(`/api/projects/${b.id}`, send("PUT", { won: false }, user.cookie))).json();
+    expect(cleared.variantWonAt).toBeNull();
+  });
+
+  test("deleting a base takes its variants; deleting a variant leaves the base", async () => {
+    const user = await signIn();
+    const base = await (await api.request("/api/projects", send("POST", { name: "One", doc: doc() }, user.cookie))).json();
+    const b = await (await api.request(`/api/projects/${base.id}/variants`, send("POST", {}, user.cookie))).json();
+    const c2 = await (await api.request(`/api/projects/${base.id}/variants`, send("POST", {}, user.cookie))).json();
+
+    await api.request(`/api/projects/${b.id}`, { method: "DELETE", headers: { cookie: user.cookie } });
+    expect((await api.request(`/api/projects/${base.id}`, auth(user.cookie))).status).toBe(200);
+
+    await api.request(`/api/projects/${base.id}`, { method: "DELETE", headers: { cookie: user.cookie } });
+    expect((await api.request(`/api/projects/${c2.id}`, auth(user.cookie))).status).toBe(404);
+    expect(await sql`SELECT 1 FROM projects`).toHaveLength(0);
+  });
+
+  test("a variant inherits its campaign but not its base's place in the list", async () => {
+    const user = await signIn();
+    const camp = await (await api.request("/api/campaigns", send("POST", { name: "Launch" }, user.cookie))).json();
+    const base = await (
+      await api.request("/api/projects", send("POST", { name: "One", doc: doc(), campaignId: camp.id }, user.cookie))
+    ).json();
+    const b = await (await api.request(`/api/projects/${base.id}/variants`, send("POST", {}, user.cookie))).json();
+    expect(b.campaignId).toBe(camp.id);
+
+    // The campaign is one message per platform: a rejected draft is neither.
+    const full = await (await api.request(`/api/campaigns/${camp.id}`, auth(user.cookie))).json();
+    expect(full.designs.map((d: any) => d.id)).toEqual([base.id]);
+    expect((await (await api.request("/api/campaigns", auth(user.cookie))).json())[0].designCount).toBe(1);
+  });
+
+  test("a variant is private and stays out of the gallery, published base or not", async () => {
+    const user = await signIn();
+    const base = await project(user, "Published", true);
+    const b = await (await api.request(`/api/projects/${base.id}/variants`, send("POST", {}, user.cookie))).json();
+    expect(b.isPublic).toBe(false);
+
+    const rows = await (await api.request("/api/public/projects")).json();
+    expect(rows.map((r: any) => r.id)).toEqual([base.id]);
+    expect((await api.request(`/api/public/projects/${b.id}`)).status).toBe(404);
+
+    // Even published by hand, a variant is not a gallery entry — promote it instead.
+    await api.request(`/api/projects/${b.id}`, send("PUT", { isPublic: true }, user.cookie));
+    expect((await (await api.request("/api/public/projects")).json()).map((r: any) => r.id)).toEqual([base.id]);
+  });
+
+  test("variants of someone else's design are out of reach", async () => {
+    const owner = await signIn();
+    const other = await signIn();
+    const base = await (await api.request("/api/projects", send("POST", { name: "Mine", doc: doc() }, owner.cookie))).json();
+    const b = await (await api.request(`/api/projects/${base.id}/variants`, send("POST", {}, owner.cookie))).json();
+
+    expect((await api.request(`/api/projects/${base.id}/variants`, auth(other.cookie))).status).toBe(404);
+    expect((await api.request(`/api/projects/${base.id}/variants`, send("POST", {}, other.cookie))).status).toBe(404);
+    expect((await api.request(`/api/projects/${b.id}/promote`, send("POST", {}, other.cookie))).status).toBe(404);
+    // And nothing happened to the design.
+    expect((await (await api.request(`/api/projects/${base.id}/variants`, auth(owner.cookie))).json()).members).toHaveLength(2);
+  });
+
   // ── hardening ──────────────────────────────────────────────────────────────
   //
   // The brute-force windows that used to live here left with the password they defended: there
@@ -666,6 +864,8 @@ describe.skipIf(!usable)("api", () => {
       [`/api/projects/${p.id}`, send("PUT", { isPublic: false })],
       [`/api/projects/${p.id}`, { method: "DELETE" }],
       [`/api/projects/${p.id}/versions/${crypto.randomUUID()}/restore`, { method: "POST" }],
+      [`/api/projects/${p.id}/variants`, send("POST", {})],
+      [`/api/projects/${p.id}/promote`, send("POST", {})],
       ["/api/campaigns", send("POST", { name: "x" })],
       [`/api/campaigns/${camp.id}`, send("PUT", { name: "x" })],
       [`/api/campaigns/${camp.id}`, { method: "DELETE" }],
@@ -678,7 +878,7 @@ describe.skipIf(!usable)("api", () => {
     }
 
     // And the reads a guest must not have either.
-    for (const path of ["/api/projects", `/api/projects/${p.id}`, "/api/campaigns", "/api/starred", "/api/tokens"]) {
+    for (const path of ["/api/projects", `/api/projects/${p.id}`, `/api/projects/${p.id}/variants`, "/api/campaigns", "/api/starred", "/api/tokens"]) {
       expect((await api.request(path)).status).toBe(401);
     }
     // …while the published design stays readable, which is the whole point.

@@ -61,7 +61,9 @@ describe.skipIf(!usable)("migrate", () => {
         SELECT column_name FROM information_schema.columns WHERE table_name = ${table}`;
       return rows.map((r) => r.column_name);
     };
-    expect(await columns("projects")).toEqual(expect.arrayContaining(["preview", "is_public", "format"]));
+    expect(await columns("projects")).toEqual(
+      expect.arrayContaining(["preview", "is_public", "format", "variant_of", "variant_label", "variant_won_at", "variant_note"])
+    );
     expect(await columns("project_versions")).toEqual(expect.arrayContaining(["format", "layer_count"]));
     expect(await columns("users")).toEqual(expect.arrayContaining(["clerk_id"]));
   });
@@ -88,6 +90,7 @@ describe.skipIf(!usable)("migrate", () => {
         "projects_public_updated_idx",
         "blobs_created_idx",
         "users_clerk_id_key",
+        "projects_variant_of_idx",
       ])
     );
     for (const gone of ["projects_user_idx", "projects_campaign_idx", "projects_public_idx"]) {
