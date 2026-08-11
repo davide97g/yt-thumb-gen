@@ -76,46 +76,43 @@ export function VariantBar({ members, activeId, busy, comparing, onSwitch, onCre
       ) : (
         <>
           {/* One chip per take. `HudChip active` is the same vocabulary the stage lenses and the
-              draw tool use, so "this one is on" reads the same everywhere in the editor. */}
+              draw tool use, so "this one is on" reads the same everywhere in the editor.
+              Labelled by `title` rather than a StickerTooltip, like the header's undo/redo
+              cluster: a joined group styles its direct children, and the shield span a tooltip
+              puts around a disabled control would take that styling instead of the chip. */}
           <DuckButtonGroup aria-label="Variants" className="flex-wrap">
             {members.map((m) => {
               const isActive = m.id === activeId;
               return (
-                <StickerTooltip
+                <HudChip
                   key={m.id}
-                  content={`${m.name}${m.wonAt ? " — picked" : ""}`}
-                  delay={400}
-                  wrapDisabled
+                  size="xs"
+                  active={isActive}
+                  disabled={busy}
+                  title={`${m.name}${m.wonAt ? " — picked" : ""}`}
+                  className="min-w-8 justify-center gap-1 px-2 font-mono"
+                  aria-pressed={isActive}
+                  onClick={() => { if (!isActive) onSwitch(m); }}
                 >
-                  <HudChip
-                    size="xs"
-                    active={isActive}
-                    disabled={busy}
-                    className="min-w-8 justify-center gap-1 px-2 font-mono"
-                    aria-pressed={isActive}
-                    onClick={() => { if (!isActive) onSwitch(m); }}
-                  >
-                    {labelOf(m)}
-                    {m.wonAt && <Crown className="size-3 text-primary" aria-label="Picked" />}
-                  </HudChip>
-                </StickerTooltip>
+                  {labelOf(m)}
+                  {m.wonAt && <Crown className="size-3 text-primary" aria-label="Picked" />}
+                </HudChip>
               );
             })}
           </DuckButtonGroup>
 
-          <div className="flex items-center gap-1.5">
-            <QuackButton
-              variant={comparing ? "primary" : "outline"}
-              size="sm"
-              className="h-7 min-w-0 flex-1 px-2 text-xs"
-              disabled={alternates < 1}
-              onClick={onCompare}
-            >
-              <Columns2 />
-              <span className="truncate">{comparing ? "Editing" : "Compare"}</span>
-              <StickerKbd watch="v" className="ml-auto min-w-4 px-1 py-0 text-[10px]">V</StickerKbd>
-            </QuackButton>
-          </div>
+          <QuackButton
+            variant={comparing ? "primary" : "outline"}
+            size="sm"
+            className="h-7 w-full px-2 text-xs"
+            disabled={alternates < 1}
+            onClick={onCompare}
+          >
+            <Columns2 />
+            <span className="truncate">{comparing ? "Back to editing" : "Compare"}</span>
+            {/* A real keycap that depresses on the actual keystroke, like the Deselect chip's. */}
+            <StickerKbd watch="v" className="ml-auto min-w-4 px-1 py-0 text-[10px]">V</StickerKbd>
+          </QuackButton>
 
           {/* Offered only where it means something: on a variant. On the base it would be a
               button that says the design should become itself. */}
