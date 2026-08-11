@@ -59,6 +59,12 @@ export type ConfigMeta = {
   /** Blob id of the preview thumbnail, or null for projects saved before previews existed
    *  (and for projects an agent created without ever opening the editor). */
   preview?: string | null;
+  /** How many alternates this design carries. Only the archive list reports it — a variant
+   *  row is never in that list, so a number here always describes a base. */
+  variantCount?: number;
+  /** Set on a variant: the design it is an alternate of, and its letter. Null on a base. */
+  variantOf?: string | null;
+  variantLabel?: string | null;
 };
 /** A full project including its (hydrated) doc. */
 export type SavedConfig = ConfigMeta & { doc: ThumbDoc };
@@ -131,14 +137,17 @@ export function listConfigs(): Promise<ConfigMeta[]> {
 
 /** Fetches one archived project and re-hydrates its images from R2. */
 export async function loadConfig(id: string): Promise<SavedConfig> {
-  const row = await apiGet<{ id: string; name: string; updatedAt: number; campaignId: string | null; doc: ThumbDoc }>(
-    `/projects/${id}`
-  );
+  const row = await apiGet<{
+    id: string; name: string; updatedAt: number; campaignId: string | null; doc: ThumbDoc;
+    variantOf?: string | null; variantLabel?: string | null;
+  }>(`/projects/${id}`);
   return {
     id: row.id,
     name: row.name,
     updatedAt: row.updatedAt,
     campaignId: row.campaignId ?? null,
+    variantOf: row.variantOf ?? null,
+    variantLabel: row.variantLabel ?? null,
     doc: await hydrateDoc(row.doc),
   };
 }
@@ -247,6 +256,67 @@ export async function restoreVersion(projectId: string, versionId: string): Prom
   assertWritable();
   const row = await apiSend<{ doc: ThumbDoc; updatedAt: number }>("POST", `/projects/${projectId}/versions/${versionId}/restore`);
   return { doc: await hydrateDoc(row.doc), updatedAt: row.updatedAt };
+}
+
+// ── Variants (competing takes on one design) ──────────────────────────────────
+//
+// A variant is a project row with a parent (see server/src/index.ts), so everything here is a
+// thin wrapper over the same `/projects` surface. Only two things need care on this side: the
+// document a promotion hands back has to be hydrated like any other loaded design, and a
+// variant is created **server-side** from the base — the editor saves first and forks the saved
+// state, rather than uploading a document the backend already holds.
+
+export type VariantMember = {
+  id: string;
+  name: string;
+  /** The letter. Null on the base, which is A by definition. */
+  label: string | null;
+  isBase: boolean;
+  format: FormatKey | null;
+  preview: string | null;
+  /** Why this one was picked, if it was. */
+  note: string | null;
+  /** When it won a comparison, or null. At most one member of a set carries it. */
+  wonAt: number | null;
+  updatedAt: number;
+};
+
+/** A design and its alternates, base first then alternates in label order. */
+export type VariantSet = { baseId: string; members: VariantMember[] };
+
+/** The whole set the given id belongs to — base or variant, same answer either way. */
+export function listVariants(id: string): Promise<VariantSet> {
+  return apiGet<VariantSet>(`/projects/${id}/variants`);
+}
+
+/** Forks a design into a new alternate. The document is copied on the server, so this must be
+ *  called on a *saved* design: the editor saves first, which is also what makes the base and
+ *  the new variant start out identical. */
+export function createVariant(id: string, name?: string): Promise<ConfigMeta> {
+  assertWritable();
+  return apiSend<ConfigMeta>("POST", `/projects/${id}/variants`, name ? { name } : {});
+}
+
+/** Makes a variant the design: the two documents swap, so the base keeps its id, name, history
+ *  and published state. Returns the promoted document, hydrated for the canvas, plus the set as
+ *  it now stands. Promoting the same variant again undoes it. */
+export async function promoteVariant(id: string): Promise<{ doc: ThumbDoc; updatedAt: number; baseId: string; members: VariantMember[] }> {
+  assertWritable();
+  const row = await apiSend<{ id: string; doc: ThumbDoc; updatedAt: number; members: VariantMember[] }>(
+    "POST",
+    `/projects/${id}/promote`
+  );
+  return { doc: await hydrateDoc(row.doc), updatedAt: row.updatedAt, baseId: row.id, members: row.members };
+}
+
+/** Records (or clears) the outcome of a comparison. Both keys are presence-gated server-side,
+ *  so passing one leaves the other alone. */
+export function setVariantDecision(id: string, decision: { won?: boolean; note?: string }): Promise<ConfigMeta> {
+  assertWritable();
+  return apiSend<ConfigMeta>("PUT", `/projects/${id}`, {
+    ...(decision.won === undefined ? {} : { won: decision.won }),
+    ...(decision.note === undefined ? {} : { variantNote: decision.note }),
+  });
 }
 
 // ── Campaigns (a folder of designs: one message across several platforms) ─────

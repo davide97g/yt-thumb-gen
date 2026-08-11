@@ -7,6 +7,8 @@ import { ReadabilityPanel } from "./components/ReadabilityPanel";
 import { SavesPanel } from "./components/SavesPanel";
 import { ManageStarredDialog, StarredCommandDialog, StarredPanel } from "./components/StarredPanel";
 import { ProjectHeader } from "./components/ProjectHeader";
+import { VariantBar } from "./components/VariantBar";
+import { CompareView } from "./components/CompareView";
 import { CampaignExporter } from "./components/CampaignExporter";
 import { HistoryDialog } from "./components/HistoryDialog";
 import { NewProjectDialog } from "./components/NewProjectDialog";
@@ -24,10 +26,26 @@ import { StickerTooltip } from "./components/ui/sticker-tooltip";
 import { defaultFileName, exportThumb } from "./lib/export";
 import { loadImageFile } from "./lib/loadImageFile";
 import { makePreview } from "./lib/preview";
-import { getProject, getWorking, loadConfig, loadPublicConfig, renameConfig, saveConfig, setProject, setWorking, starLayer } from "./lib/storage";
+import {
+  createVariant,
+  getProject,
+  getWorking,
+  listVariants,
+  loadConfig,
+  loadPublicConfig,
+  promoteVariant,
+  renameConfig,
+  saveConfig,
+  setProject,
+  setVariantDecision,
+  setWorking,
+  starLayer,
+  type VariantMember,
+} from "./lib/storage";
 import { useAuth } from "./components/AuthGate";
 import { GRID_W } from "./lib/safeAreas";
 import { FIT_VIEW, panBy, wheelPixels, zoomAt, zoomFactor, type View } from "./lib/zoom";
+import { comparable, labelOf, memberForDigit } from "./lib/variants";
 import { FORMATS, canvasSize, historyReducer, initHistory, newImageLayer, primaryId, type AppState, type FontKey, type Layer, type ThumbDoc } from "./state";
 import { TEMPLATES } from "./presets";
 import { useIsMobile } from "./lib/useIsMobile";
@@ -135,6 +153,16 @@ export default function App() {
   const [projectId, setProjectId] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const savedDocRef = useRef<ThumbDoc>(initial.doc);
+
+  // The open design's variant set: competing takes on the same design at the same format, base
+  // first (see `lib/variants.ts`). Empty until the design has been saved — a variant is forked
+  // from a stored document, so there is nothing to fork before then — and empty for a guest,
+  // for whom every action here is a write.
+  const [members, setMembers] = useState<VariantMember[]>([]);
+  const [variantBusy, setVariantBusy] = useState(false);
+  // Whether the stage is showing the set side by side instead of the one design being edited.
+  // A view state, like the two lenses: it never touches the doc.
+  const [comparing, setComparing] = useState(false);
 
   const { doc, selectedIds } = hist.present;
   const { w: CW, h: CH } = canvasSize(doc.format);
@@ -281,7 +309,10 @@ export default function App() {
     }
   }
 
-  async function saveProject() {
+  /** Archives the current canvas and returns the project's id — which the caller needs when
+   *  the save is a step towards something else (forking a variant needs a stored document to
+   *  fork), since `projectId` is state and won't have landed yet. Null means it failed. */
+  async function saveProject(): Promise<string | null> {
     try {
       const preview = await capturePreview();
       const saved = await saveConfig(projectName, doc, projectId ?? undefined, undefined, preview);
@@ -289,8 +320,102 @@ export default function App() {
       setProjectId(saved.id);
       setSavedAt(saved.updatedAt);
       setSavesKey((k) => k + 1);
+      return saved.id;
     } catch {
       setMessage("Couldn't save.");
+      return null;
+    }
+  }
+
+  // ── Variants ────────────────────────────────────────────────────────────────
+  // A variant is a project row of its own, so switching to one is an ordinary project open and
+  // everything downstream — the loader cover, the `?project=` mirror, the archive, version
+  // history — works on it untouched. What these four functions add is the *set*: keeping it in
+  // sync, and never letting an unsaved edit fall between two takes.
+
+  const refreshVariants = (id: string | null) => {
+    if (!canWrite || !id) { setMembers([]); return Promise.resolve(); }
+    return listVariants(id)
+      .then((set) => setMembers(set.members))
+      .catch(() => setMembers([]));
+  };
+
+  // Re-read on every project change *and* every save: a save moves `updatedAt` and replaces the
+  // preview, both of which the compare grid paints.
+  useEffect(() => {
+    if (!hydrated) return;
+    void refreshVariants(projectId);
+  }, [projectId, canWrite, hydrated, savesKey]);
+
+  // Leaving a set (or a design that has none) can't leave the stage showing a comparison of it.
+  useEffect(() => {
+    if (!comparable(members)) setComparing(false);
+  }, [members]);
+
+  /** Opens another take. Saves first when there are unsaved edits: the entire point of a set is
+   *  that no version of the design gets lost, and switching away is exactly where one would. */
+  async function openVariant(m: VariantMember) {
+    if (m.id === projectId || variantBusy) return;
+    setVariantBusy(true);
+    setOpening(m.name);
+    try {
+      if (dirty && projectId) await saveProject();
+      const full = await loadConfig(m.id);
+      adoptProject(full.doc, full.name, full.id, full.updatedAt);
+    } catch {
+      setMessage("Couldn't open that variant.");
+    } finally {
+      setOpening(null);
+      setVariantBusy(false);
+    }
+  }
+
+  /** Forks the design into a new take and switches to it. The copy happens server-side, so the
+   *  document has to be stored first — which is also what makes the two takes start identical
+   *  rather than one of them starting from a stale save. */
+  async function newVariant() {
+    if (!canWrite || variantBusy) return;
+    setVariantBusy(true);
+    try {
+      const baseId = dirty || !projectId ? await saveProject() : projectId;
+      if (!baseId) return;
+      const created = await createVariant(baseId);
+      setOpening(created.name);
+      const full = await loadConfig(created.id);
+      adoptProject(full.doc, full.name, full.id, full.updatedAt);
+      await refreshVariants(created.id);
+      setSavesKey((k) => k + 1);
+      setMessage(`Variant ${created.variantLabel ?? ""} — edit it freely, then compare.`.trim());
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Couldn't create the variant.");
+    } finally {
+      setOpening(null);
+      setVariantBusy(false);
+    }
+  }
+
+  /** Makes a take *the* design: the documents swap, so the base keeps its id, name, history and
+   *  published state. The editor follows the design rather than the row — you promoted a winner
+   *  to be the thing you ship, so that is what should be open afterwards. */
+  async function promote(m: VariantMember) {
+    if (!canWrite || variantBusy) return;
+    setVariantBusy(true);
+    try {
+      if (dirty && projectId) await saveProject();
+      const res = await promoteVariant(m.id);
+      const base = res.members.find((x) => x.isBase);
+      adoptProject(res.doc, base?.name ?? projectName, res.baseId, res.updatedAt);
+      setMembers(res.members);
+      setComparing(false);
+      // The swap cleared both previews — each was a picture of the other design. Saving the
+      // adopted document back recaptures one; the document is byte-identical to what was just
+      // stored, so it spends no version.
+      void saveProject();
+      setMessage(`${labelOf(m)} is now the design.`);
+    } catch {
+      setMessage("Couldn't promote that variant.");
+    } finally {
+      setVariantBusy(false);
     }
   }
 
@@ -316,6 +441,13 @@ export default function App() {
   const saveRef = useRef<() => void>(() => {});
   saveRef.current = () => { if (canWrite && (dirty || !projectId)) void saveProject(); };
 
+  // Same shape for the variant keys: the handler binds once, and both of these close over a
+  // project and a set that change under it.
+  const membersRef = useRef(members);
+  membersRef.current = members;
+  const openVariantRef = useRef<(m: VariantMember) => void>(() => {});
+  openVariantRef.current = (m) => void openVariant(m);
+
   // Backspace / Delete removes the selected layer, unless focus is in a text field.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -335,7 +467,7 @@ export default function App() {
       if (typing) return; // let inputs keep native undo / copy / paste
       if (modalRef.current) return; // a dialog owns the keyboard while it's open
 
-      if (e.key === "Escape") { setCropMode(null); setDrawMode(false); return; } // exit crop / draw mode
+      if (e.key === "Escape") { setCropMode(null); setDrawMode(false); setComparing(false); return; } // exit crop / draw / compare
 
       const mod = e.metaKey || e.ctrlKey;
       if (mod) {
@@ -368,6 +500,21 @@ export default function App() {
       // "0" drops the magnifier back to fit — the way out of a zoom without hunting for the
       // gesture that undoes it, and the same key every editor uses for it.
       if (e.key === "0") { e.preventDefault(); setView(FIT_VIEW); return; }
+      // "v" — versus. Puts the design's takes side by side, and takes them apart again. Bare,
+      // like the lenses; a design with nothing to compare against ignores it rather than
+      // flipping the stage to a grid of one.
+      if (e.key === "v") {
+        e.preventDefault();
+        if (comparable(membersRef.current)) setComparing((v) => !v);
+        return;
+      }
+      // 1…9 switch takes, numbered the way the letters read (1 is A). "0" is fit and is
+      // handled above, so the digits don't collide.
+      if (e.key >= "1" && e.key <= "9") {
+        const m = memberForDigit(membersRef.current, Number(e.key));
+        if (m) { e.preventDefault(); openVariantRef.current(m); }
+        return;
+      }
 
       // Arrow keys move the selection by a fixed step — the precise counterpart to a drag,
       // so they ignore snapping entirely. Shift takes the big step. preventDefault runs even
@@ -668,6 +815,21 @@ export default function App() {
                 onNew={() => setNewOpen(true)}
                 onHistory={() => setHistoryOpen(true)}
               />
+
+              {/* The set lives with the project card, not in the archive: it is a property of
+                  the design you have open. Owner-only — every action in it is a write. */}
+              {canWrite && (
+                <VariantBar
+                  members={members}
+                  activeId={projectId}
+                  busy={variantBusy}
+                  comparing={comparing}
+                  onSwitch={(m) => void openVariant(m)}
+                  onCreate={() => void newVariant()}
+                  onCompare={() => setComparing((v) => !v)}
+                  onPromote={(m) => void promote(m)}
+                />
+              )}
             </div>
 
             {/* One section open at a time: the open one takes the leftover height and
@@ -775,7 +937,24 @@ export default function App() {
               where the canvas underneath is still the seeded template. */}
           <ProjectLoading active={loadingProject} label={loadingLabel} aspect={CW / CH} />
 
-          <div className="absolute bottom-4 left-4 hidden items-center gap-2 md:flex">
+          {/* The set, side by side, over the stage rather than instead of it: the canvas
+              underneath keeps its state (and its WebGL contexts) for the moment you switch back.
+              The open take's cell shows the *live* document, unsaved edits included. */}
+          {comparing && (
+            <CompareView
+              members={members}
+              activeId={projectId}
+              liveDoc={doc}
+              busy={variantBusy}
+              onOpen={(m) => void openVariant(m)}
+              onPromote={(m) => void promote(m)}
+              onNote={(m, note) => void setVariantDecision(m.id, { note }).then(() => refreshVariants(projectId)).catch(() => setMessage("Couldn't save the note."))}
+              onClose={() => setComparing(false)}
+              onError={setMessage}
+            />
+          )}
+
+          <div className={cn("absolute bottom-4 left-4 hidden items-center gap-2 md:flex", comparing && "hidden md:hidden")}>
             <HudLabel size="sm" tracking="tight" className="readout pointer-events-none text-muted-foreground/65">
               {CW} × {CH} · {actualSize && !zoomed ? "actual size" : `${Math.round(scale * 100)}%`}
             </HudLabel>
@@ -844,7 +1023,9 @@ export default function App() {
             )}
           </div>
 
-          {(isMobile || !chromeHidden) && (
+          {/* The dock adds layers to the *open* take, which is not what the screen is about
+              while the set is being compared. */}
+          {(isMobile || !chromeHidden) && !comparing && (
             <div className="pointer-events-none absolute inset-x-2 bottom-3 flex justify-center md:inset-x-auto md:bottom-5 md:left-1/2 md:-translate-x-1/2">
               {/* `enabled` gates the dock's letter shortcuts: while a dialog is open the
                   keyboard belongs to it, or "T" would silently add a layer behind it. */}
