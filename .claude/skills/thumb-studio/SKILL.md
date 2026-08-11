@@ -81,8 +81,10 @@ format. Report the per-format links it returns.
 
 Things worth knowing:
 
-- **The variants are independent from the moment they're saved.** Editing one does not update the
-  others. If the headline changes, either regenerate the set or update each design.
+- **The per-format designs are independent from the moment they're saved.** Editing one does not
+  update the others. If the headline changes, either regenerate the set or update each design.
+  (They are not *variants* in the sense below: a campaign spans platforms, a variant set competes
+  within one.)
 - Rescaling is *contain* — it fits the whole 16:9 composition inside a 9:16 frame, which leaves
   large empty bands. It's a correct starting point, not a finished vertical design. Say so, and
   offer to rework the tall formats properly (bigger type, stacked layout) rather than pretending
@@ -92,6 +94,38 @@ Things worth knowing:
 - `delete_campaign` deletes only the folder — its designs survive, ungrouped. Deleting the
   designs is a separate, per-project action.
 - Use `create_campaign` + `set_project_campaign` only to organise designs that already exist.
+
+## Variants — two takes on the same design
+
+A campaign spans platforms. A **variant set** competes within one: the same design, the same
+format, a different answer to the same question. The base is A, alternates are B, C, D…, and the
+user compares them side by side in the editor before picking one.
+
+**When the user asks for options — "a few title treatments", "try it darker", "A/B this" — fork,
+don't create separate projects.** Separate projects lose the fact that they answer one question,
+and they clutter the archive; a variant is hidden from the archive list and the public gallery, and
+carries its own preview, history and render.
+
+```
+create_variant(id: <design>, name: "Louder title", doc: <changed document>)
+```
+
+Pass `doc` to make the alternate differ immediately — that is the point. Fork three times with
+three treatments, `render_project` each one, and show the user the pictures.
+
+Things worth knowing:
+
+- **Sets never nest.** Forking a variant produces a sibling of it, not a child. Eight alternates
+  per design is the ceiling.
+- **Only the base can be published**, which is what `promote_variant` is for: it swaps the two
+  documents, so the winner becomes what the design *is* — same id, same name, same history, same
+  published state, so every existing link still resolves. The loser lands in the variant slot,
+  which makes it reversible.
+- **Promoting is the user's decision.** Show the renders, say which one you'd pick and why, then
+  ask. Don't promote unprompted.
+- Deleting a base deletes its variants. Deleting a variant leaves the base alone.
+- `list_variants` accepts any member of a set and answers with the whole set, including which take
+  was picked and the note recorded against it.
 
 ## Editing an existing project
 

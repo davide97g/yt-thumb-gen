@@ -38,6 +38,12 @@ type ProjectMeta = { id: string; name: string; updatedAt: number; campaignId?: s
 type CampaignMeta = { id: string; name: string; updatedAt: number; designCount: number };
 type StarredMeta = { id: string; name: string; kind: string; sourceProjectName: string | null; lastUsedAt: number };
 type StarredItem = StarredMeta & { layer: Layer };
+/** One take in a variant set. `label` is null on the base, which is A by definition. */
+type VariantMemberMeta = {
+  id: string; name: string; label: string | null; isBase: boolean;
+  format: string | null; note: string | null; wonAt: number | null; updatedAt: number;
+};
+type VariantSet = { baseId: string; members: VariantMemberMeta[] };
 
 const formatKeys = Object.keys(FORMATS) as [FormatKey, ...FormatKey[]];
 const templateKeys = Object.keys(TEMPLATES) as [TemplateKey, ...TemplateKey[]];
@@ -519,6 +525,103 @@ export function registerTools(srv: McpServer, api: Api): void {
       try {
         await api.delete(`/projects/${id}`);
         return text(`Deleted project ${id}.`);
+      } catch (e) {
+        return fail(e instanceof ApiError ? e.toText() : String(e));
+      }
+    }
+  );
+
+  // ── variants (competing takes on one design) ────────────────────────────────
+  //
+  // The loop this closes: an agent asked for "three headline treatments" used to have to invent
+  // three separate projects, which lost the fact that they are answers to the same question and
+  // filled the archive with drafts. A variant is a take on one design — same format, different
+  // answer — labelled A, B, C, hidden from the archive and the gallery, and comparable side by
+  // side in the editor. Promoting the winner makes it *the* design without changing its id.
+  srv.registerTool(
+    "list_variants",
+    {
+      title: "List a design's variants",
+      description:
+        "The whole variant set the given design belongs to — the base (A) and every alternate, with " +
+        "which one was picked. Accepts the base or any variant: the answer is the same set either way.",
+      inputSchema: { id: projectRef("Any member of the set") },
+    },
+    async ({ id: ref }) => {
+      const id = projectIdFrom(ref);
+      if (!id) return badRef(ref);
+      try {
+        const set = await api.get<VariantSet>(`/projects/${id}/variants`);
+        return text({
+          ...set,
+          members: set.members.map((m) => ({ ...m, url: projectLink(m.id) })),
+        });
+      } catch (e) {
+        return fail(e instanceof ApiError ? e.toText() : String(e));
+      }
+    }
+  );
+
+  srv.registerTool(
+    "create_variant",
+    {
+      title: "Create a variant of a design",
+      description:
+        "Forks a design into another take, labelled B, C, D… Pass `doc` to make the alternate differ " +
+        "immediately — that is the point: fork three times with three different headline treatments and " +
+        "the user compares them side by side. Omit it to start from a copy of the base. A set holds 8 " +
+        "alternates; variants never nest, so forking a variant produces a sibling.",
+      inputSchema: {
+        id: projectRef("Design to fork"),
+        name: z.string().min(1).optional().describe("Name for the variant; defaults to “<base> · B”"),
+        doc: docInput("The variant's ThumbDoc. Omit to copy the base's document unchanged.").optional(),
+      },
+    },
+    async ({ id: ref, name, doc }) => {
+      const id = projectIdFrom(ref);
+      if (!id) return badRef(ref);
+      if (doc !== undefined) {
+        const problem = preflight(doc);
+        if (problem) return fail(problem);
+      }
+      try {
+        const saved = await api.post<ProjectMeta & { variantLabel?: string | null }>(`/projects/${id}/variants`, {
+          ...(name === undefined ? {} : { name }),
+          ...(doc === undefined ? {} : { doc }),
+        });
+        return text({
+          ...saved,
+          url: projectLink(saved.id),
+          note: "Render it to see it, then let the user pick — or call promote_variant once they have.",
+        });
+      } catch (e) {
+        return fail(e instanceof ApiError ? e.toText() : String(e));
+      }
+    }
+  );
+
+  srv.registerTool(
+    "promote_variant",
+    {
+      title: "Make a variant the design",
+      description:
+        "Swaps a variant's document with its base's, so the winner becomes what the design *is* — same " +
+        "id, same name, same history, same published state, so every link to it still works. The losing " +
+        "document lands in the variant slot, which makes this reversible. Ask the user before calling it: " +
+        "which take ships is their decision, not yours.",
+      inputSchema: { id: projectRef("Variant to promote") },
+    },
+    async ({ id: ref }) => {
+      const id = projectIdFrom(ref);
+      if (!id) return badRef(ref);
+      try {
+        const row = await api.post<ProjectMeta & { members: VariantMemberMeta[] }>(`/projects/${id}/promote`);
+        return text({
+          id: row.id,
+          name: row.name,
+          url: projectLink(row.id),
+          members: row.members.map((m) => ({ ...m, url: projectLink(m.id) })),
+        });
       } catch (e) {
         return fail(e instanceof ApiError ? e.toText() : String(e));
       }

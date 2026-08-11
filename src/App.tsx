@@ -9,6 +9,7 @@ import { ManageStarredDialog, StarredCommandDialog, StarredPanel } from "./compo
 import { ProjectHeader } from "./components/ProjectHeader";
 import { VariantBar } from "./components/VariantBar";
 import { CompareView } from "./components/CompareView";
+import { VariantSheet } from "./components/VariantSheet";
 import { CampaignExporter } from "./components/CampaignExporter";
 import { HistoryDialog } from "./components/HistoryDialog";
 import { NewProjectDialog } from "./components/NewProjectDialog";
@@ -163,6 +164,8 @@ export default function App() {
   // Whether the stage is showing the set side by side instead of the one design being edited.
   // A view state, like the two lenses: it never touches the doc.
   const [comparing, setComparing] = useState(false);
+  // Mounting the sheet builder starts the run, same contract as `CampaignExporter`.
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   const { doc, selectedIds } = hist.present;
   const { w: CW, h: CH } = canvasSize(doc.format);
@@ -203,7 +206,7 @@ export default function App() {
   // While a dialog owns the screen, the bare-letter shortcuts belong to it — otherwise "a"
   // toggles safe areas behind an open modal.
   const modalRef = useRef(false);
-  modalRef.current = newOpen || cmdkOpen || manageStarredOpen || settingsOpen || historyOpen || exportingCampaign !== null;
+  modalRef.current = newOpen || cmdkOpen || manageStarredOpen || settingsOpen || historyOpen || sheetOpen || exportingCampaign !== null;
   // The keydown handler binds once, so the shortcuts that belong to an account read this
   // rather than closing over a stale `canWrite`.
   const canWriteRef = useRef(canWrite);
@@ -949,6 +952,7 @@ export default function App() {
               onOpen={(m) => void openVariant(m)}
               onPromote={(m) => void promote(m)}
               onNote={(m, note) => void setVariantDecision(m.id, { note }).then(() => refreshVariants(projectId)).catch(() => setMessage("Couldn't save the note."))}
+              onSheet={() => setSheetOpen(true)}
               onClose={() => setComparing(false)}
               onError={setMessage}
             />
@@ -1034,7 +1038,7 @@ export default function App() {
                 onError={setMessage}
                 drawMode={drawMode}
                 setDrawMode={setDrawMode}
-                enabled={!newOpen && !cmdkOpen && !manageStarredOpen && !settingsOpen && !historyOpen && !exportingCampaign}
+                enabled={!newOpen && !cmdkOpen && !manageStarredOpen && !settingsOpen && !historyOpen && !sheetOpen && !exportingCampaign}
               />
             </div>
           )}
@@ -1107,6 +1111,17 @@ export default function App() {
           campaign={exportingCampaign}
           onDone={(msg) => { setExportingCampaign(null); setMessage(msg); }}
           onError={(msg) => { setExportingCampaign(null); setMessage(msg); }}
+        />
+      )}
+
+      {sheetOpen && (
+        <VariantSheet
+          members={members}
+          activeId={projectId}
+          liveDoc={doc}
+          design={projectName}
+          onDone={(msg) => { setSheetOpen(false); setMessage(msg); }}
+          onError={(msg) => { setSheetOpen(false); setMessage(msg); }}
         />
       )}
 

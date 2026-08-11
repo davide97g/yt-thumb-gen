@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Crown, Pencil, X } from "lucide-react";
+import { Crown, Download, Pencil, X } from "lucide-react";
 import { FORMATS, canvasSize, type ThumbDoc } from "../state";
 import type { Box } from "../lib/layout";
 import { checkReadability } from "../lib/readability";
@@ -26,6 +26,8 @@ type Props = {
   onOpen: (m: VariantMember) => void;
   onPromote: (m: VariantMember) => void;
   onNote: (m: VariantMember, note: string) => void;
+  /** Composes every take into one labelled PNG — the only way this comparison leaves the editor. */
+  onSheet: () => void;
   onClose: () => void;
   onError: (msg: string) => void;
 };
@@ -53,7 +55,7 @@ type Mode = "grid" | "feed";
  * • **The verdicts are the real ones.** `checkReadability` needs geometry only the DOM has, so
  *   each cell is measured after it paints, exactly as `ReadabilityPanel` measures the canvas.
  */
-export function CompareView({ members, activeId, liveDoc, busy, onOpen, onPromote, onNote, onClose, onError }: Props) {
+export function CompareView({ members, activeId, liveDoc, busy, onOpen, onPromote, onNote, onSheet, onClose, onError }: Props) {
   const [mode, setMode] = useState<Mode>("grid");
   // Fetched documents, by project id. A ref-like cache in state because rendering depends on it;
   // dropped whole when the set changes, so a promoted design can't be drawn from a stale copy.
@@ -160,6 +162,14 @@ export function CompareView({ members, activeId, liveDoc, busy, onOpen, onPromot
             <StickerToggleGroupItem value="grid">Large</StickerToggleGroupItem>
             <StickerToggleGroupItem value="feed">In feed</StickerToggleGroupItem>
           </StickerToggleGroup>
+          {/* Every take — not just the four on screen — because the sheet is for asking someone
+              else, and the ceiling here is WebGL contexts, which a one-at-a-time render doesn't hit. */}
+          <StickerTooltip content={`Download all ${members.length} takes as one labelled PNG`} delay={400}>
+            <QuackButton variant="outline" size="sm" className="h-8 px-2.5 text-xs" disabled={busy} onClick={onSheet}>
+              <Download />
+              <span className="hidden sm:inline">Sheet</span>
+            </QuackButton>
+          </StickerTooltip>
           <StickerTooltip content="Back to editing (V)" delay={400}>
             <QuackButton variant="ghost" size="icon-sm" ripple={false} onClick={onClose} aria-label="Close compare">
               <X />

@@ -79,6 +79,7 @@ const TOOLS: { group: string; names: string[] }[] = [
   { group: "Bring material", names: ["upload_image", "list_starred_elements", "get_starred_element", "add_starred_element"] },
   { group: "Write projects", names: ["list_projects", "get_project", "create_project", "update_project", "delete_project", "project_url"] },
   { group: "See the result", names: ["render_project"] },
+  { group: "Try alternatives", names: ["list_variants", "create_variant", "promote_variant"] },
   { group: "Run a campaign", names: ["list_campaigns", "get_campaign", "create_campaign", "rename_campaign", "delete_campaign", "set_project_campaign", "generate_campaign_set"] },
 ];
 
