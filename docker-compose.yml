@@ -56,6 +56,15 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    # `web` sits on the shared `dokploy-network`, where every other stack's api container also
+    # answers to the alias `api` — Docker's DNS then returns several addresses for one name and
+    # nginx proxies /api to whoever it picked (symptom: a 404 in another framework's error
+    # shape). The stack-scoped alias is the name nginx.conf resolves, and nothing else can claim
+    # it. Same reason `mcp` carries one.
+    networks:
+      default:
+        aliases:
+          - thumb-api
 
   # Hosted MCP endpoint (nginx routes /api/mcp here, ahead of /api/). Built from the repo
   # root because it needs the document model in src/ as well as server/src/. Holds no
@@ -76,6 +85,10 @@ services:
       retries: 3
     depends_on:
       - api
+    networks:
+      default:
+        aliases:
+          - thumb-mcp
 
   # Headless renderer: a Chromium that loads /render.html from `web` and screenshots the real
   # canvas component, so a picture of a design and an export of it are the same code. Holds no
