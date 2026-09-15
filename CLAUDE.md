@@ -45,7 +45,12 @@ three package typechecks (`server`, `mcp`, `render` — `render/` is a package l
 a Dockerfile copies broken TypeScript happily), an `nginx -t` over the deployed config, plus a
 build of every image. The image job exists because the build contexts differ on purpose (api
 from `./server`, web and mcp from the repo root): a wrong path there typechecks fine and only
-fails at deploy time. Nothing is pushed; Dokploy still owns deploys.
+fails at deploy time. Nothing is pushed.
+
+**CI is also what deploys.** Dokploy's own auto-deploy is off, and a `deploy` job gated on
+both `check` and `images` calls `compose.deploy` on a push to `main` and then waits for the
+result — a deploy that fails has to turn the workflow red, or the gate is decorative. That is
+why `cancel-in-progress` is **false**: a cancelled run leaves `main` green and undeployed.
 
 **Any change to the layer/document types in `src/state.ts` requires `bun run schema`** and
 committing the regenerated file, or `check` fails.
@@ -342,7 +347,9 @@ The param is also **written back**: an effect in `App.tsx` mirrors `projectId` i
 
 ### Deployment — `Dockerfile` (web/nginx), `server/Dockerfile` (api), `mcp/Dockerfile` (mcp), `docker-compose.yml`
 
-One Compose unit: `web` (nginx serves `dist/` — the editor at `/`, the landing page at `/welcome` — and proxies `/api` → `api` and `/api/mcp` → `mcp`, all same-origin), `api` (Bun), `mcp` (Bun, hosted MCP endpoint), `postgres`. Deployed on a VPS via Dokploy from this repo; secrets (`POSTGRES_PASSWORD`, `R2_*`, `APP_URL`, `CLERK_SECRET_KEY`, `ALLOWED_EMAILS`, `THUMBDOC_VALIDATE`) come from the Dokploy environment — see `.env.example`. Frontend calls the API at relative `/api`, so no build-time URL is needed — **except `VITE_CLERK_PUBLISHABLE_KEY`**, which Vite inlines and which therefore reaches the `web` image as a compose `build.args` entry, not a container variable. A key change there needs a rebuild.
+One Compose unit: `web` (nginx serves `dist/` — the editor at `/`, the landing page at `/welcome` — and proxies `/api` → `api` and `/api/mcp` → `mcp`, all same-origin), `api` (Bun), `mcp` (Bun, hosted MCP endpoint), `postgres`. Deployed via Dokploy from this repo; secrets (`POSTGRES_PASSWORD`, `R2_*`, `APP_URL`, `CLERK_SECRET_KEY`, `ALLOWED_EMAILS`, `THUMBDOC_VALIDATE`) come from the Dokploy environment — see `.env.example`. Frontend calls the API at relative `/api`, so no build-time URL is needed — **except `VITE_CLERK_PUBLISHABLE_KEY`**, which Vite inlines and which therefore reaches the `web` image as a compose `build.args` entry, not a container variable. A key change there needs a rebuild.
+
+**It runs on the owner's own machine, not a rented one** (moved off a Hetzner VPS on 2026-09-15). A mini PC at home runs Dokploy, and the box **forwards no port**: a `cloudflared` tunnel reaches out instead, so `thumb.davideghiotto.it` is a proxied CNAME to `<tunnel>.cfargotunnel.com` rather than an A record at an address. Three things follow. **Cloudflare terminates TLS**, so the Dokploy domain carries `https: false` and `certificateType: none` — Traefik serves plain HTTP on its `web` entrypoint and asks Let's Encrypt for nothing; a cert set here would be a second, pointless handshake. The **data is at rest on hardware the owner is responsible for**, disk encryption and physical access included, and Cloudflare sees the traffic in the clear at the edge. And CI cannot reach a private LAN, so Dokploy is published on its own hostname, `deploy-thumb.davideghiotto.it`, whose tunnel **path rule allows `api/compose\.(deploy|one)` and nothing else** — the two calls the deploy job makes, rather than the whole admin API. The deployment ids and the API key are in the gitignored `.env`; that key is deliberately *not* in Dokploy's own environment, because the deployment must not be able to read what manages it.
 
 Build contexts differ on purpose and are load-bearing: `api` is built from `./server` (small, no access to `src/`), while `web` and `mcp` are built from the repo root. `.dockerignore` excludes `**/node_modules`, not just the top-level one — the root context spans every package.
 

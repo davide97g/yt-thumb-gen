@@ -13,9 +13,12 @@ on:
     branches: [main]
   pull_request:
 
+# Queue runs on the same ref rather than cancelling them: since the `deploy` job below is
+# what puts main in production, a cancelled run leaves main green and undeployed, and two
+# pushes in quick succession would otherwise deploy out of order.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   check:
@@ -123,3 +126,68 @@ jobs:
           push: false
           cache-from: type=gha,scope=render
           cache-to: type=gha,mode=max,scope=render
+
+  deploy:
+    name: deploy
+    # Only a real push to main reaches production — never a pull request, never a branch.
+    # Dokploy's own auto-deploy is off, so this job is the only thing that puts main in
+    # production, and it runs behind both gates: a wrong Dockerfile context has to fail in
+    # `images` rather than halfway through a deploy.
+    needs: [check, images]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    # The mini PC publishes Dokploy on a tunnel hostname whose path rule allows
+    # `api/compose\.(deploy|one)` and nothing else, so what is reachable from the internet is
+    # these two calls rather than the whole admin API. The key is a repository secret and
+    # lives nowhere else — in particular not in the Dokploy environment this deploy writes.
+    env:
+      DOKPLOY_URL: ${{ secrets.DOKPLOY_URL }}
+      DOKPLOY_API_KEY: ${{ secrets.DOKPLOY_API_KEY }}
+      DOKPLOY_COMPOSE_ID: ${{ secrets.DOKPLOY_COMPOSE_ID }}
+
+    steps:
+      # The compose status alone cannot say whether a deploy has started yet: it still reads
+      # "done" from the previous one for the first few seconds. The id of the newest
+      # deployment is what tells this run apart from the last — newest by createdAt, because
+      # Dokploy returns the list oldest first.
+      - name: Note the current deployment
+        run: |
+          echo "before=$(curl -fsS --max-time 30 \
+            -H "x-api-key: $DOKPLOY_API_KEY" \
+            "$DOKPLOY_URL/api/compose.one?composeId=$DOKPLOY_COMPOSE_ID" |
+            python3 -c 'import json,sys; d=sorted(json.load(sys.stdin)["deployments"], key=lambda x: x["createdAt"]); print(d[-1]["deploymentId"] if d else "")')" >> "$GITHUB_ENV"
+
+      - name: Trigger the Dokploy deploy
+        run: |
+          curl -fsS --max-time 60 -X POST \
+            -H "x-api-key: $DOKPLOY_API_KEY" \
+            -H 'content-type: application/json' \
+            -d "{\"composeId\":\"$DOKPLOY_COMPOSE_ID\"}" \
+            "$DOKPLOY_URL/api/compose.deploy"
+
+      # The trigger only queues the build. Without this wait a red deploy still shows a green
+      # workflow, which is the one thing this job exists to stop. The window is generous
+      # because `render` is a Chromium image: a cold build of it is minutes, not seconds.
+      - name: Wait for the deploy to finish
+        run: |
+          for _ in $(seq 1 160); do
+            sleep 15
+            latest="$(curl -fsS --max-time 30 \
+              -H "x-api-key: $DOKPLOY_API_KEY" \
+              "$DOKPLOY_URL/api/compose.one?composeId=$DOKPLOY_COMPOSE_ID" |
+              python3 -c 'import json,sys; d=sorted(json.load(sys.stdin)["deployments"], key=lambda x: x["createdAt"]); print(d[-1]["deploymentId"], d[-1]["status"]) if d else print("none idle")')"
+            id="${latest%% *}"
+            status="${latest##* }"
+            if [ "$id" = "$before" ]; then
+              echo "waiting for Dokploy to pick up the deploy"
+              continue
+            fi
+            echo "deployment $id: $status"
+            case "$status" in
+              done) exit 0 ;;
+              error) echo "::error::Dokploy reported a failed deploy"; exit 1 ;;
+            esac
+          done
+          echo "::error::deploy still running after 40 minutes"
+          exit 1

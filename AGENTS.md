@@ -56,7 +56,7 @@ Renders each layer as an absolutely-positioned element inside a node that is `tr
 
 ### Deployment — `Dockerfile` (web/nginx), `server/Dockerfile` (api), `docker-compose.yml`
 
-One Compose unit: `web` (nginx serves `dist/`, proxies `/api` → `api` same-origin), `api` (Bun), `postgres`. Deployed on a VPS via Dokploy from this repo; secrets (`POSTGRES_PASSWORD`, `R2_*`, `APP_URL`, `ALLOW_SIGNUP`) come from the Dokploy environment — see `.env.example`. Frontend calls the API at relative `/api`, so no build-time URL is needed.
+One Compose unit: `web` (nginx serves `dist/`, proxies `/api` → `api` same-origin), `api` (Bun), `postgres`. Deployed via Dokploy from this repo — on a mini PC at home, published through a `cloudflared` tunnel that terminates TLS, so the Dokploy domain carries `https: false` / `certificateType: none` and the box forwards no port. Secrets (`POSTGRES_PASSWORD`, `R2_*`, `APP_URL`, `ALLOWED_EMAILS`) come from the Dokploy environment — see `.env.example`. Frontend calls the API at relative `/api`, so no build-time URL is needed. Dokploy's auto-deploy is off; the `deploy` job in `.github/workflows/ci.yml` deploys once the checks are green. See CLAUDE.md § Deployment.
 
 ### Background removal — `src/lib/bgremove.ts`
 
