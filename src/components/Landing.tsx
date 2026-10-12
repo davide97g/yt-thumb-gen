@@ -253,7 +253,7 @@ function Plate() {
 
 /* --------------------------------------------------------------- formats --- */
 
-const FORMAT_ORDER: FormatKey[] = ["youtube", "shorts", "ig-post", "ig-reel", "linkedin", "flyer"];
+const FORMAT_ORDER: FormatKey[] = ["youtube", "shorts", "ig-post", "ig-reel", "linkedin", "flyer", "wallpaper"];
 
 function Formats() {
   return (

@@ -51,6 +51,11 @@ export const SAFE_ZONES: Record<FormatKey, SafeZone[]> = {
   // so the usual rule is to keep type 5 mm inside the edge. Same shape as a crop — what's
   // outside may not survive — hence `keep`. 5 mm of 100 mm wide, 5 mm of 210 mm tall.
   flyer: [{ id: "trim", label: "Trim safe (5 mm)", kind: "keep", x: 0.05, y: 0.0238, w: 0.9, h: 0.9524 }],
+  // A desktop keeps its menu bar on top and the dock along the bottom centre.
+  wallpaper: [
+    { id: "menubar", label: "Menu bar", kind: "cover", x: 0, y: 0, w: 1, h: 0.03 },
+    { id: "dock", label: "Dock", kind: "cover", x: 0.3, y: 0.9, w: 0.4, h: 0.1 },
+  ],
 };
 
 /** Width in CSS pixels of the smallest surface this format is commonly seen at — a grid
@@ -63,4 +68,5 @@ export const GRID_W: Record<FormatKey, number> = {
   "ig-reel": 143, // reels grid cell
   linkedin: 200, // feed image at desktop column width, scaled down
   flyer: 378, // 10 cm at 96 CSS dpi — printed actual size, the only size it is ever seen at
+  wallpaper: 320, // the thumbnail in the OS wallpaper picker; on the desk it is full screen
 };

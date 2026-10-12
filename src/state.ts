@@ -11,7 +11,7 @@
 export const CANVAS_W = 1280;
 export const CANVAS_H = 720;
 
-export type FormatKey = "youtube" | "shorts" | "ig-post" | "ig-reel" | "linkedin" | "flyer";
+export type FormatKey = "youtube" | "shorts" | "ig-post" | "ig-reel" | "linkedin" | "flyer" | "wallpaper";
 
 export type FormatSpec = {
   key: FormatKey;
@@ -32,6 +32,8 @@ export const FORMATS: Record<FormatKey, FormatSpec> = {
   // The one print format: 10 × 21 cm at 300 dpi, the density a printer expects. 21 cm is the
   // width of an A4, so a sheet takes three of these side by side.
   flyer: { key: "flyer", label: "Flyer (10×21 cm)", platform: "Print · 300 dpi", w: 1181, h: 2480, aspect: "10:21" },
+  // Desktop wallpaper at the common ultrawide size; scales down cleanly to 2560×1080.
+  wallpaper: { key: "wallpaper", label: "Wallpaper (21:9)", platform: "Desktop · ultrawide", w: 3440, h: 1440, aspect: "21:9" },
 };
 
 export const DEFAULT_FORMAT: FormatKey = "youtube";
