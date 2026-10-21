@@ -570,7 +570,10 @@
         "cormorantLight",
         "cormorant",
         "cormorantItalic",
-        "alexBrush"
+        "alexBrush",
+        "bricolage",
+        "geist",
+        "permanentMarker"
       ]
     },
     "TextFx": {

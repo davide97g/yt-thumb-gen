@@ -106,7 +106,8 @@ Optional: `fx`, one of:
 
 Fonts: `archivo` `inter` `georgia` `mono` `bebas` `anton` `oswald` `leagueGothic` `leagueSpartan`
 `montserrat` `poppins` `robotoCondensed` `luckiestGuy` `bangers` `sfpro` `helvetica` `segoe`
-`crimsonPro` `geistMono` `libreBaskerville` `lobster` `spaceGrotesk` `anthropicSans`.
+`crimsonPro` `geistMono` `libreBaskerville` `lobster` `spaceGrotesk` `anthropicSans` `cormorantLight`
+`cormorant` `cormorantItalic` `alexBrush` `bricolage` `geist` `permanentMarker`.
 Heavy display faces (`anton`, `archivo`, `bebas`, `luckiestGuy`) read best at thumbnail size.
 
 There is **no letter-spacing field**. To fake wide tracking, put spaces between characters.

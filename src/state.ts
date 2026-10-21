@@ -67,7 +67,10 @@ export type FontKey =
   | "cormorantLight"
   | "cormorant"
   | "cormorantItalic"
-  | "alexBrush";
+  | "alexBrush"
+  | "bricolage"
+  | "geist"
+  | "permanentMarker";
 
 /** Maps a font key to its CSS font-family stack. */
 export const FONTS: Record<FontKey, string> = {
@@ -102,6 +105,11 @@ export const FONTS: Record<FontKey, string> = {
   cormorant: "'Cormorant Garamond', Georgia, serif",
   cormorantItalic: "'Cormorant Garamond', Georgia, serif",
   alexBrush: "'Alex Brush', cursive",
+  // Shipped. brand faces: Bricolage is variable with an optical-size axis, so big titles
+  // get the tight display cut on their own (font-optical-sizing: auto).
+  bricolage: "'Bricolage Grotesque Variable', 'Arial Black', sans-serif",
+  geist: "'Geist', system-ui, sans-serif",
+  permanentMarker: "'Permanent Marker', cursive",
 };
 
 /**
@@ -138,6 +146,9 @@ export const FONT_WEIGHT: Record<FontKey, number> = {
   cormorant: 500,
   cormorantItalic: 400,
   alexBrush: 400,
+  bricolage: 800,
+  geist: 600,
+  permanentMarker: 400,
 };
 
 /**
@@ -177,6 +188,9 @@ export const FONT_LABELS: Record<FontKey, string> = {
   cormorant: "Cormorant Garamond (Medium serif)",
   cormorantItalic: "Cormorant Garamond (Italic serif)",
   alexBrush: "Alex Brush (script)",
+  bricolage: "Bricolage Grotesque (ExtraBold)",
+  geist: "Geist (SemiBold)",
+  permanentMarker: "Permanent Marker (hand)",
 };
 
 export type LayerType = "text" | "image" | "emoji" | "shape" | "effect" | "draw" | "emojifx";

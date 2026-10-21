@@ -38,6 +38,8 @@ import "@fontsource/cormorant-garamond/300.css";
 import "@fontsource/cormorant-garamond/400-italic.css";
 import "@fontsource/cormorant-garamond/500.css";
 import "@fontsource/alex-brush/400.css";
+import "@fontsource-variable/bricolage-grotesque/opsz.css";
+import "@fontsource/permanent-marker/400.css";
 import "./fonts/anthropic-sans.css";
 import "./styles.css";
 
